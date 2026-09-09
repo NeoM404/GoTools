@@ -225,6 +225,7 @@ func cmdKubeconfig(cfgPath string, args []string, stdout, stderr io.Writer) int 
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "kubeconfig failed: %v\n", err)
+		fmt.Fprintf(stderr, "→ if this looks like a CLI/version problem, run `bankctl doctor` (check your %s CLI)\n", cliForCloud(c.Cloud))
 		return 1
 	}
 	fmt.Fprintf(stdout, "credentials for %q ready", c.Name)
@@ -234,7 +235,22 @@ func cmdKubeconfig(cfgPath string, args []string, stdout, stderr io.Writer) int 
 		fmt.Fprint(stdout, " — run `bankctl current` to confirm the active context")
 	}
 	fmt.Fprintln(stdout)
+
+	// Drift hint: if the cloud CLI stamped a removed exec-auth apiVersion, the
+	// kubeconfig will fail against a modern cluster. Warn (stderr) so scripting
+	// stays clean. Best-effort — skip silently if kubectl can't be inspected.
+	if ver, verr := kube.ExecAuthAPIVersion(file); verr == nil && kube.IsDeprecatedExecAPIVersion(ver) {
+		fmt.Fprintf(stderr, "⚠  kubeconfig uses a deprecated auth plugin apiVersion (%s) — "+
+			"update your %s CLI and run `bankctl doctor`.\n", ver, cliForCloud(c.Cloud))
+	}
 	return 0
+}
+
+func cliForCloud(c inventory.Cloud) string {
+	if c == inventory.Azure {
+		return "az"
+	}
+	return "aws"
 }
 
 func cmdLogin(cfgPath string, args []string, stdout, stderr io.Writer) int {

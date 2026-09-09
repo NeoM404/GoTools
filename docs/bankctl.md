@@ -119,6 +119,14 @@ bankctl kubeconfig aks-core-prod-weu --dry-run                      # print, don
 `--file` (or `kubeconfigDir` in config) writes an **isolated** kubeconfig,
 which is much safer than merging 80 clusters into one file.
 
+**CLI-drift warning.** After writing credentials, `bankctl` inspects the
+kubeconfig's exec auth-plugin `apiVersion`. If an old `aws`/`az` CLI stamped a
+removed version (`client.authentication.k8s.io/v1alpha1`, dropped in Kubernetes
+1.24), it prints a stderr warning telling you to update that CLI and run
+`bankctl doctor`. If the cloud CLI call itself fails, the error is followed by
+the same `bankctl doctor` hint. Both go to stderr, so `-o json` and scripts are
+unaffected.
+
 ### `bankctl login <cluster> [--file PATH] [--dry-run]`
 `kubeconfig` plus a loud warning if the target is production.
 ```bash
