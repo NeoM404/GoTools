@@ -103,7 +103,21 @@ func LoadURL(raw string) (Fleet, error) {
 	client := &http.Client{
 		Timeout:   15 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+		// Refuse any redirect that downgrades to plain HTTP — a redirect must
+		// not defeat the https-only guarantee.
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			if req.URL.Scheme != "https" {
+				return fmt.Errorf("refusing redirect to non-https URL %q", req.URL.String())
+			}
+			return nil
+		},
 	}
+	return loadURLWithClient(raw, client)
+}
+
+// loadURLWithClient performs the fetch with an injected client (for tests).
+// The scheme check in LoadURL still applies to the initial URL.
+func loadURLWithClient(raw string, client *http.Client) (Fleet, error) {
 	resp, err := client.Get(raw)
 	if err != nil {
 		return Fleet{}, fmt.Errorf("fetching inventory: %w", err)

@@ -25,6 +25,18 @@ make cross           # outputs to dist/
 Requires Go 1.23+ to build. The built binary needs `kubectl`, `aws`, and `az`
 on PATH for the subcommands that use them — run `bankctl doctor` to check.
 
+## First run
+
+```bash
+bankctl init                 # writes ~/.config/bankctl/config.json
+# edit it: set "inventoryPath" or "inventoryUrl"
+bankctl doctor               # check the CLIs bankctl needs
+bankctl clusters list
+```
+
+`init` never overwrites an existing config unless you pass `--force`; use
+`--path` to write elsewhere.
+
 ## Configuration
 
 `bankctl` reads a JSON config, resolved in this order:
@@ -77,16 +89,22 @@ The inventory is the org-specific asset. Generate it from your IaC — e.g.
 
 ## Commands
 
-### `bankctl clusters list [--cloud aws|azure] [--env ENV] [--owner NAME]`
-Tabular view of the fleet with optional filters (`--owner` is a substring match).
+### `bankctl init [--path PATH] [--force]`
+Scaffold a starter config so you don't hand-write JSON. See **First run** above.
+
+### `bankctl clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]`
+Tabular (or JSON) view of the fleet with optional filters (`--owner` is a
+substring match). `-o json` emits an array — pipe it to `jq`.
 ```bash
 bankctl clusters list --cloud aws --env prod
+bankctl clusters list --cloud azure -o json | jq -r '.[].name'
 ```
 
-### `bankctl clusters get <name>`
+### `bankctl clusters get <name> [-o table|json]`
 Full detail for one cluster (cloud-specific fields included).
 ```bash
 bankctl clusters get eks-payments-prod-euw1
+bankctl clusters get eks-payments-prod-euw1 -o json | jq '{name,account}'
 ```
 
 ### `bankctl kubeconfig <cluster> [--file PATH] [--dry-run]`
@@ -108,14 +126,15 @@ bankctl login eks-payments-prod-euw1
 # ⚠  "eks-payments-prod-euw1" is a PRODUCTION cluster. Changes require a change record.
 ```
 
-### `bankctl fleet versions [--fail-on-stale]`
+### `bankctl fleet versions [--fail-on-stale] [-o table|json]`
 Version-drift report against `targetKubeVersion`. Status is `current`, `n-1`
 (one minor behind — allowed), or `STALE` (two or more behind). `--fail-on-stale`
 exits 1 if any cluster is STALE — drop it into a scheduled pipeline as a fleet
-hygiene gate.
+hygiene gate. `--fail-on-stale` and `-o json` compose (JSON is still emitted).
 ```bash
 bankctl fleet versions
-bankctl fleet versions --fail-on-stale   # CI: nonzero if the fleet is drifting
+bankctl fleet versions --fail-on-stale                        # CI gate
+bankctl fleet versions -o json | jq -r '.[]|select(.status=="STALE").name'
 ```
 
 ### `bankctl guard [--block]`

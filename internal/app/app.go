@@ -5,6 +5,7 @@ package app
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // Version is overridden at build time via -ldflags (see Makefile).
@@ -33,6 +34,8 @@ func Exec(args []string, stdout, stderr io.Writer) int {
 	case "version", "--version":
 		fmt.Fprintf(stdout, "bankctl %s\n", Version)
 		return 0
+	case "init":
+		return cmdInit(cmdArgs, stdout, stderr)
 	case "doctor":
 		return cmdDoctor(stdout, stderr)
 	case "clusters":
@@ -66,8 +69,8 @@ func extractConfig(args []string) (string, []string) {
 		case a == "--config" && i+1 < len(args):
 			cfg = args[i+1]
 			i += 2
-		case len(a) > 9 && a[:9] == "--config=":
-			cfg = a[9:]
+		case strings.HasPrefix(a, "--config="):
+			cfg = strings.TrimPrefix(a, "--config=")
 			i++
 		default:
 			// First non-global token starts the subcommand; stop consuming.
@@ -85,14 +88,18 @@ Usage:
   bankctl [--config PATH] <command> [args]
 
 Commands:
-  clusters list [--cloud aws|azure] [--env ENV] [--owner NAME]
+  init                        Write a starter config to ~/.config/bankctl
+                              [--path PATH] [--force]
+  clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]
                               List clusters in the fleet inventory
-  clusters get <name>         Show one cluster's details
+  clusters get <name> [-o table|json]
+                              Show one cluster's details
   kubeconfig <cluster>        Fetch credentials for a cluster (aws/az CLI)
                               [--file PATH] [--dry-run]
   login <cluster>             kubeconfig + safety check for the target
                               [--file PATH] [--dry-run]
-  fleet versions              Version-drift report against the fleet target
+  fleet versions [-o table|json]
+                              Version-drift report against the fleet target
                               [--fail-on-stale]  (exit 1 if any STALE cluster)
   guard                       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
@@ -102,6 +109,7 @@ Commands:
   help                        Show this help
 
 Config: --config, $BANKCTL_CONFIG, ~/.config/bankctl/config.json, ./bankctl.json
+First run:  bankctl init  then edit the config's inventory source.
 See docs/bankctl.md for full documentation.
 `)
 }

@@ -1,9 +1,11 @@
 package app
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/NeoM404/GoTools/internal/cloud"
@@ -11,6 +13,32 @@ import (
 	"github.com/NeoM404/GoTools/internal/inventory"
 	"github.com/NeoM404/GoTools/internal/kube"
 )
+
+// addOutputFlag registers -o/--output (table|json) on a flag set, both names
+// bound to the same variable so either spelling works (kubectl-style -o).
+func addOutputFlag(fs *flag.FlagSet) *string {
+	out := new(string)
+	fs.StringVar(out, "o", "table", "output format: table|json")
+	fs.StringVar(out, "output", "table", "output format: table|json")
+	return out
+}
+
+// writeJSON marshals v as indented JSON to w. Returns exit code.
+func writeJSON(w io.Writer, stderr io.Writer, v any) int {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		fmt.Fprintf(stderr, "encoding json: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(w, string(b))
+	return 0
+}
+
+// badOutput reports an invalid -o value.
+func badOutput(stderr io.Writer, v string) int {
+	fmt.Fprintf(stderr, "invalid output format %q (want: table|json)\n", v)
+	return 2
+}
 
 // loadFleet resolves config then loads the inventory from URL (preferred) or
 // file. Returns the config too, since callers need prod patterns / target.
@@ -63,14 +91,25 @@ func clustersList(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	cloudFlag := fs.String("cloud", "", "filter by cloud (aws|azure)")
 	envFlag := fs.String("env", "", "filter by environment")
 	ownerFlag := fs.String("owner", "", "filter by owner substring")
+	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *output != "table" && *output != "json" {
+		return badOutput(stderr, *output)
 	}
 	_, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
 		return 1
 	}
 	matches := fleet.Filter(*cloudFlag, *envFlag, *ownerFlag)
+	if *output == "json" {
+		// Always emit an array (never null) so `jq` / scripts are happy.
+		if matches == nil {
+			matches = []inventory.Cluster{}
+		}
+		return writeJSON(stdout, stderr, matches)
+	}
 	if len(matches) == 0 {
 		fmt.Fprintln(stdout, "no clusters match")
 		return 0
@@ -87,18 +126,31 @@ func clustersList(cfgPath string, args []string, stdout, stderr io.Writer) int {
 }
 
 func clustersGet(cfgPath string, args []string, stdout, stderr io.Writer) int {
-	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: bankctl clusters get <name>")
+	fs := flag.NewFlagSet("clusters get", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	output := addOutputFlag(fs)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
 		return 2
+	}
+	if len(pos) != 1 {
+		fmt.Fprintln(stderr, "usage: bankctl clusters get <name> [-o table|json]")
+		return 2
+	}
+	if *output != "table" && *output != "json" {
+		return badOutput(stderr, *output)
 	}
 	_, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
 		return 1
 	}
-	c, err := fleet.Find(args[0])
+	c, err := fleet.Find(pos[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "%v\n", err)
 		return 1
+	}
+	if *output == "json" {
+		return writeJSON(stdout, stderr, c)
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
 	fmt.Fprintf(tw, "Name:\t%s\n", c.Name)
@@ -168,7 +220,7 @@ func cmdKubeconfig(cfgPath string, args []string, stdout, stderr io.Writer) int 
 		File: file, DryRun: *dryRun, Stdout: stdout, Stderr: stderr,
 	})
 	if *dryRun {
-		fmt.Fprintln(stdout, join(cmdArgs))
+		fmt.Fprintln(stdout, strings.Join(cmdArgs, " "))
 		return 0
 	}
 	if err != nil {
@@ -177,7 +229,9 @@ func cmdKubeconfig(cfgPath string, args []string, stdout, stderr io.Writer) int 
 	}
 	fmt.Fprintf(stdout, "credentials for %q ready", c.Name)
 	if file != "" {
-		fmt.Fprintf(stdout, " in %s", file)
+		fmt.Fprintf(stdout, " in %s (use: KUBECONFIG=%s kubectl ...)", file, file)
+	} else {
+		fmt.Fprint(stdout, " — run `bankctl current` to confirm the active context")
 	}
 	fmt.Fprintln(stdout)
 	return 0
@@ -218,8 +272,12 @@ func cmdFleet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("fleet versions", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	failOnStale := fs.Bool("fail-on-stale", false, "exit 1 if any cluster is STALE")
+	output := addOutputFlag(fs)
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
+	}
+	if *output != "table" && *output != "json" {
+		return badOutput(stderr, *output)
 	}
 	cfg, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
@@ -229,16 +287,41 @@ func cmdFleet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "set targetKubeVersion in config to run the drift report")
 		return 1
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tCLOUD\tENV\tVERSION\tTARGET\tSTATUS")
+
+	type row struct {
+		Name        string                `json:"name"`
+		Cloud       inventory.Cloud       `json:"cloud"`
+		Environment string                `json:"environment"`
+		Version     string                `json:"version"`
+		Target      string                `json:"target"`
+		Status      inventory.DriftStatus `json:"status"`
+	}
+	var rows []row
 	stale := 0
 	for _, c := range fleet.Filter("", "", "") {
 		status := inventory.Classify(c.Version, cfg.TargetKubeVersion)
 		if status == inventory.StatusStale {
 			stale++
 		}
+		rows = append(rows, row{c.Name, c.Cloud, c.Environment, c.Version, cfg.TargetKubeVersion, status})
+	}
+
+	if *output == "json" {
+		if rows == nil {
+			rows = []row{}
+		}
+		rc := writeJSON(stdout, stderr, rows)
+		if rc == 0 && *failOnStale && stale > 0 {
+			return 1
+		}
+		return rc
+	}
+
+	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tCLOUD\tENV\tVERSION\tTARGET\tSTATUS")
+	for _, r := range rows {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			c.Name, c.Cloud, c.Environment, c.Version, cfg.TargetKubeVersion, status)
+			r.Name, r.Cloud, r.Environment, r.Version, r.Target, r.Status)
 	}
 	tw.Flush()
 	fmt.Fprintf(stdout, "\ntarget %s | %d stale cluster(s)\n", cfg.TargetKubeVersion, stale)
@@ -293,15 +376,4 @@ func cmdCurrent(cfgPath string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "context: %s\nstatus:  %s\n", ctx, status)
 	return 0
-}
-
-func join(args []string) string {
-	out := ""
-	for i, a := range args {
-		if i > 0 {
-			out += " "
-		}
-		out += a
-	}
-	return out
 }

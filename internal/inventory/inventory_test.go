@@ -1,6 +1,10 @@
 package inventory
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func sampleFleet() Fleet {
 	return Fleet{Clusters: []Cluster{
@@ -73,5 +77,22 @@ func TestClassify(t *testing.T) {
 func TestLoadURLRejectsHTTP(t *testing.T) {
 	if _, err := LoadURL("http://insecure.example/fleet.json"); err == nil {
 		t.Fatal("expected LoadURL to reject non-https")
+	}
+}
+
+func TestLoadURLServesJSON(t *testing.T) {
+	body := `{"clusters":[{"name":"c1","cloud":"aws"}]}`
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	// srv.Client() trusts the test server's self-signed cert; swap the default
+	// transport temporarily so LoadURL can reach it over TLS.
+	f, err := loadURLWithClient(srv.URL, srv.Client())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(f.Clusters) != 1 || f.Clusters[0].Name != "c1" {
+		t.Fatalf("got %+v", f)
 	}
 }

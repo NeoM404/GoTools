@@ -1,0 +1,62 @@
+package app
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+)
+
+// starterConfig is written by `bankctl init`. It is valid JSON with sensible
+// defaults so `bankctl` works after the user just fills in an inventory source.
+const starterConfig = `{
+  "inventoryPath": "",
+  "inventoryUrl": "",
+  "prodPatterns": ["(?i)prod", "(?i)-prd-"],
+  "kubeconfigDir": "",
+  "targetKubeVersion": "1.30"
+}
+`
+
+// cmdInit scaffolds a config file at the default location (or --path), so a new
+// user does not have to hand-write JSON. It never overwrites without --force.
+func cmdInit(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	pathFlag := fs.String("path", "", "where to write the config (default: ~/.config/bankctl/config.json)")
+	force := fs.Bool("force", false, "overwrite an existing config")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	path := *pathFlag
+	if path == "" {
+		base := os.Getenv("XDG_CONFIG_HOME")
+		if base == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				fmt.Fprintf(stderr, "cannot determine home directory: %v\n", err)
+				return 1
+			}
+			base = filepath.Join(home, ".config")
+		}
+		path = filepath.Join(base, "bankctl", "config.json")
+	}
+
+	if _, err := os.Stat(path); err == nil && !*force {
+		fmt.Fprintf(stderr, "%s already exists — use --force to overwrite\n", path)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		fmt.Fprintf(stderr, "creating config dir: %v\n", err)
+		return 1
+	}
+	if err := os.WriteFile(path, []byte(starterConfig), 0o644); err != nil {
+		fmt.Fprintf(stderr, "writing config: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "wrote starter config to %s\n", path)
+	fmt.Fprintln(stdout, "next: set \"inventoryPath\" or \"inventoryUrl\", then run `bankctl clusters list`")
+	return 0
+}
