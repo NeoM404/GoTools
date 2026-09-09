@@ -1,0 +1,7 @@
+{
+  "inventoryPath": "fleet.example.json",
+  "inventoryUrl": "",
+  "prodPatterns": ["(?i)prod", "(?i)-prd-", "(?i)\\bprd\\b"],
+  "kubeconfigDir": "",
+  "targetKubeVersion": "1.30"
+}

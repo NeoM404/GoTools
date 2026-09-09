@@ -1,0 +1,21 @@
+# Build output
+/bin/
+/dist/
+bankctl
+*.exe
+
+# Local config with real endpoints/paths — never commit
+bankctl.yaml
+bankctl.json
+fleet.json
+!**/*.example.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Go
+*.test
+*.out
+coverage.*

@@ -1,0 +1,56 @@
+{
+  "clusters": [
+    {
+      "name": "eks-payments-prod-euw1",
+      "cloud": "aws",
+      "environment": "prod",
+      "region": "eu-west-1",
+      "version": "1.30",
+      "owner": "payments-platform",
+      "costCentre": "CC-1001",
+      "account": "111111111111"
+    },
+    {
+      "name": "eks-payments-nonprod-euw1",
+      "cloud": "aws",
+      "environment": "nonprod",
+      "region": "eu-west-1",
+      "version": "1.29",
+      "owner": "payments-platform",
+      "costCentre": "CC-1001",
+      "account": "222222222222"
+    },
+    {
+      "name": "eks-data-sandbox-euw1",
+      "cloud": "aws",
+      "environment": "sandbox",
+      "region": "eu-west-1",
+      "version": "1.27",
+      "owner": "data-eng",
+      "costCentre": "CC-2002",
+      "account": "333333333333"
+    },
+    {
+      "name": "aks-core-prod-weu",
+      "cloud": "azure",
+      "environment": "prod",
+      "region": "westeurope",
+      "version": "1.30",
+      "owner": "core-platform",
+      "costCentre": "CC-3003",
+      "subscription": "sub-core-prod",
+      "resourceGroup": "rg-aks-core-prod"
+    },
+    {
+      "name": "aks-core-nonprod-weu",
+      "cloud": "azure",
+      "environment": "nonprod",
+      "region": "westeurope",
+      "version": "1.28",
+      "owner": "core-platform",
+      "costCentre": "CC-3003",
+      "subscription": "sub-core-nonprod",
+      "resourceGroup": "rg-aks-core-nonprod"
+    }
+  ]
+}
