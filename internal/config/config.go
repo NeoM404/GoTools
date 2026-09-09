@@ -40,6 +40,11 @@ type Config struct {
 	// TargetKubeVersion is the fleet's desired minor version (e.g. "1.30").
 	// `bankctl fleet versions` flags anything more than one minor behind.
 	TargetKubeVersion string `json:"targetKubeVersion"`
+
+	// MinVersions overrides the built-in `doctor` version floors by tool name,
+	// e.g. {"kubectl": "1.29", "aws": "2.15"}. Lets the team raise the bar
+	// centrally without a bankctl release.
+	MinVersions map[string]string `json:"minVersions"`
 }
 
 // Default returns config used when no file is present.

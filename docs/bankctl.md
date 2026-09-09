@@ -66,6 +66,7 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `prodPatterns` | Regexes; a context/cluster name matching any is treated as production by `guard`. |
 | `kubeconfigDir` | If set, `kubeconfig`/`login` write per-cluster files here instead of the default kubeconfig. |
 | `targetKubeVersion` | Fleet's desired minor version; drives `fleet versions`. |
+| `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
 
 ### The fleet inventory
 
@@ -157,9 +158,27 @@ bankctl guard --block || echo "refusing destructive op in prod"
 ### `bankctl current`
 Shows the current context and whether it's production.
 
-### `bankctl doctor`
-Checks required (`kubectl`, `aws`, `az`) and optional ecosystem tools; exits 1
-if a required one is missing, with install hints.
+### `bankctl doctor [--strict]`
+Checks required (`kubectl`, `aws`, `az`) and optional ecosystem tools for
+**presence and version**. It probes each tool with a floor (`kubectl`, `aws`,
+`az`, `helm` by default), parses the version, and flags anything below its
+floor as `OUTDATED`. Floors are overridable per tool via `minVersions` in
+config.
+
+Exit policy:
+- a **missing required** tool → exit 1
+- an **outdated required** tool → exit 1 (bankctl's own commands may misbehave)
+- `--strict` escalates **any** outdated tool (including optional ones) to exit
+  1 — use it as a CI hygiene gate on your build agents so a stale `kubectl`/
+  `aws`/`az` fails the pipeline.
+
+```bash
+bankctl doctor            # local check with install/upgrade hints
+bankctl doctor --strict   # CI: fail if any floored tool is behind
+```
+
+This is how the tool answers "are our CLIs current?" — see also the
+kubeconfig drift warning under `kubeconfig` above.
 
 ### `bankctl version` / `bankctl help`
 

@@ -37,7 +37,7 @@ func Exec(args []string, stdout, stderr io.Writer) int {
 	case "init":
 		return cmdInit(cmdArgs, stdout, stderr)
 	case "doctor":
-		return cmdDoctor(stdout, stderr)
+		return cmdDoctor(cfgPath, cmdArgs, stdout, stderr)
 	case "clusters":
 		return cmdClusters(cfgPath, cmdArgs, stdout, stderr)
 	case "kubeconfig":
@@ -104,7 +104,8 @@ Commands:
   guard                       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current                     Show current context + prod status
-  doctor                      Check required/optional ecosystem tools
+  doctor                      Check ecosystem tools are present & current
+                              [--strict]  (exit 1 if any tool is below floor)
   version                     Print bankctl version
   help                        Show this help
 
