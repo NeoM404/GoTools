@@ -1,7 +1,7 @@
 # Build output
 /bin/
 /dist/
-bankctl
+/bankctl
 *.exe
 
 # Local config with real endpoints/paths — never commit
