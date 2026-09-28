@@ -13,7 +13,7 @@ authenticates to production banking clusters.
 
 | Tool | Status | What it does |
 |---|---|---|
-| **[bankctl](docs/bankctl.md)** | ✅ built | Fleet inventory CLI: list every EKS/AKS cluster across the group, pull credentials for any of them, report version drift, and guard against accidental production access. |
+| **[bankctl](docs/bankctl.md)** | built | Fleet inventory CLI: list every EKS/AKS cluster across the group, pull credentials for any of them, report version drift, and guard against accidental production access. |
 | _kubeconfig-sweeper_ | 🔜 planned | Prune stale contexts from `~/.kube/config` using the live inventory. |
 | _namespace-lint_ | 🔜 planned | Check a namespace request against the platform tenancy standard before it becomes a PR. |
 
