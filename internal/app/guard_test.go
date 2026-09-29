@@ -81,7 +81,7 @@ func TestCurrentShowsResolvedCluster(t *testing.T) {
 }
 
 func TestLoginWarnsForCustomProdEnvironment(t *testing.T) {
-	fakeCLI(t, "aws", "exit 0")
+	fakeAWS(t, "222222222222", "exit 0")
 	fakeCLI(t, "kubectl", "exit 1") // drift probe: best-effort, ignored
 	cfg := liveProdConfig(t, `, "prodEnvironments": ["prod", "uat"]`)
 	code, out, errb := run("--config", cfg, "login", "eks-payments-uat-euw1")

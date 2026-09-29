@@ -92,6 +92,81 @@ type Config struct {
 	// CostRates are control-plane prices used to estimate the
 	// extended-support premium. Optional; set them from your own pricing.
 	CostRates support.Rates `json:"costRates"`
+
+	// Audit controls the credential-access audit trail. It is always on;
+	// this only chooses where it goes.
+	Audit Audit `json:"audit"`
+}
+
+// Audit configures the audit trail.
+type Audit struct {
+	// LogPath is the local hash-chained log. Default:
+	// $XDG_STATE_HOME/bankctl/audit.jsonl (~/.local/state/bankctl/audit.jsonl).
+	LogPath string `json:"logPath"`
+	// Forward, when URL is set, sends each event to a SIEM collector.
+	Forward AuditForward `json:"forward"`
+}
+
+// AuditForward is an HTTPS event collector (e.g. Splunk HEC).
+type AuditForward struct {
+	URL string `json:"url"`
+	// TokenEnv names the environment variable holding the collector token.
+	// The token itself is never stored in config.
+	TokenEnv string `json:"tokenEnv"`
+	Scheme   string `json:"scheme"`  // Authorization scheme; default "Bearer" ("Splunk" for HEC)
+	Format   string `json:"format"`  // "json" (default) or "splunk-hec"
+	Timeout  string `json:"timeout"` // default "5s"
+}
+
+// DefaultAuditForwardTimeout bounds one delivery to the collector.
+const DefaultAuditForwardTimeout = 5 * time.Second
+
+// AuditLogPath returns the effective local audit log path.
+func (c Config) AuditLogPath() (string, error) {
+	if c.Audit.LogPath != "" {
+		return c.Audit.LogPath, nil
+	}
+	base := os.Getenv("XDG_STATE_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("locating home directory for the audit log: %w", err)
+		}
+		base = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(base, "bankctl", "audit.jsonl"), nil
+}
+
+// ForwardTimeout returns the effective collector timeout.
+func (a AuditForward) ForwardTimeout() time.Duration {
+	d, err := parsePositive("audit.forward.timeout", a.Timeout, DefaultAuditForwardTimeout)
+	if err != nil {
+		return DefaultAuditForwardTimeout
+	}
+	return d
+}
+
+func (a Audit) validate() error {
+	f := a.Forward
+	if f.URL == "" {
+		return nil
+	}
+	var errs []error
+	if !strings.HasPrefix(f.URL, "https://") {
+		errs = append(errs, fmt.Errorf("audit.forward.url must be https"))
+	}
+	if f.TokenEnv == "" {
+		errs = append(errs, fmt.Errorf("audit.forward.tokenEnv is required: name the environment variable holding the collector token (never put the token in config)"))
+	}
+	switch f.Format {
+	case "", "json", "splunk-hec":
+	default:
+		errs = append(errs, fmt.Errorf("audit.forward.format %q: want json or splunk-hec", f.Format))
+	}
+	if _, err := parsePositive("audit.forward.timeout", f.Timeout, DefaultAuditForwardTimeout); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // TargetFor returns the drift target for an environment ("" if none).
@@ -290,7 +365,7 @@ func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
 	return errors.Join(errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
-		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate())
+		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate())
 }
 
 var minorRe = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?$`)

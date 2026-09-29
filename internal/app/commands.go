@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/NeoM404/GoTools/internal/audit"
 	"github.com/NeoM404/GoTools/internal/cloud"
 	"github.com/NeoM404/GoTools/internal/config"
 	"github.com/NeoM404/GoTools/internal/execx"
@@ -224,21 +225,48 @@ func cmdKubeconfig(ctx context.Context, cfgPath string, args []string, stdout, s
 	if file == "" && cfg.KubeconfigDir != "" {
 		file = cfg.KubeconfigDir + "/" + c.Name + ".kubeconfig"
 	}
-	cmdArgs, err := cloud.UpdateKubeconfig(ctx, c, cloud.KubeconfigOptions{
-		File: file, DryRun: *dryRun, Stdout: stdout, Stderr: stderr, Timeout: cfg.Timeout(),
-	})
+	opts := cloud.KubeconfigOptions{File: file, DryRun: *dryRun, Stdout: stdout, Stderr: stderr, Timeout: cfg.Timeout()}
 	if *dryRun {
+		cmdArgs, err := cloud.UpdateKubeconfig(ctx, c, opts)
+		if err != nil {
+			fmt.Fprintf(stderr, "kubeconfig: %v\n", err)
+			return ExitFailure
+		}
 		fmt.Fprintln(stdout, strings.Join(cmdArgs, " "))
 		return ExitOK
 	}
+
+	// Every credential fetch is recorded before it happens; if the record
+	// cannot be written, the fetch does not happen.
+	production := cfg.IsProdEnvironment(c.Environment) || kube.IsProd(c.Name, cfg.ProdPatterns)
+	tr, err := beginAudit(ctx, cfg, "credentials", &c, production, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "kubeconfig failed: %v\n", err)
-		var notFound *execx.NotFoundError
-		if !errors.As(err, &notFound) && !errors.Is(err, execx.ErrInterrupted) {
-			fmt.Fprintf(stderr, "→ if this looks like a CLI/version problem, run `bankctl doctor` (check your %s CLI)\n", cliForCloud(c.Cloud))
-		}
+		fmt.Fprintf(stderr, "%v — refusing to fetch credentials: every credential fetch must be recorded\n", err)
 		return ExitFailure
 	}
+
+	// Confirm the CLI will act in the cluster's own account/subscription:
+	// otherwise a same-named cluster elsewhere could be fetched and labelled
+	// as this one.
+	id, err := cloud.VerifyIdentity(ctx, c, cfg.Timeout())
+	if err != nil {
+		var wrong *cloud.ErrWrongAccount
+		if errors.As(err, &wrong) {
+			tr.end(ctx, audit.OutcomeRefused, wrong.Principal, err.Error(), stderr)
+			fmt.Fprintf(stderr, "kubeconfig refused: %v\n", err)
+			return ExitFailure
+		}
+		tr.end(ctx, audit.OutcomeFailure, "", err.Error(), stderr)
+		reportCLIFailure(stderr, c, err)
+		return ExitFailure
+	}
+
+	if _, err := cloud.UpdateKubeconfig(ctx, c, opts); err != nil {
+		tr.end(ctx, audit.OutcomeFailure, id.Principal, err.Error(), stderr)
+		reportCLIFailure(stderr, c, err)
+		return ExitFailure
+	}
+	tr.end(ctx, audit.OutcomeSuccess, id.Principal, "", stderr)
 	fmt.Fprintf(stdout, "credentials for %q ready", c.Name)
 	if file != "" {
 		fmt.Fprintf(stdout, " in %s (use: KUBECONFIG=%s kubectl ...)", file, file)
@@ -255,6 +283,16 @@ func cmdKubeconfig(ctx context.Context, cfgPath string, args []string, stdout, s
 			"update your %s CLI and run `bankctl doctor`.\n", ver, cliForCloud(c.Cloud))
 	}
 	return ExitOK
+}
+
+// reportCLIFailure prints a cloud CLI failure, with a doctor hint when the
+// cause could be a missing or outdated CLI.
+func reportCLIFailure(stderr io.Writer, c inventory.Cluster, err error) {
+	fmt.Fprintf(stderr, "kubeconfig failed: %v\n", err)
+	var notFound *execx.NotFoundError
+	if !errors.As(err, &notFound) && !errors.Is(err, execx.ErrInterrupted) {
+		fmt.Fprintf(stderr, "→ if this looks like a CLI/version problem, run `bankctl doctor` (check your %s CLI)\n", cliForCloud(c.Cloud))
+	}
 }
 
 func cliForCloud(c inventory.Cloud) string {

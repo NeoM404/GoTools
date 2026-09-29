@@ -71,6 +71,7 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `targetKubeVersions` | Per-environment targets, e.g. `{"prod": "1.29", "uat": "1.30"}` — prod deliberately lags. Unlisted environments use `targetKubeVersion`. |
 | `supportCalendar` | End of standard/extended support per minor version, per cloud — drives `fleet eol`. See [Support lifecycle](#support-lifecycle). |
 | `costRates` | Control-plane hourly prices used to estimate the extended-support premium. Optional. |
+| `audit` | Where the credential-access audit trail goes — see [Audit trail](#audit-trail). Always on. |
 | `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
 | `commandTimeout` | Deadline for each cloud CLI call (`aws`/`az`) as a Go duration, e.g. `"90s"`. Default `"2m"`. An invalid value is a config error, not silently ignored. |
 | `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","sit","uat","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
@@ -110,6 +111,54 @@ reports *every* problem at once. These are hard errors:
 
 Inventories are capped at 32 MiB (a fleet of thousands of clusters is well
 under 1 MiB), so a wrong URL cannot exhaust memory.
+
+### Audit trail
+
+Every credential fetch (`kubeconfig`, `login`) and every `sweep --apply` is
+recorded — who (OS user, host, and the **cloud principal** that acted), which
+cluster, account/subscription and environment, whether it is production, and
+the outcome (`success`, `failure`, or `refused`, e.g. wrong account).
+
+- **Recorded before it happens.** A `start` event is written *before* the
+  cloud CLI runs; if it cannot be written, the fetch does not happen. The `end`
+  event carries the outcome (and is written even if you press Ctrl-C). A
+  `start` with no `end` means the process was killed mid-access.
+- **Tamper-evident.** The log is JSON Lines, one event per line, each carrying
+  the previous event's hash. Editing, removing or reordering past events breaks
+  the chain. Appends take an exclusive file lock, so concurrent runs cannot
+  fork it; writes are fsynced; the file is 0600.
+- **Forwarded to your SIEM**, optionally, as each event is written, so the
+  record does not depend on the laptop. Delivery is best-effort: the local log
+  is authoritative and a SIEM outage never blocks access (it is reported).
+
+```json
+"audit": {
+  "logPath": "",
+  "forward": {
+    "url": "https://splunk.bank.example:8088/services/collector/event",
+    "tokenEnv": "BANKCTL_AUDIT_TOKEN",
+    "scheme": "Splunk",
+    "format": "splunk-hec",
+    "timeout": "5s"
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `logPath` | Local log. Default `$XDG_STATE_HOME/bankctl/audit.jsonl` (`~/.local/state/bankctl/audit.jsonl`). |
+| `forward.url` | HTTPS collector (HTTP refused, and redirects to HTTP refused). |
+| `forward.tokenEnv` | Name of the environment variable holding the collector token — **the token is never stored in config**. |
+| `forward.scheme` | `Authorization` scheme: `Bearer` (default) or `Splunk` for HEC. |
+| `forward.format` | `json` (the event as-is) or `splunk-hec` (HEC envelope, `sourcetype` `bankctl:audit`). |
+
+Limits, stated plainly: someone who controls the file can rewrite the whole
+chain, and deleting the most recent events leaves a valid shorter chain. The
+chain proves internal consistency; forwarding is what makes the record
+independent. And like `guard`, this runs on the operator's machine — it records
+intent and attribution for accesses made **through bankctl**; the cloud's own
+audit logs (CloudTrail, Azure Activity Log) and the API server audit log remain
+the authoritative record of what reached the cluster.
 
 ### Support lifecycle
 
@@ -209,6 +258,19 @@ removed version (`client.authentication.k8s.io/v1alpha1`, dropped in Kubernetes
 the same `bankctl doctor` hint, and quotes the CLI's own error message rather
 than a bare exit status. Both go to stderr, so `-o json` and scripts are
 unaffected.
+
+**Identity verified first.** `aws eks update-kubeconfig` uses whatever account
+your active credentials belong to — if that account has a cluster with the same
+name, you would get credentials for the wrong cluster, labelled as the right
+one. So before fetching, bankctl checks `aws sts get-caller-identity` against
+the cluster's `account` and refuses on a mismatch:
+```text
+kubeconfig refused: active AWS credentials are for account 999999999999 (arn:aws:sts::999999999999:assumed-role/dev/neo),
+but eks-payments-prod-euw1 is in account 111111111111 — select the right profile (e.g. AWS_PROFILE=...) and retry
+```
+On Azure every call passes `--subscription`; bankctl confirms the subscription
+is reachable and records who is acting. Every real fetch is recorded in the
+[audit trail](#audit-trail) — `--dry-run` fetches nothing and records nothing.
 
 **Bounded and cancellable.** Every cloud CLI call has a deadline
 (`commandTimeout`, default 2 minutes). A hung CLI fails with
@@ -478,6 +540,9 @@ kubectl get pods -A                       # you're in
   the same estate are byte-identical and diffable.
 - **Bounded at scale** — one semaphore caps live cloud CLI processes across the
   whole scan; tested at 1,500 clusters / 1,700 calls with concurrency held.
+- **Recorded, or it doesn't happen** — credential fetches are audited before
+  they run, verified against the cluster's real account first, and refused if
+  the record cannot be written.
 - **Bounded** — every subprocess goes through `internal/execx`: a deadline,
   cancellation on SIGINT/SIGTERM, the whole process group killed on either, and
   the CLI's stderr carried in the error.

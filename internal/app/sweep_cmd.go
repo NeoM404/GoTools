@@ -11,6 +11,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/NeoM404/GoTools/internal/audit"
+	"github.com/NeoM404/GoTools/internal/config"
 	"github.com/NeoM404/GoTools/internal/kube"
 )
 
@@ -74,7 +76,22 @@ func cmdSweep(ctx context.Context, cfgPath string, args []string, stdout, stderr
 
 	code := ExitOK
 	if *apply && len(removals) > 0 {
+		cfg, _, _ := config.Load(cfgPath) // already validated by loadFleet
+		tr, err := beginAudit(ctx, cfg, "kubeconfig-sweep", nil, false, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "%v — refusing to modify %s: every change must be recorded\n", err, path)
+			return ExitFailure
+		}
 		code = applySweep(ctx, path, before, removals, &rep)
+		names := make([]string, 0, len(removals))
+		for _, p := range removals {
+			names = append(names, p.Context)
+		}
+		outcome := audit.OutcomeSuccess
+		if code != ExitOK {
+			outcome = audit.OutcomeFailure
+		}
+		tr.end(ctx, outcome, "", fmt.Sprintf("%s: removed %d context(s): %s", path, rep.Removed.Contexts, strings.Join(names, ", ")), stderr)
 	}
 
 	if *output == "json" {

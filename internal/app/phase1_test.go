@@ -22,6 +22,16 @@ func fakeCLI(t *testing.T, name, script string) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// fakeAWS installs an aws whose credentials resolve to account; any other
+// subcommand runs script.
+func fakeAWS(t *testing.T, account, script string) {
+	t.Helper()
+	fakeCLI(t, "aws", `case "$*" in
+*"sts get-caller-identity"*) echo '{"Account":"`+account+`","Arn":"arn:aws:sts::`+account+`:assumed-role/platform/neo"}';;
+*) `+script+`;;
+esac`)
+}
+
 // writeConfig writes a config pointing at the example fleet with extra JSON fields.
 func writeConfig(t *testing.T, extra string) string {
 	t.Helper()
@@ -185,7 +195,7 @@ func TestBadOutputFormatIsUsageError(t *testing.T) {
 // proxies). Losing it would silently break every SSO profile.
 func TestCloudCLIInheritsEnvironment(t *testing.T) {
 	seen := filepath.Join(t.TempDir(), "env")
-	fakeCLI(t, "aws", `printf %s "$AWS_PROFILE" > `+seen)
+	fakeAWS(t, "111111111111", `printf %s "$AWS_PROFILE" > `+seen)
 	t.Setenv("AWS_PROFILE", "bank-sso-readonly")
 	cfg := writeConfig(t, "")
 	if code, _, errb := run("--config", cfg, "kubeconfig", "eks-payments-prod-euw1"); code != ExitOK {
