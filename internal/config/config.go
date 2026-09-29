@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/NeoM404/GoTools/internal/support"
 )
 
 // DefaultCommandTimeout bounds a cloud CLI call when the config sets none.
@@ -76,7 +78,34 @@ type Config struct {
 
 	// Discovery is the cloud scope `inventory sync` and `inventory diff` scan.
 	Discovery Discovery `json:"discovery"`
+
+	// TargetKubeVersions sets the drift target per environment, e.g.
+	// {"prod": "1.29", "uat": "1.30"}, because prod deliberately lags.
+	// Environments not listed fall back to TargetKubeVersion.
+	TargetKubeVersions map[string]string `json:"targetKubeVersions"`
+
+	// SupportCalendar is each minor version's end of standard and extended
+	// support, per cloud, for `fleet eol`. Generate the AWS part with
+	// `bankctl fleet calendar aws`.
+	SupportCalendar support.Calendar `json:"supportCalendar"`
+
+	// CostRates are control-plane prices used to estimate the
+	// extended-support premium. Optional; set them from your own pricing.
+	CostRates support.Rates `json:"costRates"`
 }
+
+// TargetFor returns the drift target for an environment ("" if none).
+func (c Config) TargetFor(env string) string {
+	for k, v := range c.TargetKubeVersions {
+		if strings.EqualFold(k, strings.TrimSpace(env)) {
+			return v
+		}
+	}
+	return c.TargetKubeVersion
+}
+
+// HasTargets reports whether any drift target is configured.
+func (c Config) HasTargets() bool { return c.TargetKubeVersion != "" || len(c.TargetKubeVersions) > 0 }
 
 // DefaultInventoryCacheTTL is used when inventoryCacheTTL is unset.
 const DefaultInventoryCacheTTL = 10 * time.Minute
@@ -260,7 +289,30 @@ func parsePositive(field, v string, def time.Duration) (time.Duration, error) {
 func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
-	return errors.Join(errTimeout, errTTL, c.validateEnvironments(), c.Discovery.validate())
+	return errors.Join(errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
+		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate())
+}
+
+var minorRe = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?$`)
+
+func (c Config) validateTargets() error {
+	var errs []error
+	if c.TargetKubeVersion != "" && !minorRe.MatchString(c.TargetKubeVersion) {
+		errs = append(errs, fmt.Errorf("targetKubeVersion %q is not a version like 1.30", c.TargetKubeVersion))
+	}
+	allowed := map[string]bool{}
+	for _, e := range c.Environments {
+		allowed[strings.ToLower(e)] = true
+	}
+	for env, v := range c.TargetKubeVersions {
+		if !minorRe.MatchString(v) {
+			errs = append(errs, fmt.Errorf("targetKubeVersions[%q] %q is not a version like 1.30", env, v))
+		}
+		if len(allowed) > 0 && !allowed[strings.ToLower(env)] {
+			errs = append(errs, fmt.Errorf("targetKubeVersions has environment %q, which is not in environments %v", env, c.Environments))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // validateEnvironments catches a prodEnvironments entry that no cluster can

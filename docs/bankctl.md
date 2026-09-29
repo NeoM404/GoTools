@@ -68,6 +68,9 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `inventoryCacheTTL` | How long `guard`/`current` reuse a cached copy of `inventoryUrl` (default `"10m"`), so a shell prompt never waits on the network. |
 | `kubeconfigDir` | If set, `kubeconfig`/`login` write per-cluster files here instead of the default kubeconfig. |
 | `targetKubeVersion` | Fleet's desired minor version; drives `fleet versions`. |
+| `targetKubeVersions` | Per-environment targets, e.g. `{"prod": "1.29", "uat": "1.30"}` — prod deliberately lags. Unlisted environments use `targetKubeVersion`. |
+| `supportCalendar` | End of standard/extended support per minor version, per cloud — drives `fleet eol`. See [Support lifecycle](#support-lifecycle). |
+| `costRates` | Control-plane hourly prices used to estimate the extended-support premium. Optional. |
 | `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
 | `commandTimeout` | Deadline for each cloud CLI call (`aws`/`az`) as a Go duration, e.g. `"90s"`. Default `"2m"`. An invalid value is a config error, not silently ignored. |
 | `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","sit","uat","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
@@ -107,6 +110,30 @@ reports *every* problem at once. These are hard errors:
 
 Inventories are capped at 32 MiB (a fleet of thousands of clusters is well
 under 1 MiB), so a wrong URL cannot exhaust memory.
+
+### Support lifecycle
+
+`fleet eol` reads the lifecycle and (optionally) prices from config:
+
+```json
+"supportCalendar": {
+  "aws":   { "1.30": { "standardEnd": "2026-07-23", "extendedEnd": "2027-07-23" } },
+  "azure": { "1.30": { "standardEnd": "2026-07-31" } }
+},
+"costRates": {
+  "currency": "USD",
+  "aws":   { "standardHourly": 0.10, "extendedHourly": 0.60 },
+  "azure": { "standardHourly": 0.10, "extendedHourly": 0.60 }
+}
+```
+*(Illustrative values — generate AWS dates with `fleet calendar aws`, take
+Azure dates from the AKS release calendar, and set prices from your own
+agreement: list prices change and negotiated discounts differ.)* Dates are
+calendar days in UTC; each end date is the **first day of the next phase**. An
+empty `extendedEnd` means no extended support is offered. The premium is
+`(extendedHourly − standardHourly) × 730` per cluster per month. Calendars are
+validated: versions must be minors, dates `YYYY-MM-DD`, and each `extendedEnd`
+after its `standardEnd`.
 
 ### Discovery
 
@@ -199,7 +226,8 @@ bankctl login eks-payments-prod-euw1
 ```
 
 ### `bankctl fleet versions [--fail-on-stale] [-o table|json]`
-Version-drift report against `targetKubeVersion`. Status is `current`, `n-1`
+Version-drift report against each cluster's target — `targetKubeVersions` for
+its environment, else `targetKubeVersion`. Status is `current`, `n-1`
 (one minor behind — allowed), or `STALE` (two or more behind). `--fail-on-stale`
 exits 1 if any cluster is STALE — drop it into a scheduled pipeline as a fleet
 hygiene gate. `--fail-on-stale` and `-o json` compose (JSON is still emitted).
@@ -208,6 +236,41 @@ bankctl fleet versions
 bankctl fleet versions --fail-on-stale                        # CI gate
 bankctl fleet versions -o json | jq -r '.[]|select(.status=="STALE").name'
 ```
+
+### `bankctl fleet eol [--warn-days N] [--by-cost-centre] [--fail-on-risk] [-o table|json]`
+Where each cluster sits in its cloud's support lifecycle, most at-risk first,
+and what extended support costs. "Two versions behind" is an engineering
+concern; "USD 730/month from 1 December" gets upgrade windows approved.
+
+| Status | Meaning |
+|---|---|
+| `unsupported` | Past the end of all support. |
+| `extended` | In paid extended support; `PREMIUM/MO` is the extra it costs now. |
+| `ending` | Standard support ends within `--warn-days` (default 90); the premium it will start costing is shown with its start date. |
+| `unknown` | No `supportCalendar` entry for its version — an assurance gap, so it counts as at-risk. |
+| `ok` | In standard support beyond the warning window. |
+
+```text
+NAME                    CLOUD  ENV   VERSION  STATUS       PHASE ENDS  DAYS  PREMIUM/MO (USD)
+eks-payments-dev-euw1   aws    dev   1.27     unsupported  -           -     -
+eks-payments-sit-euw1   aws    sit   1.29     extended     2027-03-01  153   365.00
+eks-payments-prod-euw1  aws    prod  1.30     ending       2026-12-01  63    365.00 from 2026-12-01
+aks-core-prod-weu       azure  prod  1.30     ok           2027-06-01  245   -
+
+extended-support premium: USD 365.00/month now; +USD 730.00/month if the 2 ending cluster(s) are not upgraded in time
+```
+*(Illustrative dates and prices.)* `--by-cost-centre` adds a roll-up per
+`costCentre`; `--fail-on-risk` exits 1 if any cluster is anything but `ok` — a
+scheduled gate. Money is computed in integer micro-units (exact, no float
+drift) and appears in JSON as decimal strings, e.g. `"365.00"`.
+
+### `bankctl fleet calendar aws [--profile P] [--region R]`
+Generates `supportCalendar.aws` from `aws eks describe-cluster-versions`, so
+AWS dates come from AWS rather than being typed by hand. Profile and region
+default to the first `discovery.aws` target. Paste the output under
+`supportCalendar`. **Azure publishes no API for AKS support dates** — maintain
+`supportCalendar.azure` from the
+[AKS release calendar](https://learn.microsoft.com/azure/aks/supported-kubernetes-versions).
 
 ### `bankctl inventory diff [-o table|json]`
 Reconciles the inventory against what the clouds actually run. Exits **0 only

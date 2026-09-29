@@ -61,7 +61,7 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	case "login":
 		return cmdLogin(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "fleet":
-		return cmdFleet(cfgPath, cmdArgs, stdout, stderr)
+		return cmdFleet(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "inventory":
 		return cmdInventory(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
@@ -117,8 +117,14 @@ Commands:
   login <cluster>             kubeconfig + safety check for the target
                               [--file PATH] [--dry-run]
   fleet versions [-o table|json]
-                              Version-drift report against the fleet target
+                              Version-drift report against the target for
+                              each cluster's environment
                               [--fail-on-stale]  (exit 1 if any STALE cluster)
+  fleet eol [-o table|json]   Support lifecycle + extended-support premium
+                              [--warn-days N] [--by-cost-centre]
+                              [--fail-on-risk]  (exit 1 if any cluster at risk)
+  fleet calendar aws          Generate supportCalendar.aws from EKS
+                              [--profile P] [--region R]
   inventory diff [-o table|json]
                               Reconcile the inventory against the clouds:
                               shadow, missing and drifted clusters
