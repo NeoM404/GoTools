@@ -96,6 +96,87 @@ type Config struct {
 	// Audit controls the credential-access audit trail. It is always on;
 	// this only chooses where it goes.
 	Audit Audit `json:"audit"`
+
+	// ChangeControl gates credential fetches on a change record.
+	ChangeControl ChangeControl `json:"changeControl"`
+}
+
+// ChangeControl configures change-record checks for `kubeconfig`/`login`.
+type ChangeControl struct {
+	// RequireFor lists environments whose clusters need --change-record
+	// (or --break-glass). Empty: never required, still verified if given.
+	RequireFor []string `json:"requireFor"`
+	// Pattern is the change-number format (default ServiceNow ^CHG\d{7}$).
+	Pattern string `json:"pattern"`
+	// ServiceNow, when InstanceURL is set, verifies each change record.
+	ServiceNow ServiceNowConfig `json:"serviceNow"`
+}
+
+// ServiceNowConfig locates the ServiceNow Table API.
+type ServiceNowConfig struct {
+	InstanceURL string `json:"instanceUrl"`
+	// TokenEnv names the environment variable holding the API token; the
+	// token is never stored in config.
+	TokenEnv      string   `json:"tokenEnv"`
+	Scheme        string   `json:"scheme"`        // default "Bearer"
+	AllowedStates []string `json:"allowedStates"` // default Scheduled, Implement
+	Timeout       string   `json:"timeout"`       // default "10s"
+}
+
+// DefaultServiceNowTimeout bounds one change-record lookup.
+const DefaultServiceNowTimeout = 10 * time.Second
+
+// MinBreakGlassReason is the shortest acceptable break-glass justification.
+const MinBreakGlassReason = 20
+
+// Requires reports whether env needs a change record.
+func (c ChangeControl) Requires(env string) bool {
+	for _, e := range c.RequireFor {
+		if strings.EqualFold(e, strings.TrimSpace(env)) {
+			return true
+		}
+	}
+	return false
+}
+
+// SNOWTimeout returns the effective ServiceNow timeout.
+func (s ServiceNowConfig) SNOWTimeout() time.Duration {
+	d, err := parsePositive("changeControl.serviceNow.timeout", s.Timeout, DefaultServiceNowTimeout)
+	if err != nil {
+		return DefaultServiceNowTimeout
+	}
+	return d
+}
+
+func (c Config) validateChangeControl() error {
+	cc := c.ChangeControl
+	var errs []error
+	if cc.Pattern != "" {
+		if _, err := regexp.Compile(cc.Pattern); err != nil {
+			errs = append(errs, fmt.Errorf("changeControl.pattern: %w", err))
+		}
+	}
+	allowed := map[string]bool{}
+	for _, e := range c.Environments {
+		allowed[strings.ToLower(e)] = true
+	}
+	for _, e := range cc.RequireFor {
+		if len(allowed) > 0 && !allowed[strings.ToLower(e)] {
+			errs = append(errs, fmt.Errorf("changeControl.requireFor has %q, which is not in environments %v — no cluster could ever require a change record", e, c.Environments))
+		}
+	}
+	if s := cc.ServiceNow; s.InstanceURL != "" {
+		if !strings.HasPrefix(s.InstanceURL, "https://") {
+			errs = append(errs, fmt.Errorf("changeControl.serviceNow.instanceUrl must be https"))
+		}
+		if s.TokenEnv == "" {
+			errs = append(errs, fmt.Errorf("changeControl.serviceNow.tokenEnv is required: name the environment variable holding the API token (never put the token in config)"))
+		}
+		if _, err := parsePositive("changeControl.serviceNow.timeout", s.Timeout, DefaultServiceNowTimeout); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Audit configures the audit trail.
@@ -365,7 +446,7 @@ func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
 	return errors.Join(errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
-		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate())
+		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl())
 }
 
 var minorRe = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?$`)

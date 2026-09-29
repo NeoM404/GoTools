@@ -23,7 +23,12 @@ type trail struct {
 // beginAudit writes the start event. If it cannot be written the caller must
 // not proceed: the guarantee is that every access is recorded, or does not
 // happen.
-func beginAudit(ctx context.Context, cfg config.Config, action string, c *inventory.Cluster, production bool, stderr io.Writer) (*trail, error) {
+// changeInfo is the change-control context recorded with an access.
+type changeInfo struct {
+	record, breakGlassReason string
+}
+
+func beginAudit(ctx context.Context, cfg config.Config, action string, c *inventory.Cluster, production bool, ci changeInfo, stderr io.Writer) (*trail, error) {
 	path, err := cfg.AuditLogPath()
 	if err != nil {
 		return nil, err
@@ -40,6 +45,7 @@ func beginAudit(ctx context.Context, cfg config.Config, action string, c *invent
 	base := audit.Event{
 		ID: audit.NewID(), Action: action, Tool: "bankctl", Version: Version,
 		User: currentUser(), Host: hostname(), Production: production,
+		ChangeRecord: ci.record, BreakGlass: ci.breakGlassReason != "", BreakGlassReason: ci.breakGlassReason,
 	}
 	if c != nil {
 		base.Cluster, base.Cloud, base.Environment = c.Name, string(c.Cloud), c.Environment

@@ -72,6 +72,7 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `supportCalendar` | End of standard/extended support per minor version, per cloud — drives `fleet eol`. See [Support lifecycle](#support-lifecycle). |
 | `costRates` | Control-plane hourly prices used to estimate the extended-support premium. Optional. |
 | `audit` | Where the credential-access audit trail goes — see [Audit trail](#audit-trail). Always on. |
+| `changeControl` | Which environments need a change record for credentials, and how it is verified — see [Change control](#change-control). |
 | `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
 | `commandTimeout` | Deadline for each cloud CLI call (`aws`/`az`) as a Go duration, e.g. `"90s"`. Default `"2m"`. An invalid value is a config error, not silently ignored. |
 | `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","sit","uat","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
@@ -111,6 +112,52 @@ reports *every* problem at once. These are hard errors:
 
 Inventories are capped at 32 MiB (a fleet of thousands of clusters is well
 under 1 MiB), so a wrong URL cannot exhaust memory.
+
+### Change control
+
+Credential fetches can require a change record, verified against ServiceNow
+before anything reaches the cloud:
+
+```json
+"changeControl": {
+  "requireFor": ["prod"],
+  "pattern": "^CHG\\d{7}$",
+  "serviceNow": {
+    "instanceUrl": "https://bank.service-now.com",
+    "tokenEnv": "BANKCTL_SNOW_TOKEN",
+    "allowedStates": ["Scheduled", "Implement"],
+    "timeout": "10s"
+  }
+}
+```
+
+```bash
+bankctl login eks-payments-prod-euw1 --change-record CHG0012345
+# change record CHG0012345 verified: Rotate ingress certificates — Implement, window until 2026-09-29 18:00:00 UTC
+```
+
+A change record permits access only if it **exists, is approved, is in an
+allowed state, and now is inside its planned window** (start inclusive, end
+exclusive). It is looked up through the Table API with
+`sysparm_display_value=all`, so dates are read in ServiceNow's fixed UTC
+format, independent of the API user's locale.
+
+| Field | Meaning |
+|---|---|
+| `requireFor` | Environments whose clusters need `--change-record` (or `--break-glass`). Empty = never required; a record given anyway is still verified and recorded. Must be on the `environments` allow-list. |
+| `pattern` | Change-number format, checked before any network call (default `^CHG\d{7}$`). |
+| `serviceNow.instanceUrl` | HTTPS base URL of the instance. Without it, records are format-checked only — and the output says so. |
+| `serviceNow.tokenEnv` | Environment variable holding the API token — never stored in config. |
+| `serviceNow.allowedStates` | States (label or numeric value) in which work may proceed. Default `Scheduled`, `Implement`. |
+
+**Fail closed.** If a required record cannot be verified — ServiceNow
+unreachable, token missing — access is refused.
+
+**Break-glass.** For incidents that cannot wait for a change system,
+`--break-glass "<reason>"` grants access without a record. The reason must be
+at least 20 characters; a banner is printed; and the access is flagged
+(`breakGlass`, with the reason) in the audit trail from its first event, for
+review. Refused attempts are recorded too.
 
 ### Audit trail
 
@@ -238,7 +285,7 @@ bankctl clusters get eks-payments-prod-euw1
 bankctl clusters get eks-payments-prod-euw1 -o json | jq '{name,account}'
 ```
 
-### `bankctl kubeconfig <cluster> [--file PATH] [--dry-run]`
+### `bankctl kubeconfig <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON]`
 Fetches credentials by shelling out to the right cloud CLI
 (`aws eks update-kubeconfig` or `az aks get-credentials`). Flags may go before
 or after the cluster name.
@@ -279,9 +326,10 @@ Ctrl-C stops it cleanly (exit 130). Either way the CLI **and every process it
 spawned** are killed — a timed-out `az` does not leave python running in the
 background.
 
-### `bankctl login <cluster> [--file PATH] [--dry-run]`
+### `bankctl login <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON]`
 `kubeconfig` plus a loud warning if the target is production (a
-`prodEnvironments` environment, or a name matching `prodPatterns`).
+`prodEnvironments` environment, or a name matching `prodPatterns`). Takes the
+same flags as `kubeconfig`, including change control.
 ```bash
 bankctl login eks-payments-prod-euw1
 # ⚠  "eks-payments-prod-euw1" is a PRODUCTION cluster. Changes require a change record.

@@ -116,8 +116,9 @@ Commands:
                               Show one cluster's details
   kubeconfig <cluster>        Fetch credentials for a cluster (aws/az CLI)
                               [--file PATH] [--dry-run]
+                              [--change-record CHG… | --break-glass REASON]
   login <cluster>             kubeconfig + safety check for the target
-                              [--file PATH] [--dry-run]
+                              (same flags as kubeconfig)
   fleet versions [-o table|json]
                               Version-drift report against the target for
                               each cluster's environment

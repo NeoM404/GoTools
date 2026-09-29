@@ -7,11 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/NeoM404/GoTools/internal/audit"
+	"github.com/NeoM404/GoTools/internal/change"
 	"github.com/NeoM404/GoTools/internal/cloud"
 	"github.com/NeoM404/GoTools/internal/config"
 	"github.com/NeoM404/GoTools/internal/execx"
@@ -200,26 +202,43 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 }
 
 func cmdKubeconfig(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("kubeconfig", flag.ContinueOnError)
+	code, _ := fetchCredentials(ctx, cfgPath, "kubeconfig", args, stdout, stderr)
+	return code
+}
+
+// fetched is what a successful fetchCredentials resolved, for login.
+type fetched struct {
+	cfg     config.Config
+	cluster inventory.Cluster
+}
+
+// fetchCredentials implements `kubeconfig` and `login`: resolve the cluster,
+// apply change control, record the access, verify the cloud identity, then
+// fetch. The order is deliberate — nothing reaches the cloud unless the
+// access is permitted and on record.
+func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, stdout, stderr io.Writer) (int, *fetched) {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fileFlag := fs.String("file", "", "write to an isolated kubeconfig file instead of the default")
 	dryRun := fs.Bool("dry-run", false, "print the CLI command without running it")
+	crFlag := fs.String("change-record", "", "change record authorising this access (e.g. CHG0012345)")
+	glassFlag := fs.String("break-glass", "", "emergency access without a change record; the reason is recorded and flagged")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
-		return ExitUsage
+		return ExitUsage, nil
 	}
 	if len(pos) != 1 {
-		fmt.Fprintln(stderr, "usage: bankctl kubeconfig <cluster> [--file PATH] [--dry-run]")
-		return ExitUsage
+		fmt.Fprintf(stderr, "usage: bankctl %s <cluster> [--file PATH] [--dry-run] [--change-record CHG…|--break-glass REASON]\n", name)
+		return ExitUsage, nil
 	}
 	cfg, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
-		return ExitFailure
+		return ExitFailure, nil
 	}
 	c, err := fleet.Find(pos[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "%v\n", err)
-		return ExitFailure
+		return ExitFailure, nil
 	}
 	file := *fileFlag
 	if file == "" && cfg.KubeconfigDir != "" {
@@ -229,20 +248,39 @@ func cmdKubeconfig(ctx context.Context, cfgPath string, args []string, stdout, s
 	if *dryRun {
 		cmdArgs, err := cloud.UpdateKubeconfig(ctx, c, opts)
 		if err != nil {
-			fmt.Fprintf(stderr, "kubeconfig: %v\n", err)
-			return ExitFailure
+			fmt.Fprintf(stderr, "%s: %v\n", name, err)
+			return ExitFailure, nil
 		}
 		fmt.Fprintln(stdout, strings.Join(cmdArgs, " "))
-		return ExitOK
+		return ExitOK, &fetched{cfg, c}
+	}
+
+	cr, glass := strings.TrimSpace(*crFlag), strings.TrimSpace(*glassFlag)
+	switch {
+	case cr != "" && glass != "":
+		fmt.Fprintln(stderr, "use --change-record or --break-glass, not both")
+		return ExitUsage, nil
+	case glass != "" && len(glass) < config.MinBreakGlassReason:
+		fmt.Fprintf(stderr, "--break-glass needs a real reason (at least %d characters): it is recorded and reviewed\n", config.MinBreakGlassReason)
+		return ExitUsage, nil
+	case cr != "":
+		if err := change.ValidateFormat(cr, cfg.ChangeControl.Pattern); err != nil {
+			fmt.Fprintln(stderr, err)
+			return ExitUsage, nil
+		}
 	}
 
 	// Every credential fetch is recorded before it happens; if the record
-	// cannot be written, the fetch does not happen.
+	// cannot be written, the fetch does not happen. Refused attempts are
+	// recorded too.
 	production := cfg.IsProdEnvironment(c.Environment) || kube.IsProd(c.Name, cfg.ProdPatterns)
-	tr, err := beginAudit(ctx, cfg, "credentials", &c, production, stderr)
+	tr, err := beginAudit(ctx, cfg, "credentials", &c, production, changeInfo{record: cr, breakGlassReason: glass}, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "%v — refusing to fetch credentials: every credential fetch must be recorded\n", err)
-		return ExitFailure
+		return ExitFailure, nil
+	}
+	if code := applyChangeControl(ctx, cfg, c, cr, glass, tr, stderr); code != ExitOK {
+		return code, nil
 	}
 
 	// Confirm the CLI will act in the cluster's own account/subscription:
@@ -253,20 +291,21 @@ func cmdKubeconfig(ctx context.Context, cfgPath string, args []string, stdout, s
 		var wrong *cloud.ErrWrongAccount
 		if errors.As(err, &wrong) {
 			tr.end(ctx, audit.OutcomeRefused, wrong.Principal, err.Error(), stderr)
-			fmt.Fprintf(stderr, "kubeconfig refused: %v\n", err)
-			return ExitFailure
+			fmt.Fprintf(stderr, "%s refused: %v\n", name, err)
+			return ExitFailure, nil
 		}
 		tr.end(ctx, audit.OutcomeFailure, "", err.Error(), stderr)
 		reportCLIFailure(stderr, c, err)
-		return ExitFailure
+		return ExitFailure, nil
 	}
 
 	if _, err := cloud.UpdateKubeconfig(ctx, c, opts); err != nil {
 		tr.end(ctx, audit.OutcomeFailure, id.Principal, err.Error(), stderr)
 		reportCLIFailure(stderr, c, err)
-		return ExitFailure
+		return ExitFailure, nil
 	}
 	tr.end(ctx, audit.OutcomeSuccess, id.Principal, "", stderr)
+
 	fmt.Fprintf(stdout, "credentials for %q ready", c.Name)
 	if file != "" {
 		fmt.Fprintf(stdout, " in %s (use: KUBECONFIG=%s kubectl ...)", file, file)
@@ -282,6 +321,52 @@ func cmdKubeconfig(ctx context.Context, cfgPath string, args []string, stdout, s
 		fmt.Fprintf(stderr, "⚠  kubeconfig uses a deprecated auth plugin apiVersion (%s) — "+
 			"update your %s CLI and run `bankctl doctor`.\n", ver, cliForCloud(c.Cloud))
 	}
+	return ExitOK, &fetched{cfg, c}
+}
+
+// newChangeChecker builds the ServiceNow client; tests replace it to reach a
+// TLS test server.
+var newChangeChecker = func(s config.ServiceNowConfig, token string) *change.ServiceNow {
+	return &change.ServiceNow{Instance: s.InstanceURL, Token: token, Scheme: s.Scheme,
+		AllowedStates: s.AllowedStates, Timeout: s.SNOWTimeout()}
+}
+
+// applyChangeControl enforces the change-record policy for one access. It
+// ends the audit trail itself when it refuses. Fail closed: if a required
+// record cannot be verified, access is refused — break-glass exists for
+// emergencies.
+func applyChangeControl(ctx context.Context, cfg config.Config, c inventory.Cluster, cr, glass string, tr *trail, stderr io.Writer) int {
+	cc := cfg.ChangeControl
+	refuse := func(msg string) int {
+		tr.end(ctx, audit.OutcomeRefused, "", msg, stderr)
+		fmt.Fprintln(stderr, "access refused: "+msg)
+		return ExitFailure
+	}
+	switch {
+	case glass != "":
+		fmt.Fprintf(stderr, "\n⚠  BREAK-GLASS access to %q (%s) without a change record.\n   Reason: %s\n   This access is recorded and flagged for review.\n\n", c.Name, c.Environment, glass)
+		return ExitOK
+	case cr == "" && cc.Requires(c.Environment):
+		return refuse(fmt.Sprintf("a change record is required for %s clusters — pass --change-record CHG… (or --break-glass \"<reason>\" in an emergency)", c.Environment))
+	case cr == "":
+		return ExitOK
+	case cc.ServiceNow.InstanceURL == "":
+		fmt.Fprintf(stderr, "note: change record %s was format-checked only — configure changeControl.serviceNow to verify it\n", cr)
+		return ExitOK
+	}
+	token := os.Getenv(cc.ServiceNow.TokenEnv)
+	if token == "" {
+		return refuse(fmt.Sprintf("cannot verify change record %s: $%s is empty (or use --break-glass in an emergency)", cr, cc.ServiceNow.TokenEnv))
+	}
+	rec, err := newChangeChecker(cc.ServiceNow, token).Check(ctx, cr, now())
+	switch {
+	case change.IsRejection(err):
+		return refuse(err.Error())
+	case err != nil:
+		return refuse(fmt.Sprintf("could not verify change record %s: %v (use --break-glass in an emergency)", cr, err))
+	}
+	tr.base.ChangeVerified = true
+	fmt.Fprintf(stderr, "change record %s verified: %s — %s, window until %s UTC\n", rec.Number, rec.Summary, rec.State, rec.WindowEnd)
 	return ExitOK
 }
 
@@ -303,28 +388,12 @@ func cliForCloud(c inventory.Cloud) string {
 }
 
 func cmdLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
-	rc := cmdKubeconfig(ctx, cfgPath, args, stdout, stderr)
-	if rc != 0 {
-		return rc
+	code, f := fetchCredentials(ctx, cfgPath, "login", args, stdout, stderr)
+	if code != ExitOK || f == nil {
+		return code
 	}
-	// After fetching creds, warn loudly if the target is production. Re-parse
-	// to find the positional cluster name regardless of flag ordering.
-	cfg, fleet, ok := loadFleet(cfgPath, stderr)
-	if !ok {
-		return rc
-	}
-	fs := flag.NewFlagSet("login", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	fs.String("file", "", "")
-	fs.Bool("dry-run", false, "")
-	pos, err := parseInterspersed(fs, args)
-	if err != nil || len(pos) != 1 {
-		return ExitOK
-	}
-	if c, err := fleet.Find(pos[0]); err == nil {
-		if cfg.IsProdEnvironment(c.Environment) || kube.IsProd(c.Name, cfg.ProdPatterns) {
-			fmt.Fprintf(stdout, "\n⚠  %q is a PRODUCTION cluster. Changes require a change record.\n", c.Name)
-		}
+	if f.cfg.IsProdEnvironment(f.cluster.Environment) || kube.IsProd(f.cluster.Name, f.cfg.ProdPatterns) {
+		fmt.Fprintf(stdout, "\n⚠  %q is a PRODUCTION cluster. Changes require a change record.\n", f.cluster.Name)
 	}
 	return ExitOK
 }

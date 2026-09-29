@@ -77,7 +77,7 @@ func cmdSweep(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	code := ExitOK
 	if *apply && len(removals) > 0 {
 		cfg, _, _ := config.Load(cfgPath) // already validated by loadFleet
-		tr, err := beginAudit(ctx, cfg, "kubeconfig-sweep", nil, false, stderr)
+		tr, err := beginAudit(ctx, cfg, "kubeconfig-sweep", nil, false, changeInfo{}, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "%v — refusing to modify %s: every change must be recorded\n", err, path)
 			return ExitFailure
