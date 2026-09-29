@@ -156,6 +156,8 @@ func loadURLWithClient(raw string, client *http.Client) (Fleet, error) {
 	return parse(data)
 }
 
+func marshal(f Fleet) ([]byte, error) { return json.MarshalIndent(f, "", "  ") }
+
 func parse(data []byte) (Fleet, error) {
 	var f Fleet
 	if err := json.Unmarshal(data, &f); err != nil {

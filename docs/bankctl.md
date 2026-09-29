@@ -64,6 +64,8 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `inventoryPath` | Local JSON fleet file. Relative paths resolve against the **config file's** directory. |
 | `inventoryUrl` | HTTPS endpoint returning the same JSON (preferred in prod so everyone sees the same live fleet). HTTP is refused. |
 | `prodPatterns` | Regexes; a context/cluster name matching any is treated as production by `guard`. |
+| `prodEnvironments` | Inventory environments treated as production (default `["prod"]`). A context that resolves to a cluster in one of these is production whatever its name. Must be on the `environments` allow-list when one is set. |
+| `inventoryCacheTTL` | How long `guard`/`current` reuse a cached copy of `inventoryUrl` (default `"10m"`), so a shell prompt never waits on the network. |
 | `kubeconfigDir` | If set, `kubeconfig`/`login` write per-cluster files here instead of the default kubeconfig. |
 | `targetKubeVersion` | Fleet's desired minor version; drives `fleet versions`. |
 | `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
@@ -189,7 +191,8 @@ spawned** are killed — a timed-out `az` does not leave python running in the
 background.
 
 ### `bankctl login <cluster> [--file PATH] [--dry-run]`
-`kubeconfig` plus a loud warning if the target is production.
+`kubeconfig` plus a loud warning if the target is production (a
+`prodEnvironments` environment, or a name matching `prodPatterns`).
 ```bash
 bankctl login eks-payments-prod-euw1
 # ⚠  "eks-payments-prod-euw1" is a PRODUCTION cluster. Changes require a change record.
@@ -258,13 +261,31 @@ git diff --no-index fleet.json fleet.proposed.json      # review before publishi
 ```
 
 ### `bankctl guard [--block] [-o table|json]`
-Checks the **current** kube-context against `prodPatterns`. Prints `ok <ctx>` or
-`PROD <ctx>`. With `--block` it exits **3** on production — ideal for a shell
-prompt or a pre-apply hook. `-o json` never weakens `--block`: it still exits 3.
+Classifies the **current** kube-context. It is production if **either**:
+
+- the context resolves to an inventory cluster in a `prodEnvironments`
+  environment — recognising the names the tools write:
+  `arn:aws:eks:<region>:<account>:cluster/<name>` (aws default),
+  `<account>.<name>` (bankctl's alias), `<name>` and `<name>-admin` (az); the
+  ARN and alias forms must match the account too, so a same-named cluster in
+  another account never resolves to this one; **or**
+- its name matches a `prodPatterns` regex.
+
+Using both means the inventory can only make detection stricter: a prod
+cluster named `eks-core-live-euw1` is caught, and the patterns still over-warn
+as before. If the inventory is unreachable or invalid, `guard` says so on
+stderr and falls back to the patterns — it never stops working. A URL inventory
+is cached locally for `inventoryCacheTTL` (0600, atomic writes; a failed
+refresh falls back to the last good copy with a warning), so `guard` costs
+about 10 ms over the `kubectl` call it wraps.
+
+With `--block` it exits **3** on production — for a shell prompt or a
+pre-apply hook. `-o json` never weakens `--block`.
 ```bash
-bankctl guard              # ok    eks-payments-sit-euw1
 bankctl guard --block || echo "refusing destructive op in prod"
-bankctl guard -o json      # {"context": "eks-payments-prod-euw1", "production": true}
+# PROD  arn:aws:eks:eu-west-1:555555555555:cluster/eks-core-live-euw1  (inventory: eks-core-live-euw1 is in environment prod)
+bankctl guard -o json
+# {"context": "...", "production": true, "cluster": "eks-core-live-euw1", "environment": "prod", "reasons": ["inventory: ..."]}
 ```
 
 `guard` runs on the operator's machine, so it is a fast **safety net, not an
@@ -273,8 +294,8 @@ credential issuance (short-lived, JIT-approved credentials) and admission
 policy; do not present `guard` as the control in audit evidence.
 
 ### `bankctl current [-o table|json]`
-Shows the current context and whether it's production. `-o json` emits the same
-schema as `guard -o json`, so scripts parse one shape for both.
+Shows the current context, whether it's production, the inventory cluster it
+resolves to, and why. `-o json` emits the same schema as `guard -o json`.
 
 ### `bankctl doctor [--strict] [-o table|json]`
 Checks required (`kubectl`, `aws`, `az`) and optional ecosystem tools for

@@ -7,7 +7,6 @@ package kube
 import (
 	"context"
 	"encoding/json"
-	"regexp"
 	"strings"
 	"time"
 
@@ -79,14 +78,6 @@ func IsDeprecatedExecAPIVersion(v string) bool {
 // Invalid patterns are skipped (a bad pattern must never make a prod context
 // look safe, nor crash the guard).
 func IsProd(name string, patterns []string) bool {
-	for _, p := range patterns {
-		re, err := regexp.Compile(p)
-		if err != nil {
-			continue
-		}
-		if re.MatchString(name) {
-			return true
-		}
-	}
-	return false
+	_, ok := matchingPattern(name, patterns)
+	return ok
 }

@@ -52,3 +52,27 @@ func TestMissingExplicitConfigFallsBackToDefaults(t *testing.T) {
 		t.Fatalf("cfg=%+v used=%q err=%v", cfg, used, err)
 	}
 }
+
+func TestProdEnvironments(t *testing.T) {
+	if !Default().IsProdEnvironment("PROD") || Default().IsProdEnvironment("uat") {
+		t.Fatal("default prod environment is prod, case-insensitive")
+	}
+	cfg, _, err := Load(writeCfg(t, `{"environments":["dev","uat","prod","dr"],"prodEnvironments":["prod","dr"]}`))
+	if err != nil || !cfg.IsProdEnvironment("dr") {
+		t.Fatalf("custom: err=%v", err)
+	}
+	// "production" can never match a cluster when the allow-list says "prod".
+	_, _, err = Load(writeCfg(t, `{"environments":["dev","prod"],"prodEnvironments":["production"]}`))
+	if err == nil || !strings.Contains(err.Error(), "no cluster could ever match") {
+		t.Fatalf("want unreachable prodEnvironments error, got %v", err)
+	}
+}
+
+func TestCacheTTL(t *testing.T) {
+	if Default().CacheTTL() != DefaultInventoryCacheTTL {
+		t.Fatal("default TTL")
+	}
+	if _, _, err := Load(writeCfg(t, `{"inventoryCacheTTL":"never"}`)); err == nil || !strings.Contains(err.Error(), "inventoryCacheTTL") {
+		t.Fatalf("want TTL error, got %v", err)
+	}
+}

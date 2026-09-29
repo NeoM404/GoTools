@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/NeoM404/GoTools/internal/cloud"
 	"github.com/NeoM404/GoTools/internal/config"
@@ -283,7 +284,7 @@ func cmdLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return ExitOK
 	}
 	if c, err := fleet.Find(pos[0]); err == nil {
-		if c.Environment == "prod" || kube.IsProd(c.Name, cfg.ProdPatterns) {
+		if cfg.IsProdEnvironment(c.Environment) || kube.IsProd(c.Name, cfg.ProdPatterns) {
 			fmt.Fprintf(stdout, "\n⚠  %q is a PRODUCTION cluster. Changes require a change record.\n", c.Name)
 		}
 	}
@@ -360,11 +361,15 @@ func cmdFleet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 // contextStatus is the machine-readable shape shared by guard and current,
 // so scripts parse one schema regardless of which command they call.
 type contextStatus struct {
-	Context    string `json:"context"`
-	Production bool   `json:"production"`
+	Context     string   `json:"context"`
+	Production  bool     `json:"production"`
+	Cluster     string   `json:"cluster,omitempty"`     // inventory cluster the context resolves to
+	Environment string   `json:"environment,omitempty"` // that cluster's environment
+	Reasons     []string `json:"reasons"`               // why it is (or is not) production
 }
 
-// resolveContext loads config and classifies the current kube-context.
+// resolveContext loads config, reads the current kube-context and classifies
+// it using both the inventory and the name patterns.
 func resolveContext(ctx context.Context, cfgPath string, stderr io.Writer) (contextStatus, bool) {
 	cfg, _, err := config.Load(cfgPath)
 	if err != nil {
@@ -376,7 +381,51 @@ func resolveContext(ctx context.Context, cfgPath string, stderr io.Writer) (cont
 		fmt.Fprintf(stderr, "could not read current kube-context: %v\n", err)
 		return contextStatus{}, false
 	}
-	return contextStatus{Context: name, Production: kube.IsProd(name, cfg.ProdPatterns)}, true
+	cl := kube.Classify(name, guardFleet(cfg, stderr), cfg.ProdEnvs(), cfg.ProdPatterns)
+	return contextStatus{Context: name, Production: cl.Production, Cluster: cl.Cluster,
+		Environment: cl.Environment, Reasons: cl.Reasons}, true
+}
+
+// guardFleet loads the inventory for context classification without ever
+// failing the command: guard must keep working (on name patterns) when the
+// inventory is unreachable or broken, and it says so on stderr. A URL
+// inventory is served from the local cache so a shell prompt stays fast.
+func guardFleet(cfg config.Config, stderr io.Writer) *inventory.Fleet {
+	var (
+		fleet inventory.Fleet
+		err   error
+	)
+	switch {
+	case cfg.InventoryURL != "":
+		var dir string
+		if dir, err = inventory.DefaultCacheDir(); err == nil {
+			var src inventory.Source
+			fleet, src, err = inventory.LoadURLCached(cfg.InventoryURL, dir, cfg.CacheTTL())
+			if err == nil && src.Kind == "stale-cache" {
+				fmt.Fprintf(stderr, "warning: using cached inventory from %s ago — refresh failed: %s\n",
+					src.Age.Round(time.Second), src.FetchErr)
+			}
+		}
+	case cfg.InventoryPath != "":
+		fleet, err = inventory.LoadFile(cfg.InventoryPath)
+	default:
+		return nil // no inventory configured: name patterns only, by design
+	}
+	if err == nil {
+		err = fleet.Validate(cfg.Environments)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "warning: inventory unavailable, classifying by name patterns only: %v\n", err)
+		return nil
+	}
+	return &fleet
+}
+
+func reasonSuffix(st contextStatus) string {
+	if len(st.Reasons) == 0 {
+		return ""
+	}
+	return "  (" + strings.Join(st.Reasons, "; ") + ")"
 }
 
 func cmdGuard(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
@@ -399,7 +448,7 @@ func cmdGuard(ctx context.Context, cfgPath string, args []string, stdout, stderr
 			return rc
 		}
 	} else if st.Production {
-		fmt.Fprintf(stdout, "PROD  %s\n", st.Context)
+		fmt.Fprintf(stdout, "PROD  %s%s\n", st.Context, reasonSuffix(st))
 	} else {
 		fmt.Fprintf(stdout, "ok    %s\n", st.Context)
 	}
@@ -431,5 +480,11 @@ func cmdCurrent(ctx context.Context, cfgPath string, args []string, stdout, stde
 		status = "PRODUCTION"
 	}
 	fmt.Fprintf(stdout, "context: %s\nstatus:  %s\n", st.Context, status)
+	if st.Cluster != "" {
+		fmt.Fprintf(stdout, "cluster: %s (%s)\n", st.Cluster, st.Environment)
+	}
+	for _, r := range st.Reasons {
+		fmt.Fprintf(stdout, "reason:  %s\n", r)
+	}
 	return ExitOK
 }

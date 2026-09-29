@@ -64,8 +64,48 @@ type Config struct {
 	// such as "prd" is caught at load time instead of dodging prod checks.
 	Environments []string `json:"environments"`
 
+	// ProdEnvironments are the inventory environments treated as production
+	// by guard, current and login (default ["prod"]). A kube-context that
+	// resolves to a cluster in one of these is production whatever its name.
+	ProdEnvironments []string `json:"prodEnvironments"`
+
+	// InventoryCacheTTL is how long guard/current reuse a cached copy of an
+	// inventoryUrl before refetching (Go duration, default "10m"), so a shell
+	// prompt never waits on the network. Other commands always fetch live.
+	InventoryCacheTTL string `json:"inventoryCacheTTL"`
+
 	// Discovery is the cloud scope `inventory sync` and `inventory diff` scan.
 	Discovery Discovery `json:"discovery"`
+}
+
+// DefaultInventoryCacheTTL is used when inventoryCacheTTL is unset.
+const DefaultInventoryCacheTTL = 10 * time.Minute
+
+// ProdEnvs returns the production environments, defaulting to ["prod"].
+func (c Config) ProdEnvs() []string {
+	if len(c.ProdEnvironments) == 0 {
+		return []string{"prod"}
+	}
+	return c.ProdEnvironments
+}
+
+// IsProdEnvironment reports whether env is a production environment.
+func (c Config) IsProdEnvironment(env string) bool {
+	for _, p := range c.ProdEnvs() {
+		if strings.EqualFold(strings.TrimSpace(env), p) {
+			return true
+		}
+	}
+	return false
+}
+
+// CacheTTL returns the effective inventory cache TTL.
+func (c Config) CacheTTL() time.Duration {
+	d, err := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
+	if err != nil {
+		return DefaultInventoryCacheTTL
+	}
+	return d
 }
 
 // Discovery defines exactly which cloud scopes are scanned. It is explicit so
@@ -198,23 +238,49 @@ func (c Config) Timeout() time.Duration {
 }
 
 func (c Config) parseTimeout() (time.Duration, error) {
-	if c.CommandTimeout == "" {
-		return DefaultCommandTimeout, nil
+	return parsePositive("commandTimeout", c.CommandTimeout, DefaultCommandTimeout)
+}
+
+// parsePositive parses an optional positive Go duration setting.
+func parsePositive(field, v string, def time.Duration) (time.Duration, error) {
+	if v == "" {
+		return def, nil
 	}
-	d, err := time.ParseDuration(c.CommandTimeout)
+	d, err := time.ParseDuration(v)
 	if err != nil {
-		return 0, fmt.Errorf("commandTimeout %q: want a duration such as \"90s\" or \"3m\"", c.CommandTimeout)
+		return 0, fmt.Errorf("%s %q: want a duration such as \"90s\" or \"3m\"", field, v)
 	}
 	if d <= 0 {
-		return 0, fmt.Errorf("commandTimeout %q must be positive", c.CommandTimeout)
+		return 0, fmt.Errorf("%s %q must be positive", field, v)
 	}
 	return d, nil
 }
 
 // validate rejects settings that would otherwise misbehave silently later.
 func (c Config) validate() error {
-	_, err := c.parseTimeout()
-	return errors.Join(err, c.Discovery.validate())
+	_, errTimeout := c.parseTimeout()
+	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
+	return errors.Join(errTimeout, errTTL, c.validateEnvironments(), c.Discovery.validate())
+}
+
+// validateEnvironments catches a prodEnvironments entry that no cluster can
+// ever have — e.g. "production" when the allow-list says "prod" — which would
+// silently disable inventory-based prod detection.
+func (c Config) validateEnvironments() error {
+	if len(c.Environments) == 0 {
+		return nil
+	}
+	allowed := map[string]bool{}
+	for _, e := range c.Environments {
+		allowed[strings.ToLower(e)] = true
+	}
+	var errs []error
+	for _, p := range c.ProdEnvs() {
+		if !allowed[strings.ToLower(p)] {
+			errs = append(errs, fmt.Errorf("prodEnvironments entry %q is not in environments %v, so no cluster could ever match it", p, c.Environments))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Default returns config used when no file is present.
