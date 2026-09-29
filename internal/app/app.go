@@ -64,6 +64,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdFleet(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "inventory":
 		return cmdInventory(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "sweep":
+		return cmdSweep(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
 		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
@@ -132,6 +134,10 @@ Commands:
   inventory sync [--out FILE] [--force]
                               Write the inventory the clouds imply
                               (refuses a partial scan or an invalid result)
+  sweep [--apply] [--kubeconfig PATH] [-o table|json]
+                              Remove EKS/AKS contexts the inventory proves
+                              stale (dry run by default; backup first)
+                              [--include-current]
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status

@@ -323,6 +323,42 @@ bankctl inventory sync --out fleet.proposed.json
 git diff --no-index fleet.json fleet.proposed.json      # review before publishing
 ```
 
+### `bankctl sweep [--apply] [--include-current] [--kubeconfig PATH] [-o table|json]`
+Removes kube-contexts the inventory proves stale — after 80 clusters come and
+go, `~/.kube/config` fills with dead entries that are easy to switch to by
+mistake. It **only removes what it can prove**:
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| `stale` | An EKS/AKS context matching nothing in the inventory | removed with `--apply` |
+| `stale-current` | Stale, but it is the current context | kept unless `--include-current` |
+| `unverifiable` | EKS/AKS, but the inventory lists no clusters for that cloud, or does not cover that AWS account — absence proves nothing | kept |
+| `keep` | Resolves to an inventory cluster | kept |
+| `unmanaged` | Not EKS/AKS (kind, minikube, on-prem, …) | never touched |
+
+A context is recognised as EKS/AKS by its API host (`*.eks.amazonaws.com`,
+`*.azmk8s.io`), exec plugin (`aws eks get-token`, `kubelogin`) or the names the
+CLIs write, and matched to the inventory through its context name, its ARN,
+its `aws eks get-token --cluster-name/--region` arguments or az's
+`clusterUser_<rg>_<name>` user — so renamed contexts still resolve.
+
+Safety:
+- **dry run by default** — nothing changes without `--apply`;
+- a **byte-identical backup** (`<file>.bankctl-<UTC time>.bak`, 0600) is written first;
+- edits go through `kubectl config delete-*`, so the file's format is preserved;
+  cluster and user entries are removed only when no remaining context uses them;
+- afterwards the file is **re-read and verified**: every planned context gone,
+  every other context still present — on any failure it prints the `cp`
+  command that restores the backup;
+- a `KUBECONFIG` listing several files is refused (pass `--kubeconfig`), and it
+  refuses to run at all without a valid inventory.
+
+Run `bankctl inventory diff` first: the sweep is only as good as the inventory.
+```bash
+bankctl sweep                 # review what would go
+bankctl sweep --apply         # remove it (backup first)
+```
+
 ### `bankctl guard [--block] [-o table|json]`
 Classifies the **current** kube-context. It is production if **either**:
 
