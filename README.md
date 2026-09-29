@@ -13,7 +13,7 @@ authenticates to production banking clusters.
 
 | Tool | Status | What it does |
 |---|---|---|
-| **[bankctl](docs/bankctl.md)** | built | Fleet inventory CLI: list every EKS/AKS cluster across the group, pull credentials for any of them, report version drift, and guard against accidental production access. |
+| **[bankctl](docs/bankctl.md)** | built | Fleet inventory CLI: list every EKS/AKS cluster across the group, reconcile the inventory against the clouds (shadow, missing and drifted clusters), pull credentials for any of them, report version drift, and guard against accidental production access. |
 | _kubeconfig-sweeper_ | 🔜 planned | Prune stale contexts from `~/.kube/config` using the live inventory. |
 | _namespace-lint_ | 🔜 planned | Check a namespace request against the platform tenancy standard before it becomes a PR. |
 
@@ -35,7 +35,9 @@ make build                     # -> bin/bankctl
 cmd/bankctl/        main entrypoint (thin)
 internal/app/       command dispatch + handlers (testable, injected I/O)
 internal/execx/     bounded, cancellable subprocess execution (every CLI call)
-internal/inventory/ fleet model, JSON/HTTPS loading, version-drift logic
+internal/discovery/ enumerates real EKS/AKS clusters in the configured scope
+internal/reconcile/ declared-vs-observed diff and the proposed inventory (pure)
+internal/inventory/ fleet model, validation, JSON/HTTPS loading, version-drift logic
 internal/cloud/     aws/az CLI orchestration for kubeconfig
 internal/kube/      current-context + production detection
 internal/config/    config resolution & loading

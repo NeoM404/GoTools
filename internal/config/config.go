@@ -12,9 +12,12 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -55,6 +58,133 @@ type Config struct {
 	// CommandTimeout bounds each cloud CLI call (aws/az), as a Go duration
 	// string such as "90s" or "3m". Empty means DefaultCommandTimeout.
 	CommandTimeout string `json:"commandTimeout"`
+
+	// Environments, when set, is the allow-list every inventory cluster's
+	// environment must be on (e.g. ["dev","sit","uat","prod"]), so a typo
+	// such as "prd" is caught at load time instead of dodging prod checks.
+	Environments []string `json:"environments"`
+
+	// Discovery is the cloud scope `inventory sync` and `inventory diff` scan.
+	Discovery Discovery `json:"discovery"`
+}
+
+// Discovery defines exactly which cloud scopes are scanned. It is explicit so
+// it can be reviewed and audited: bankctl never guesses which accounts or
+// subscriptions exist, and a completeness claim is only ever made for these.
+type Discovery struct {
+	AWS   []AWSTarget   `json:"aws"`
+	Azure []AzureTarget `json:"azure"`
+	// Concurrency caps how many cloud CLI processes run at once across the
+	// whole scan. Default DefaultConcurrency; at most MaxConcurrency.
+	Concurrency int `json:"concurrency"`
+	// TagKeys names the cloud tags that carry inventory metadata.
+	TagKeys TagKeys `json:"tagKeys"`
+}
+
+// AWSTarget is one AWS account, scanned in each listed region.
+type AWSTarget struct {
+	// Profile is the AWS CLI profile to use; empty means the default
+	// credential chain.
+	Profile string `json:"profile"`
+	// Account is the 12-digit account the profile must resolve to. It is
+	// verified before scanning, so a misconfigured profile is refused rather
+	// than silently scanning the wrong account.
+	Account string   `json:"account"`
+	Regions []string `json:"regions"`
+}
+
+// AzureTarget is one Azure subscription, by name or ID.
+type AzureTarget struct {
+	Subscription string `json:"subscription"`
+}
+
+// TagKeys maps inventory fields to the cloud tag keys that carry them.
+type TagKeys struct {
+	Environment string `json:"environment"`
+	Owner       string `json:"owner"`
+	CostCentre  string `json:"costCentre"`
+}
+
+// Discovery defaults and limits.
+const (
+	DefaultConcurrency = 8
+	MaxConcurrency     = 64
+)
+
+// Configured reports whether any scan scope is defined.
+func (d Discovery) Configured() bool { return len(d.AWS) > 0 || len(d.Azure) > 0 }
+
+// Workers returns the effective concurrency.
+func (d Discovery) Workers() int {
+	if d.Concurrency <= 0 {
+		return DefaultConcurrency
+	}
+	return d.Concurrency
+}
+
+// Keys returns the tag keys with defaults applied.
+func (d Discovery) Keys() TagKeys {
+	k := d.TagKeys
+	if k.Environment == "" {
+		k.Environment = "environment"
+	}
+	if k.Owner == "" {
+		k.Owner = "owner"
+	}
+	if k.CostCentre == "" {
+		k.CostCentre = "cost-centre"
+	}
+	return k
+}
+
+var (
+	accountRe = regexp.MustCompile(`^\d{12}$`)
+	regionRe  = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-\d+$`)
+)
+
+func (d Discovery) validate() error {
+	var errs []error
+	seen := map[string]bool{}
+	for i, t := range d.AWS {
+		at := fmt.Sprintf("discovery.aws[%d]", i)
+		if !accountRe.MatchString(t.Account) {
+			errs = append(errs, fmt.Errorf("%s: account %q must be a 12-digit AWS account ID", at, t.Account))
+		}
+		if strings.HasPrefix(t.Profile, "-") {
+			errs = append(errs, fmt.Errorf("%s: profile %q must not start with '-'", at, t.Profile))
+		}
+		if len(t.Regions) == 0 {
+			errs = append(errs, fmt.Errorf("%s: at least one region is required", at))
+		}
+		for _, r := range t.Regions {
+			if !regionRe.MatchString(r) {
+				errs = append(errs, fmt.Errorf("%s: %q is not an AWS region such as eu-west-1", at, r))
+				continue
+			}
+			key := "aws/" + t.Account + "/" + r
+			if seen[key] {
+				errs = append(errs, fmt.Errorf("%s: account %s region %s is listed more than once", at, t.Account, r))
+			}
+			seen[key] = true
+		}
+	}
+	for i, t := range d.Azure {
+		at := fmt.Sprintf("discovery.azure[%d]", i)
+		s := strings.TrimSpace(t.Subscription)
+		switch {
+		case s == "":
+			errs = append(errs, fmt.Errorf("%s: subscription is required", at))
+		case strings.HasPrefix(s, "-"):
+			errs = append(errs, fmt.Errorf("%s: subscription %q must not start with '-'", at, s))
+		case seen["azure/"+strings.ToLower(s)]:
+			errs = append(errs, fmt.Errorf("%s: subscription %q is listed more than once", at, s))
+		}
+		seen["azure/"+strings.ToLower(s)] = true
+	}
+	if d.Concurrency < 0 || d.Concurrency > MaxConcurrency {
+		errs = append(errs, fmt.Errorf("discovery.concurrency %d must be between 1 and %d", d.Concurrency, MaxConcurrency))
+	}
+	return errors.Join(errs...)
 }
 
 // Timeout returns the effective cloud CLI timeout. Load has already rejected
@@ -84,7 +214,7 @@ func (c Config) parseTimeout() (time.Duration, error) {
 // validate rejects settings that would otherwise misbehave silently later.
 func (c Config) validate() error {
 	_, err := c.parseTimeout()
-	return err
+	return errors.Join(err, c.Discovery.validate())
 }
 
 // Default returns config used when no file is present.

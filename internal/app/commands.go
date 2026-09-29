@@ -69,6 +69,10 @@ func loadFleet(cfgPath string, stderr io.Writer) (config.Config, inventory.Fleet
 		fmt.Fprintf(stderr, "%v\n", err)
 		return cfg, inventory.Fleet{}, false
 	}
+	if err := fleet.Validate(cfg.Environments); err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return cfg, inventory.Fleet{}, false
+	}
 	return cfg, fleet, true
 }
 

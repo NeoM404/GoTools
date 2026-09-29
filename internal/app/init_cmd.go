@@ -15,7 +15,13 @@ const starterConfig = `{
   "inventoryUrl": "",
   "prodPatterns": ["(?i)prod", "(?i)-prd-"],
   "kubeconfigDir": "",
-  "targetKubeVersion": "1.30"
+  "targetKubeVersion": "1.30",
+  "environments": ["dev", "sit", "uat", "prod"],
+  "commandTimeout": "2m",
+  "discovery": {
+    "aws": [],
+    "azure": []
+  }
 }
 `
 

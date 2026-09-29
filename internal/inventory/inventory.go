@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,7 +29,7 @@ const (
 type Cluster struct {
 	Name        string `json:"name"`
 	Cloud       Cloud  `json:"cloud"`
-	Environment string `json:"environment"` // sandbox | nonprod | prod
+	Environment string `json:"environment"` // e.g. dev | sit | uat | prod (see config "environments")
 	Region      string `json:"region"`
 	Version     string `json:"version"` // e.g. "1.29"
 	Owner       string `json:"owner"`
@@ -81,13 +82,35 @@ func (f Fleet) Filter(cloud, env, owner string) []Cluster {
 	return out
 }
 
+// MaxInventoryBytes caps an inventory document. A fleet of thousands of
+// clusters is well under 1 MiB; the cap stops a wrong URL or a runaway file
+// from exhausting memory.
+const MaxInventoryBytes = 32 << 20
+
 // LoadFile reads a fleet inventory from a local JSON file.
 func LoadFile(path string) (Fleet, error) {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return Fleet{}, fmt.Errorf("reading inventory %s: %w", path, err)
+	}
+	defer f.Close()
+	data, err := readCapped(f)
 	if err != nil {
 		return Fleet{}, fmt.Errorf("reading inventory %s: %w", path, err)
 	}
 	return parse(data)
+}
+
+// readCapped reads r fully, failing if it exceeds MaxInventoryBytes.
+func readCapped(r io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, MaxInventoryBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxInventoryBytes {
+		return nil, fmt.Errorf("inventory exceeds %d MiB", MaxInventoryBytes>>20)
+	}
+	return data, nil
 }
 
 // LoadURL fetches a fleet inventory over HTTPS. Plain HTTP is refused — this
@@ -126,12 +149,11 @@ func loadURLWithClient(raw string, client *http.Client) (Fleet, error) {
 	if resp.StatusCode != http.StatusOK {
 		return Fleet{}, fmt.Errorf("inventory endpoint returned %s", resp.Status)
 	}
-	dec := json.NewDecoder(resp.Body)
-	var f Fleet
-	if err := dec.Decode(&f); err != nil {
-		return Fleet{}, fmt.Errorf("decoding inventory response: %w", err)
+	data, err := readCapped(resp.Body)
+	if err != nil {
+		return Fleet{}, fmt.Errorf("reading inventory response: %w", err)
 	}
-	return f, nil
+	return parse(data)
 }
 
 func parse(data []byte) (Fleet, error) {

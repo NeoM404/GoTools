@@ -62,6 +62,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdLogin(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "fleet":
 		return cmdFleet(cfgPath, cmdArgs, stdout, stderr)
+	case "inventory":
+		return cmdInventory(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
 		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
@@ -117,6 +119,13 @@ Commands:
   fleet versions [-o table|json]
                               Version-drift report against the fleet target
                               [--fail-on-stale]  (exit 1 if any STALE cluster)
+  inventory diff [-o table|json]
+                              Reconcile the inventory against the clouds:
+                              shadow, missing and drifted clusters
+                              (exit 1 unless complete and in sync)
+  inventory sync [--out FILE] [--force]
+                              Write the inventory the clouds imply
+                              (refuses a partial scan or an invalid result)
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status

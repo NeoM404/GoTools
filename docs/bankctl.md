@@ -68,6 +68,8 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `targetKubeVersion` | Fleet's desired minor version; drives `fleet versions`. |
 | `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
 | `commandTimeout` | Deadline for each cloud CLI call (`aws`/`az`) as a Go duration, e.g. `"90s"`. Default `"2m"`. An invalid value is a config error, not silently ignored. |
+| `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","sit","uat","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
+| `discovery` | The cloud scope `inventory diff` / `inventory sync` scan — see [Discovery](#discovery). |
 
 ### The fleet inventory
 
@@ -88,6 +90,55 @@ The inventory is the org-specific asset. Generate it from your IaC — e.g.
   ]
 }
 ```
+
+**Validation.** Every command validates the inventory before acting on it and
+reports *every* problem at once. These are hard errors:
+
+| Rule | Why |
+|---|---|
+| Names are unique (case-insensitive) | Commands address clusters by name; a duplicate could hand you credentials for the wrong cluster — e.g. a prod cluster sharing a dev cluster's name. |
+| `cloud` is `aws` or `azure` | An unknown cloud cannot be acted on or verified. |
+| AWS clusters have `account` (12 digits) and `region` | Without the full identity the CLI acts in whichever account is active, and discovery cannot prove the cluster exists. |
+| Azure clusters have `subscription` and `resourceGroup` | As above, for subscriptions. |
+| `version`, when set, parses (`1.30`, `v1.30.4`) | Drift reports would otherwise silently say `unknown`. |
+| `environment` is on the `environments` allow-list, when one is configured | Catches `prd`, `Prod ` and friends. |
+
+Inventories are capped at 32 MiB (a fleet of thousands of clusters is well
+under 1 MiB), so a wrong URL cannot exhaust memory.
+
+### Discovery
+
+`inventory diff` and `inventory sync` scan an **explicit** scope. bankctl never
+guesses which accounts or subscriptions exist, so the scope is reviewable and
+every completeness claim is made only for it:
+
+```json
+"discovery": {
+  "aws": [
+    { "profile": "payments-prod", "account": "111111111111", "regions": ["eu-west-1", "eu-central-1"] },
+    { "profile": "payments-uat",  "account": "222222222222", "regions": ["eu-west-1"] }
+  ],
+  "azure": [
+    { "subscription": "sub-core-prod" },
+    { "subscription": "0b7c…-subscription-guid" }
+  ],
+  "concurrency": 8,
+  "tagKeys": { "environment": "environment", "owner": "owner", "costCentre": "cost-centre" }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `aws[].profile` | AWS CLI profile (e.g. an SSO profile). Empty = default credential chain. |
+| `aws[].account` | The account the profile **must** resolve to. Verified with `sts get-caller-identity` before anything is scanned; a mismatch is refused, not silently scanned. |
+| `aws[].regions` | Regions to scan in that account. |
+| `azure[].subscription` | Subscription name or ID. The inventory may use either form. |
+| `concurrency` | Maximum cloud CLI processes at once across the whole scan (default 8, max 64). |
+| `tagKeys` | Which cloud tags carry `environment`, `owner`, `costCentre` (matched case-insensitively). |
+
+The credentials need only read access: `sts:GetCallerIdentity`,
+`eks:ListClusters` and `eks:DescribeCluster` on AWS; `Reader` (or
+`Microsoft.ContainerService/managedClusters/read`) on each subscription.
 
 ## Commands
 
@@ -114,7 +165,7 @@ Fetches credentials by shelling out to the right cloud CLI
 (`aws eks update-kubeconfig` or `az aks get-credentials`). Flags may go before
 or after the cluster name.
 ```bash
-bankctl kubeconfig eks-payments-nonprod-euw1
+bankctl kubeconfig eks-payments-sit-euw1
 bankctl kubeconfig aks-core-prod-weu --file ~/.kube/aks-core-prod   # isolated
 bankctl kubeconfig aks-core-prod-weu --dry-run                      # print, don't run
 ```
@@ -155,12 +206,63 @@ bankctl fleet versions --fail-on-stale                        # CI gate
 bankctl fleet versions -o json | jq -r '.[]|select(.status=="STALE").name'
 ```
 
+### `bankctl inventory diff [-o table|json]`
+Reconciles the inventory against what the clouds actually run. Exits **0 only
+when the scan was complete and there are no findings**; otherwise 1.
+
+| Finding | Meaning |
+|---|---|
+| `shadow` | Exists in the cloud, absent from the inventory — **ungoverned infrastructure**. |
+| `missing` | Declared, but not found in a scope that was **fully** scanned — decommissioned, renamed, or wrong identity in the inventory. |
+| `drift` | Found, but a field disagrees: running version (compared by minor), Azure location, or a tagged environment/owner/cost centre. An absent tag is unknown, never drift. |
+| `unscanned` | Declared in a scope outside `discovery` (or that failed), so it was **not verified**. |
+
+```text
+KIND       CLUSTER                SCOPE                                   DETAIL
+shadow     eks-trading-uat-euw1   aws 222222222222/eu-west-1              exists in the cloud but not in the inventory — ungoverned infrastructure
+missing    aks-core-uat-weu       azure sub-core-nonprod/rg-aks-core-uat  declared in the inventory but not found in a fully scanned scope — …
+drift      eks-payments-sit-euw1  aws 333333333333/eu-west-1              version: inventory "1.29", cloud "1.30"
+unscanned  eks-payments-dev-euw1  aws 444444444444/eu-west-1              its scope is not in the discovery configuration (or failed to scan), …
+
+scan INCOMPLETE — 1 scope(s) failed; results cannot prove the inventory is complete:
+  aws 444444444444/eu-west-1 (profile acct-444444444444): verifying identity: credentials resolve to account 999999999999, expected 444444444444 — refusing to scan
+```
+
+A scope is scanned all-or-nothing: if one cluster in a region cannot be
+described, the whole region is reported as failed, never as partially clean. A
+failed scope never produces `missing` findings — only `unscanned`. `-o json`
+emits the full report, including the exact scopes scanned, for audit evidence.
+
+```bash
+bankctl inventory diff                                   # human review
+bankctl inventory diff -o json > evidence/inventory-$(date +%F).json
+bankctl inventory diff -o json | jq -r '.findings[]|select(.kind=="shadow").cluster'
+```
+
+### `bankctl inventory sync [--out FILE] [--force]`
+Writes the inventory the clouds imply: every observed cluster with its real
+identity and running version, `environment`/`owner`/`costCentre` from tags
+(falling back to the declared values), declared clusters in unscanned scopes
+kept unchanged, and clusters proven missing removed. Prints to stdout, or to
+`--out` atomically (never a half-written file); `--force` to overwrite.
+
+It **refuses to write** when:
+- the scan was incomplete — clusters in the failed scopes would be silently dropped;
+- the result would not pass validation — e.g. two real clusters share a name, or
+  an untagged cluster has no environment on the allow-list. Fix at the source
+  (tag or rename), then sync again.
+
+```bash
+bankctl inventory sync --out fleet.proposed.json
+git diff --no-index fleet.json fleet.proposed.json      # review before publishing
+```
+
 ### `bankctl guard [--block] [-o table|json]`
 Checks the **current** kube-context against `prodPatterns`. Prints `ok <ctx>` or
 `PROD <ctx>`. With `--block` it exits **3** on production — ideal for a shell
 prompt or a pre-apply hook. `-o json` never weakens `--block`: it still exits 3.
 ```bash
-bankctl guard              # ok    eks-payments-nonprod-euw1
+bankctl guard              # ok    eks-payments-sit-euw1
 bankctl guard --block || echo "refusing destructive op in prod"
 bankctl guard -o json      # {"context": "eks-payments-prod-euw1", "production": true}
 ```
@@ -210,7 +312,7 @@ repurposed. They are defined once, in `internal/app/exitcodes.go`.
 | Code | Name | Meaning |
 |---|---|---|
 | 0 | `ExitOK` | success, or the check passed |
-| 1 | `ExitFailure` | the command ran and failed (inventory/config/cloud CLI failure, timeout), or a check found a problem (`--fail-on-stale`, missing required tool) |
+| 1 | `ExitFailure` | the command ran and failed (inventory/config/cloud CLI failure, timeout), or a check found a problem (`--fail-on-stale`, missing required tool, `inventory diff` not in sync) |
 | 2 | `ExitUsage` | invalid invocation — unknown command, bad flag, bad `-o` value; nothing was attempted |
 | 3 | `ExitProdContext` | `guard --block` found a production context |
 | 130 | `ExitInterrupted` | cancelled by Ctrl-C / SIGTERM; child processes were stopped |
@@ -237,7 +339,7 @@ bankctl --config /etc/bankctl/config.json fleet versions --fail-on-stale
 **Onboard to a cluster from scratch**:
 ```bash
 bankctl clusters list --owner my-team     # find it
-bankctl login eks-myteam-nonprod-euw1     # creds + prod check
+bankctl login eks-myteam-sit-euw1         # creds + prod check
 kubectl get pods -A                       # you're in
 ```
 
@@ -249,6 +351,13 @@ kubectl get pods -A                       # you're in
   subcommands; for anything else it points you at the right upstream tool.
 - **Fail safe** — HTTPS-only inventory, over-warns rather than under-warns on
   prod detection, invalid prod regexes are skipped (never make prod look safe).
+  An ambiguous inventory is refused before any command acts on it.
+- **Says less, never more** — discovery scans scopes all-or-nothing, verifies
+  account identity first, and a partial scan is reported as incomplete; `sync`
+  will not write from one. Output is deterministically ordered, so two scans of
+  the same estate are byte-identical and diffable.
+- **Bounded at scale** — one semaphore caps live cloud CLI processes across the
+  whole scan; tested at 1,500 clusters / 1,700 calls with concurrency held.
 - **Bounded** — every subprocess goes through `internal/execx`: a deadline,
   cancellation on SIGINT/SIGTERM, the whole process group killed on either, and
   the CLI's stderr carried in the error.

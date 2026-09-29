@@ -1,7 +1,64 @@
 {
   "inventoryPath": "fleet.example.json",
   "inventoryUrl": "",
-  "prodPatterns": ["(?i)prod", "(?i)-prd-", "(?i)\\bprd\\b"],
+  "prodPatterns": [
+    "(?i)prod",
+    "(?i)-prd-",
+    "(?i)\\bprd\\b"
+  ],
   "kubeconfigDir": "",
-  "targetKubeVersion": "1.30"
+  "targetKubeVersion": "1.30",
+  "environments": [
+    "dev",
+    "sit",
+    "uat",
+    "prod"
+  ],
+  "commandTimeout": "2m",
+  "discovery": {
+    "aws": [
+      {
+        "profile": "payments-prod",
+        "account": "111111111111",
+        "regions": [
+          "eu-west-1"
+        ]
+      },
+      {
+        "profile": "payments-uat",
+        "account": "222222222222",
+        "regions": [
+          "eu-west-1"
+        ]
+      },
+      {
+        "profile": "payments-sit",
+        "account": "333333333333",
+        "regions": [
+          "eu-west-1"
+        ]
+      },
+      {
+        "profile": "payments-dev",
+        "account": "444444444444",
+        "regions": [
+          "eu-west-1"
+        ]
+      }
+    ],
+    "azure": [
+      {
+        "subscription": "sub-core-prod"
+      },
+      {
+        "subscription": "sub-core-nonprod"
+      }
+    ],
+    "concurrency": 8,
+    "tagKeys": {
+      "environment": "environment",
+      "owner": "owner",
+      "costCentre": "cost-centre"
+    }
+  }
 }

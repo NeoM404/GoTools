@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/NeoM404/GoTools/internal/config"
 )
 
 func run(args ...string) (int, string, string) {
@@ -45,7 +47,7 @@ func TestClustersListWithExampleFleet(t *testing.T) {
 }
 
 func TestFleetVersionsFailOnStale(t *testing.T) {
-	// The example fleet has sandbox at 1.27 vs target 1.30 => STALE => exit 1.
+	// The example fleet has dev at 1.27 vs target 1.30 => STALE => exit 1.
 	code, out, _ := run("--config", "../../configs/bankctl.example.json", "fleet", "versions", "--fail-on-stale")
 	if code != 1 {
 		t.Fatalf("expected exit 1 for stale fleet, got %d\n%s", code, out)
@@ -130,6 +132,10 @@ func TestInitWritesConfig(t *testing.T) {
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("written config is not valid JSON: %v", err)
+	}
+	// The starter config must also pass bankctl's own validation.
+	if _, _, err := config.Load(path); err != nil {
+		t.Fatalf("starter config rejected by config.Load: %v", err)
 	}
 	// Second run without --force must refuse.
 	if code, _, _ := run("init", "--path", path); code != 1 {
