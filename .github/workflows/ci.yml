@@ -39,8 +39,13 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: false # zero dependencies: nothing to cache, nothing to poison
-      - name: Format, vet, dependency policy
-        run: make fmt-check vet deps-check
+      # gofmt's output can differ between Go releases, so formatting is
+      # checked once, against the canonical (newest) formatter.
+      - name: Format
+        if: matrix.go == 'stable'
+        run: make fmt-check
+      - name: Vet and dependency policy
+        run: make vet deps-check
       - name: Install pinned analysis tools
         run: make tools
       - name: Static analysis

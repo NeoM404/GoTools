@@ -43,12 +43,18 @@ func TestValidateDuplicateNameCaseInsensitive(t *testing.T) {
 
 func TestValidateReportsEveryProblemAtOnce(t *testing.T) {
 	f := Fleet{Clusters: []Cluster{
-		{Name: "", Cloud: Azure},                     // empty name, no sub, no rg
-		{Name: "a", Cloud: "gcp"},                    // unknown cloud
-		{Name: "b", Cloud: AWS, Account: "12345"},    // no region, bad account
-		{Name: "c", Cloud: AWS, Region: "eu-west-1"}, // no account
-		{Name: "d", Cloud: "", Version: "latest"},    // empty cloud, bad version
-		{Name: "e", Cloud: Azure, Subscription: "s", ResourceGroup: "r", Environment: "prd"}, // not allowed
+		// empty name, no subscription, no resource group
+		{Name: "", Cloud: Azure},
+		// unknown cloud
+		{Name: "a", Cloud: "gcp"},
+		// no region, malformed account
+		{Name: "b", Cloud: AWS, Account: "12345"},
+		// no account
+		{Name: "c", Cloud: AWS, Region: "eu-west-1"},
+		// empty cloud, unparseable version
+		{Name: "d", Cloud: "", Version: "latest"},
+		// environment not on the allow-list
+		{Name: "e", Cloud: Azure, Subscription: "s", ResourceGroup: "r", Environment: "prd"},
 	}}
 	p := problems(t, f.Validate([]string{"dev", "sit", "uat", "prod"}))
 	want := []string{
