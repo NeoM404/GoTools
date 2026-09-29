@@ -469,6 +469,39 @@ bankctl sweep                 # review what would go
 bankctl sweep --apply         # remove it (backup first)
 ```
 
+### `bankctl audit verify [--log PATH]... [-o table|json]`
+Checks the hash chain of the audit log (default: the configured one; repeat
+`--log` for several). Exits 1 if any chain is broken or unreadable, naming the
+first bad line and whether an event was modified or removed.
+
+### `bankctl evidence (--period 2026-Q3 | --from DATE --to DATE) [--log PATH]... [--production] [--out FILE] [-o table|json]`
+Builds the auditor-facing evidence pack for a period (a quarter, a month, or
+inclusive dates, all UTC): every access — start and end events joined — with
+who, which cloud principal, which cluster and environment, the change record
+and whether it was verified, and the outcome.
+
+```text
+evidence 2026-07-01 → 2026-09-30 · 1 source(s) · chains intact
+accesses 4 · production 3 (1 verified change, 0 unverified, 2 without) · break-glass 1 · refused 1 · failed 0 · incomplete 0
+
+NEEDS REVIEW (1)
+STARTED (UTC)     USER  CLUSTER                 ENV   CHANGE  REASON
+2026-09-29 10:00  neo   eks-payments-prod-euw1  prod  -       break-glass access: P1 INC0099887: payments ingress down
+```
+
+**Needs review** lists what a reviewer must look at: successful break-glass
+access, production access without a change record or with an unverified one,
+and accesses that started but never finished. Refused attempts are counted
+(the control worked) but are not exceptions.
+
+- The chain of every log is **verified while the pack is built**. A broken
+  chain marks the pack `"complete": false` and exits 1 — a tampered log cannot
+  yield clean-looking evidence.
+- Pass `--log` several times to combine logs collected from the team (or a SIEM
+  export); an event present in two copies is counted once.
+- `--out` writes the JSON pack atomically (0600 — it names people and
+  principals) and prints its SHA-256, for the auditor's chain of custody.
+
 ### `bankctl guard [--block] [-o table|json]`
 Classifies the **current** kube-context. It is production if **either**:
 
@@ -566,6 +599,26 @@ setopt prompt_subst; PROMPT='%~$PROD %# '
 bankctl --config /etc/bankctl/config.json fleet versions --fail-on-stale
 ```
 
+**Scheduled hygiene gates** (nightly pipeline; each exits 1 on a finding):
+```bash
+bankctl inventory diff -o json > inventory-diff.json   # shadow / missing / drift
+bankctl fleet eol --fail-on-risk                      # lifecycle and cost risk
+bankctl doctor --strict                               # build-agent CLIs current
+```
+
+**Quarterly access evidence** — collect each engineer's log (or a SIEM export),
+then:
+```bash
+bankctl evidence --period 2026-Q3 --log alice.jsonl --log bob.jsonl --production \
+  --out evidence/2026-Q3-prod-access.json
+# evidence written to evidence/2026-Q3-prod-access.json (sha256 …)
+```
+
+**Emergency access** when the change system is down:
+```bash
+bankctl login eks-payments-prod-euw1 --break-glass "P1 INC0099887: payments ingress down, SNOW unavailable"
+```
+
 **Onboard to a cluster from scratch**:
 ```bash
 bankctl clusters list --owner my-team     # find it
@@ -590,7 +643,7 @@ kubectl get pods -A                       # you're in
   whole scan; tested at 1,500 clusters / 1,700 calls with concurrency held.
 - **Recorded, or it doesn't happen** — credential fetches are audited before
   they run, verified against the cluster's real account first, and refused if
-  the record cannot be written.
+  the record cannot be written. Evidence is built only from verified chains.
 - **Bounded** — every subprocess goes through `internal/execx`: a deadline,
   cancellation on SIGINT/SIGTERM, the whole process group killed on either, and
   the CLI's stderr carried in the error.

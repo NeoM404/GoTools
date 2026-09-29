@@ -13,7 +13,7 @@ authenticates to production banking clusters.
 
 | Tool | Status | What it does |
 |---|---|---|
-| **[bankctl](docs/bankctl.md)** | built | Fleet inventory CLI: list every EKS/AKS cluster across the group, reconcile the inventory against the clouds (shadow, missing and drifted clusters), pull credentials for any of them, report version drift, and guard against accidental production access. |
+| **[bankctl](docs/bankctl.md)** | built | Fleet CLI: list every EKS/AKS cluster across the group; reconcile the inventory against the clouds (shadow, missing, drifted clusters); pull credentials — identity-verified, change-record-gated, and recorded in a tamper-evident audit trail; report version drift, support lifecycle and extended-support cost; guard against accidental production access; and produce quarterly access evidence for auditors. |
 | **kubeconfig sweeper** (`bankctl sweep`) | built | Prune stale EKS/AKS contexts from `~/.kube/config` using the inventory — dry run by default, backup first, removes only what it can prove stale. |
 | _namespace-lint_ | 🔜 planned | Check a namespace request against the platform tenancy standard before it becomes a PR. |
 
@@ -37,9 +37,13 @@ internal/app/       command dispatch + handlers (testable, injected I/O)
 internal/execx/     bounded, cancellable subprocess execution (every CLI call)
 internal/discovery/ enumerates real EKS/AKS clusters in the configured scope
 internal/reconcile/ declared-vs-observed diff and the proposed inventory (pure)
+internal/support/   support lifecycle + extended-support cost (pure)
+internal/audit/     hash-chained, locked audit log + SIEM forwarding
+internal/change/    change-record verification (ServiceNow)
+internal/evidence/  auditor evidence packs from verified audit logs (pure)
 internal/inventory/ fleet model, validation, JSON/HTTPS loading, version-drift logic
-internal/cloud/     aws/az CLI orchestration for kubeconfig
-internal/kube/      current-context + production detection
+internal/cloud/     aws/az CLI orchestration + identity verification
+internal/kube/      context resolution, production detection, kubeconfig sweep
 internal/config/    config resolution & loading
 internal/tools/     `doctor` ecosystem-tool catalog
 configs/            example config + example fleet inventory

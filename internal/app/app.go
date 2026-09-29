@@ -66,6 +66,10 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdInventory(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "sweep":
 		return cmdSweep(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "audit":
+		return cmdAudit(cfgPath, cmdArgs, stdout, stderr)
+	case "evidence":
+		return cmdEvidence(cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
 		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
@@ -139,6 +143,12 @@ Commands:
                               Remove EKS/AKS contexts the inventory proves
                               stale (dry run by default; backup first)
                               [--include-current]
+  audit verify [--log PATH]...
+                              Check the audit log's hash chain
+  evidence --period 2026-Q3 | --from DATE --to DATE
+                              Evidence pack: accesses, change records and
+                              exceptions to review [--log PATH]...
+                              [--production] [--out FILE] [-o table|json]
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status
