@@ -34,6 +34,7 @@ make build                     # -> bin/bankctl
 ```
 cmd/bankctl/        main entrypoint (thin)
 internal/app/       command dispatch + handlers (testable, injected I/O)
+internal/execx/     bounded, cancellable subprocess execution (every CLI call)
 internal/inventory/ fleet model, JSON/HTTPS loading, version-drift logic
 internal/cloud/     aws/az CLI orchestration for kubeconfig
 internal/kube/      current-context + production detection
@@ -46,12 +47,14 @@ docs/               bankctl.md (full usage) · ecosystem-tools.md (what to insta
 ## Development
 
 ```bash
-make vet test build      # what CI runs
-make fmt                 # gofmt
-make cross               # build macOS/Linux arm64+amd64 into dist/
+make tools               # install the pinned staticcheck + govulncheck
+make ci                  # everything CI gates on: fmt, vet, deps, lint, race tests, vulns
+make build               # static, reproducible bin/bankctl
+make checksums           # cross-compile macOS/Linux arm64+amd64 into dist/ + SHA256SUMS
+make repro               # prove the build is byte-for-byte reproducible
 ```
 
-Requires Go 1.23+. See **[docs/bankctl.md](docs/bankctl.md)** for full command
+Requires Go 1.26+. See **[docs/bankctl.md](docs/bankctl.md)** for full command
 reference, recipes (shell-prompt prod guard, nightly drift gate), and the
 extension guide, and **[docs/ecosystem-tools.md](docs/ecosystem-tools.md)** for
 the curated list of upstream tools to install rather than rebuild.

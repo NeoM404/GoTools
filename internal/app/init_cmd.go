@@ -27,7 +27,7 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 	pathFlag := fs.String("path", "", "where to write the config (default: ~/.config/bankctl/config.json)")
 	force := fs.Bool("force", false, "overwrite an existing config")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return ExitUsage
 	}
 
 	path := *pathFlag
@@ -37,7 +37,7 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				fmt.Fprintf(stderr, "cannot determine home directory: %v\n", err)
-				return 1
+				return ExitFailure
 			}
 			base = filepath.Join(home, ".config")
 		}
@@ -46,17 +46,17 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 
 	if _, err := os.Stat(path); err == nil && !*force {
 		fmt.Fprintf(stderr, "%s already exists — use --force to overwrite\n", path)
-		return 1
+		return ExitFailure
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		fmt.Fprintf(stderr, "creating config dir: %v\n", err)
-		return 1
+		return ExitFailure
 	}
 	if err := os.WriteFile(path, []byte(starterConfig), 0o644); err != nil {
 		fmt.Fprintf(stderr, "writing config: %v\n", err)
-		return 1
+		return ExitFailure
 	}
 	fmt.Fprintf(stdout, "wrote starter config to %s\n", path)
 	fmt.Fprintln(stdout, "next: set \"inventoryPath\" or \"inventoryUrl\", then run `bankctl clusters list`")
-	return 0
+	return ExitOK
 }

@@ -3,6 +3,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -11,49 +12,64 @@ import (
 // Version is overridden at build time via -ldflags (see Makefile).
 var Version = "dev"
 
-// Exec is the process entry point. It returns a process exit code.
+// Exec runs bankctl without cancellation. It returns a process exit code;
 // stdout/stderr are injected for testability.
 func Exec(args []string, stdout, stderr io.Writer) int {
+	return ExecContext(context.Background(), args, stdout, stderr)
+}
+
+// ExecContext is the process entry point. Cancelling ctx (main wires it to
+// SIGINT/SIGTERM) stops any running cloud CLI and yields ExitInterrupted.
+func ExecContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	code := dispatch(ctx, args, stdout, stderr)
+	if code != ExitOK && ctx.Err() != nil {
+		fmt.Fprintln(stderr, "bankctl: interrupted")
+		return ExitInterrupted
+	}
+	return code
+}
+
+func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printUsage(stdout)
-		return 0
+		return ExitOK
 	}
 
 	// Split a leading global --config flag from the subcommand.
 	cfgPath, rest := extractConfig(args)
 	if len(rest) == 0 {
 		printUsage(stdout)
-		return 0
+		return ExitOK
 	}
 
 	cmd, cmdArgs := rest[0], rest[1:]
 	switch cmd {
 	case "help", "-h", "--help":
 		printUsage(stdout)
-		return 0
+		return ExitOK
 	case "version", "--version":
 		fmt.Fprintf(stdout, "bankctl %s\n", Version)
-		return 0
+		return ExitOK
 	case "init":
 		return cmdInit(cmdArgs, stdout, stderr)
 	case "doctor":
-		return cmdDoctor(cfgPath, cmdArgs, stdout, stderr)
+		return cmdDoctor(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "clusters":
 		return cmdClusters(cfgPath, cmdArgs, stdout, stderr)
 	case "kubeconfig":
-		return cmdKubeconfig(cfgPath, cmdArgs, stdout, stderr)
+		return cmdKubeconfig(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "login":
-		return cmdLogin(cfgPath, cmdArgs, stdout, stderr)
+		return cmdLogin(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "fleet":
 		return cmdFleet(cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
-		return cmdGuard(cfgPath, cmdArgs, stdout, stderr)
+		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
-		return cmdCurrent(cfgPath, stdout, stderr)
+		return cmdCurrent(ctx, cfgPath, cmdArgs, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n", cmd)
 		printUsage(stderr)
-		return 2
+		return ExitUsage
 	}
 }
 
@@ -101,14 +117,16 @@ Commands:
   fleet versions [-o table|json]
                               Version-drift report against the fleet target
                               [--fail-on-stale]  (exit 1 if any STALE cluster)
-  guard                       Check the CURRENT kube-context for prod
+  guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
-  current                     Show current context + prod status
-  doctor                      Check ecosystem tools are present & current
+  current [-o table|json]     Show current context + prod status
+  doctor [-o table|json]      Check ecosystem tools are present & current
                               [--strict]  (exit 1 if any tool is below floor)
   version                     Print bankctl version
   help                        Show this help
 
+Exit codes: 0 ok · 1 failed/check found a problem · 2 usage error
+            3 production context (guard --block) · 130 interrupted
 Config: --config, $BANKCTL_CONFIG, ~/.config/bankctl/config.json, ./bankctl.json
 First run:  bankctl init  then edit the config's inventory source.
 See docs/bankctl.md for full documentation.

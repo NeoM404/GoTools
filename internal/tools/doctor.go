@@ -5,8 +5,18 @@
 package tools
 
 import (
+	"bytes"
+	"context"
 	"os/exec"
+	"sync"
+	"time"
+
+	"github.com/NeoM404/GoTools/internal/execx"
 )
+
+// probeTimeout bounds each `<tool> --version` call. Generous because some
+// CLIs (az) do slow first-run work, but finite so doctor always finishes.
+const probeTimeout = 20 * time.Second
 
 // Tool describes an external CLI the team relies on.
 type Tool struct {
@@ -56,15 +66,19 @@ type Result struct {
 
 // probeVersion runs a tool's version command and extracts a SemVer string.
 // Returns "" if the tool has no probe or the output can't be parsed.
-func probeVersion(t Tool) string {
+func probeVersion(ctx context.Context, t Tool) string {
 	if len(t.VersionArgs) == 0 {
 		return ""
 	}
-	out, err := exec.Command(t.Name, t.VersionArgs...).CombinedOutput()
-	if err != nil && len(out) == 0 {
+	// Combined output, and a non-zero exit tolerated when something was
+	// printed: some CLIs report their version on stderr or exit oddly.
+	// exec serialises writes when Stdout and Stderr are the same writer.
+	var out bytes.Buffer
+	err := execx.Run(ctx, execx.Spec{Name: t.Name, Args: t.VersionArgs, Stdout: &out, Stderr: &out, Timeout: probeTimeout})
+	if err != nil && out.Len() == 0 {
 		return ""
 	}
-	v, ok := ParseSemVer(string(out))
+	v, ok := ParseSemVer(out.String())
 	if !ok {
 		return ""
 	}
@@ -89,34 +103,41 @@ func itoa(n int) string {
 
 // Inspect resolves each catalog tool in PATH and, where a floor applies, probes
 // its version and flags it outdated. overrides replaces catalog floors by tool
-// name (from config "minVersions").
-func Inspect(overrides map[string]string) []Result {
+// name (from config "minVersions"). Probes run concurrently — each is an
+// independent subprocess — and results keep catalog order.
+func Inspect(ctx context.Context, overrides map[string]string) []Result {
 	cat := Catalog()
-	out := make([]Result, 0, len(cat))
-	for _, t := range cat {
+	out := make([]Result, len(cat))
+	var wg sync.WaitGroup
+	for i, t := range cat {
 		if ov, ok := overrides[t.Name]; ok {
 			t.MinVersion = ov
 		}
-		path, err := exec.LookPath(t.Name)
-		r := Result{Tool: t, Found: err == nil, Path: path}
-		if r.Found && t.MinVersion != "" {
-			r.Detected = probeVersion(t)
-			if r.Detected != "" {
-				got, _ := ParseSemVer(r.Detected)
-				min, ok := ParseSemVer(t.MinVersion)
-				if ok && got.Below(min) {
-					r.Outdated = true
-				}
-			}
-		}
-		out = append(out, r)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = inspectOne(ctx, t)
+		}()
 	}
+	wg.Wait()
 	return out
 }
 
-// Check resolves each tool in the catalog (presence only, no version probe).
-func Check() []Result {
-	return Inspect(nil)
+func inspectOne(ctx context.Context, t Tool) Result {
+	path, err := exec.LookPath(t.Name)
+	r := Result{Tool: t, Found: err == nil, Path: path}
+	if !r.Found || t.MinVersion == "" {
+		return r
+	}
+	r.Detected = probeVersion(ctx, t)
+	if r.Detected == "" {
+		return r
+	}
+	got, _ := ParseSemVer(r.Detected)
+	if min, ok := ParseSemVer(t.MinVersion); ok && got.Below(min) {
+		r.Outdated = true
+	}
+	return r
 }
 
 // MissingRequired returns required tools that are not installed.

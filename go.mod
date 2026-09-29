@@ -4,4 +4,4 @@
 // is a security feature. Everything here builds from the Go standard library.
 module github.com/NeoM404/GoTools
 
-go 1.23
+go 1.26

@@ -1,6 +1,9 @@
 package tools
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestParseSemVer(t *testing.T) {
 	cases := map[string]struct {
@@ -47,7 +50,7 @@ func TestBelow(t *testing.T) {
 
 func TestInspectOverrideAndPresence(t *testing.T) {
 	// A tool that certainly is not installed stays not-found and not-outdated.
-	results := Inspect(map[string]string{"kubectl": "99.0"})
+	results := Inspect(context.Background(), map[string]string{"kubectl": "99.0"})
 	var kubectl *Result
 	for i := range results {
 		if results[i].Name == "kubectl" {

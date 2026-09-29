@@ -5,11 +5,12 @@
 package cloud
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
+	"time"
 
+	"github.com/NeoM404/GoTools/internal/execx"
 	"github.com/NeoM404/GoTools/internal/inventory"
 )
 
@@ -23,11 +24,13 @@ type KubeconfigOptions struct {
 	// Stdout/Stderr for command output; defaults to os.Stdout/os.Stderr.
 	Stdout io.Writer
 	Stderr io.Writer
+	// Timeout bounds the cloud CLI call (required; see config.CommandTimeout).
+	Timeout time.Duration
 }
 
 // UpdateKubeconfig fetches credentials for the cluster using the appropriate
 // cloud CLI. It returns the command that was (or would be) run.
-func UpdateKubeconfig(c inventory.Cluster, opt KubeconfigOptions) ([]string, error) {
+func UpdateKubeconfig(ctx context.Context, c inventory.Cluster, opt KubeconfigOptions) ([]string, error) {
 	var args []string
 	switch c.Cloud {
 	case inventory.AWS:
@@ -59,23 +62,8 @@ func UpdateKubeconfig(c inventory.Cluster, opt KubeconfigOptions) ([]string, err
 	if opt.DryRun {
 		return args, nil
 	}
-	return args, run(args, opt)
-}
-
-func run(args []string, opt KubeconfigOptions) error {
-	if _, err := exec.LookPath(args[0]); err != nil {
-		return fmt.Errorf("required CLI %q not found in PATH — see `bankctl doctor`", args[0])
-	}
-	stdout := opt.Stdout
-	if stdout == nil {
-		stdout = os.Stdout
-	}
-	stderr := opt.Stderr
-	if stderr == nil {
-		stderr = os.Stderr
-	}
-	cmd := exec.Command(args[0], args[1:]...) //nolint:gosec // args built from typed inventory, not free-form user input
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
+	return args, execx.Run(ctx, execx.Spec{
+		Name: args[0], Args: args[1:],
+		Stdout: opt.Stdout, Stderr: opt.Stderr, Timeout: opt.Timeout,
+	})
 }

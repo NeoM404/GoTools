@@ -5,16 +5,22 @@
 package kube
 
 import (
+	"context"
 	"encoding/json"
-	"os"
-	"os/exec"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/NeoM404/GoTools/internal/execx"
 )
 
+// localTimeout bounds kubectl calls that only read local kubeconfig state.
+// They touch no network, so anything slower than this is a hung process.
+const localTimeout = 15 * time.Second
+
 // CurrentContext returns the active kube-context name.
-func CurrentContext() (string, error) {
-	out, err := exec.Command("kubectl", "config", "current-context").Output()
+func CurrentContext(ctx context.Context) (string, error) {
+	out, err := execx.Output(ctx, localTimeout, "kubectl", "config", "current-context")
 	if err != nil {
 		return "", err
 	}
@@ -26,12 +32,12 @@ func CurrentContext() (string, error) {
 // kubeconfig). Empty string means the current context does not use an exec
 // auth plugin (e.g. token/cert auth). It shells out to kubectl so it always
 // agrees with what kubectl itself sees.
-func ExecAuthAPIVersion(kubeconfigFile string) (string, error) {
-	cmd := exec.Command("kubectl", "config", "view", "--minify", "--output", "json")
+func ExecAuthAPIVersion(ctx context.Context, kubeconfigFile string) (string, error) {
+	var env []string
 	if kubeconfigFile != "" {
-		cmd.Env = append(os.Environ(), "KUBECONFIG="+kubeconfigFile)
+		env = []string{"KUBECONFIG=" + kubeconfigFile}
 	}
-	out, err := cmd.Output()
+	out, err := execx.OutputEnv(ctx, localTimeout, env, "kubectl", "config", "view", "--minify", "--output", "json")
 	if err != nil {
 		return "", err
 	}

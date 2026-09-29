@@ -22,7 +22,7 @@ make install
 make cross           # outputs to dist/
 ```
 
-Requires Go 1.23+ to build. The built binary needs `kubectl`, `aws`, and `az`
+Requires Go 1.26+ (the oldest supported Go release) to build. The built binary needs `kubectl`, `aws`, and `az`
 on PATH for the subcommands that use them — run `bankctl doctor` to check.
 
 ## First run
@@ -67,6 +67,7 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `kubeconfigDir` | If set, `kubeconfig`/`login` write per-cluster files here instead of the default kubeconfig. |
 | `targetKubeVersion` | Fleet's desired minor version; drives `fleet versions`. |
 | `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
+| `commandTimeout` | Deadline for each cloud CLI call (`aws`/`az`) as a Go duration, e.g. `"90s"`. Default `"2m"`. An invalid value is a config error, not silently ignored. |
 
 ### The fleet inventory
 
@@ -125,8 +126,16 @@ kubeconfig's exec auth-plugin `apiVersion`. If an old `aws`/`az` CLI stamped a
 removed version (`client.authentication.k8s.io/v1alpha1`, dropped in Kubernetes
 1.24), it prints a stderr warning telling you to update that CLI and run
 `bankctl doctor`. If the cloud CLI call itself fails, the error is followed by
-the same `bankctl doctor` hint. Both go to stderr, so `-o json` and scripts are
+the same `bankctl doctor` hint, and quotes the CLI's own error message rather
+than a bare exit status. Both go to stderr, so `-o json` and scripts are
 unaffected.
+
+**Bounded and cancellable.** Every cloud CLI call has a deadline
+(`commandTimeout`, default 2 minutes). A hung CLI fails with
+`aws did not finish within 2m0s` instead of hanging your shell or CI job, and
+Ctrl-C stops it cleanly (exit 130). Either way the CLI **and every process it
+spawned** are killed — a timed-out `az` does not leave python running in the
+background.
 
 ### `bankctl login <cluster> [--file PATH] [--dry-run]`
 `kubeconfig` plus a loud warning if the target is production.
@@ -146,19 +155,26 @@ bankctl fleet versions --fail-on-stale                        # CI gate
 bankctl fleet versions -o json | jq -r '.[]|select(.status=="STALE").name'
 ```
 
-### `bankctl guard [--block]`
+### `bankctl guard [--block] [-o table|json]`
 Checks the **current** kube-context against `prodPatterns`. Prints `ok <ctx>` or
 `PROD <ctx>`. With `--block` it exits **3** on production — ideal for a shell
-prompt or a pre-apply hook.
+prompt or a pre-apply hook. `-o json` never weakens `--block`: it still exits 3.
 ```bash
 bankctl guard              # ok    eks-payments-nonprod-euw1
 bankctl guard --block || echo "refusing destructive op in prod"
+bankctl guard -o json      # {"context": "eks-payments-prod-euw1", "production": true}
 ```
 
-### `bankctl current`
-Shows the current context and whether it's production.
+`guard` runs on the operator's machine, so it is a fast **safety net, not an
+access control** — an engineer can simply not run it. Enforcement belongs at
+credential issuance (short-lived, JIT-approved credentials) and admission
+policy; do not present `guard` as the control in audit evidence.
 
-### `bankctl doctor [--strict]`
+### `bankctl current [-o table|json]`
+Shows the current context and whether it's production. `-o json` emits the same
+schema as `guard -o json`, so scripts parse one shape for both.
+
+### `bankctl doctor [--strict] [-o table|json]`
 Checks required (`kubectl`, `aws`, `az`) and optional ecosystem tools for
 **presence and version**. It probes each tool with a floor (`kubectl`, `aws`,
 `az`, `helm` by default), parses the version, and flags anything below its
@@ -175,7 +191,10 @@ Exit policy:
 ```bash
 bankctl doctor            # local check with install/upgrade hints
 bankctl doctor --strict   # CI: fail if any floored tool is behind
+bankctl doctor -o json | jq -r '.tools[]|select(.status!="ok").name'
 ```
+In `-o json`, `healthy` always agrees with the exit code under the same flags.
+Version probes run concurrently, each with its own deadline.
 
 This is how the tool answers "are our CLIs current?" — see also the
 kubeconfig drift warning under `kubeconfig` above.
@@ -184,12 +203,17 @@ kubeconfig drift warning under `kubeconfig` above.
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| 0 | success |
-| 1 | runtime error (inventory/config/cloud CLI failure) or `--fail-on-stale` triggered |
-| 2 | usage error (bad flags/args) |
-| 3 | `guard --block` found a production context |
+Exit codes are a **stable contract**: prompts, CI gates and wrappers branch on
+them. New codes may be added; existing ones are never renumbered or
+repurposed. They are defined once, in `internal/app/exitcodes.go`.
+
+| Code | Name | Meaning |
+|---|---|---|
+| 0 | `ExitOK` | success, or the check passed |
+| 1 | `ExitFailure` | the command ran and failed (inventory/config/cloud CLI failure, timeout), or a check found a problem (`--fail-on-stale`, missing required tool) |
+| 2 | `ExitUsage` | invalid invocation — unknown command, bad flag, bad `-o` value; nothing was attempted |
+| 3 | `ExitProdContext` | `guard --block` found a production context |
+| 130 | `ExitInterrupted` | cancelled by Ctrl-C / SIGTERM; child processes were stopped |
 
 ## Recipes
 
@@ -225,12 +249,22 @@ kubectl get pods -A                       # you're in
   subcommands; for anything else it points you at the right upstream tool.
 - **Fail safe** — HTTPS-only inventory, over-warns rather than under-warns on
   prod detection, invalid prod regexes are skipped (never make prod look safe).
+- **Bounded** — every subprocess goes through `internal/execx`: a deadline,
+  cancellation on SIGINT/SIGTERM, the whole process group killed on either, and
+  the CLI's stderr carried in the error.
 - **Testable** — command dispatch takes injected stdout/stderr; core logic
-  (drift classification, filters, prod detection, flag parsing) is unit-tested.
+  (drift classification, filters, prod detection, flag parsing) is unit-tested,
+  and CLI-facing behaviour is tested end to end against fake `aws`/`kubectl`
+  binaries on `PATH`.
+- **Verifiable builds** — static (`CGO_ENABLED=0`), path-free (`-trimpath`),
+  reproducible (`make repro` builds twice and compares), with SHA-256
+  checksums. CI gates on formatting, vet, the stdlib-only policy, staticcheck,
+  race-detected tests on Linux and macOS, and `govulncheck` (also nightly).
 
 ## Extending
 
 Add a subcommand by wiring a `case` in `internal/app/app.go` and a handler in
 `internal/app/commands.go`. Keep cloud-specific shelling in `internal/cloud`,
-inventory logic in `internal/inventory`, and add a unit test. Run
-`make vet test build` before committing.
+inventory logic in `internal/inventory`, and add a unit test. Run external
+CLIs only through `internal/execx`, return the named exit codes, and offer
+`-o json` on anything a script might read. Run `make ci` before committing.

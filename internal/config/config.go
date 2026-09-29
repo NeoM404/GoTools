@@ -15,7 +15,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
+
+// DefaultCommandTimeout bounds a cloud CLI call when the config sets none.
+// Credential fetches are normally seconds; two minutes absorbs a slow SSO
+// token refresh without letting a hung CLI stall a shell or CI job forever.
+const DefaultCommandTimeout = 2 * time.Minute
 
 // Config controls where the fleet inventory comes from and which contexts are
 // treated as production (for the safety guard).
@@ -45,6 +51,40 @@ type Config struct {
 	// e.g. {"kubectl": "1.29", "aws": "2.15"}. Lets the team raise the bar
 	// centrally without a bankctl release.
 	MinVersions map[string]string `json:"minVersions"`
+
+	// CommandTimeout bounds each cloud CLI call (aws/az), as a Go duration
+	// string such as "90s" or "3m". Empty means DefaultCommandTimeout.
+	CommandTimeout string `json:"commandTimeout"`
+}
+
+// Timeout returns the effective cloud CLI timeout. Load has already rejected
+// an invalid value, so the fallback only covers hand-built configs.
+func (c Config) Timeout() time.Duration {
+	d, err := c.parseTimeout()
+	if err != nil {
+		return DefaultCommandTimeout
+	}
+	return d
+}
+
+func (c Config) parseTimeout() (time.Duration, error) {
+	if c.CommandTimeout == "" {
+		return DefaultCommandTimeout, nil
+	}
+	d, err := time.ParseDuration(c.CommandTimeout)
+	if err != nil {
+		return 0, fmt.Errorf("commandTimeout %q: want a duration such as \"90s\" or \"3m\"", c.CommandTimeout)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("commandTimeout %q must be positive", c.CommandTimeout)
+	}
+	return d, nil
+}
+
+// validate rejects settings that would otherwise misbehave silently later.
+func (c Config) validate() error {
+	_, err := c.parseTimeout()
+	return err
 }
 
 // Default returns config used when no file is present.
@@ -73,6 +113,9 @@ func Load(explicitPath string) (Config, string, error) {
 	// Decode over the defaults so unspecified fields keep their default.
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, path, fmt.Errorf("parsing config %s: %w", path, err)
+	}
+	if err := cfg.validate(); err != nil {
+		return cfg, path, fmt.Errorf("config %s: %w", path, err)
 	}
 	// A relative inventoryPath is resolved against the config file's directory,
 	// not the current working directory, so `bankctl` works from anywhere.

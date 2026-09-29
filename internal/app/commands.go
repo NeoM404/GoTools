@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/NeoM404/GoTools/internal/cloud"
 	"github.com/NeoM404/GoTools/internal/config"
+	"github.com/NeoM404/GoTools/internal/execx"
 	"github.com/NeoM404/GoTools/internal/inventory"
 	"github.com/NeoM404/GoTools/internal/kube"
 )
@@ -28,16 +31,16 @@ func writeJSON(w io.Writer, stderr io.Writer, v any) int {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		fmt.Fprintf(stderr, "encoding json: %v\n", err)
-		return 1
+		return ExitFailure
 	}
 	fmt.Fprintln(w, string(b))
-	return 0
+	return ExitOK
 }
 
 // badOutput reports an invalid -o value.
 func badOutput(stderr io.Writer, v string) int {
 	fmt.Fprintf(stderr, "invalid output format %q (want: table|json)\n", v)
-	return 2
+	return ExitUsage
 }
 
 // loadFleet resolves config then loads the inventory from URL (preferred) or
@@ -72,7 +75,7 @@ func loadFleet(cfgPath string, stderr io.Writer) (config.Config, inventory.Fleet
 func cmdClusters(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "usage: bankctl clusters <list|get> ...")
-		return 2
+		return ExitUsage
 	}
 	switch args[0] {
 	case "list":
@@ -81,7 +84,7 @@ func cmdClusters(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		return clustersGet(cfgPath, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown clusters subcommand %q\n", args[0])
-		return 2
+		return ExitUsage
 	}
 }
 
@@ -93,14 +96,14 @@ func clustersList(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	ownerFlag := fs.String("owner", "", "filter by owner substring")
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return ExitUsage
 	}
 	if *output != "table" && *output != "json" {
 		return badOutput(stderr, *output)
 	}
 	_, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
-		return 1
+		return ExitFailure
 	}
 	matches := fleet.Filter(*cloudFlag, *envFlag, *ownerFlag)
 	if *output == "json" {
@@ -112,7 +115,7 @@ func clustersList(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	}
 	if len(matches) == 0 {
 		fmt.Fprintln(stdout, "no clusters match")
-		return 0
+		return ExitOK
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tCLOUD\tENV\tREGION\tVERSION\tOWNER\tCOST-CENTRE")
@@ -122,7 +125,7 @@ func clustersList(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	}
 	tw.Flush()
 	fmt.Fprintf(stdout, "\n%d cluster(s)\n", len(matches))
-	return 0
+	return ExitOK
 }
 
 func clustersGet(cfgPath string, args []string, stdout, stderr io.Writer) int {
@@ -131,23 +134,23 @@ func clustersGet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	output := addOutputFlag(fs)
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
-		return 2
+		return ExitUsage
 	}
 	if len(pos) != 1 {
 		fmt.Fprintln(stderr, "usage: bankctl clusters get <name> [-o table|json]")
-		return 2
+		return ExitUsage
 	}
 	if *output != "table" && *output != "json" {
 		return badOutput(stderr, *output)
 	}
 	_, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
-		return 1
+		return ExitFailure
 	}
 	c, err := fleet.Find(pos[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "%v\n", err)
-		return 1
+		return ExitFailure
 	}
 	if *output == "json" {
 		return writeJSON(stdout, stderr, c)
@@ -168,7 +171,7 @@ func clustersGet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(tw, "Resource group:\t%s\n", c.ResourceGroup)
 	}
 	tw.Flush()
-	return 0
+	return ExitOK
 }
 
 // parseInterspersed parses flags that may appear before OR after positional
@@ -190,43 +193,46 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 	return positionals, nil
 }
 
-func cmdKubeconfig(cfgPath string, args []string, stdout, stderr io.Writer) int {
+func cmdKubeconfig(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("kubeconfig", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fileFlag := fs.String("file", "", "write to an isolated kubeconfig file instead of the default")
 	dryRun := fs.Bool("dry-run", false, "print the CLI command without running it")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
-		return 2
+		return ExitUsage
 	}
 	if len(pos) != 1 {
 		fmt.Fprintln(stderr, "usage: bankctl kubeconfig <cluster> [--file PATH] [--dry-run]")
-		return 2
+		return ExitUsage
 	}
 	cfg, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
-		return 1
+		return ExitFailure
 	}
 	c, err := fleet.Find(pos[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "%v\n", err)
-		return 1
+		return ExitFailure
 	}
 	file := *fileFlag
 	if file == "" && cfg.KubeconfigDir != "" {
 		file = cfg.KubeconfigDir + "/" + c.Name + ".kubeconfig"
 	}
-	cmdArgs, err := cloud.UpdateKubeconfig(c, cloud.KubeconfigOptions{
-		File: file, DryRun: *dryRun, Stdout: stdout, Stderr: stderr,
+	cmdArgs, err := cloud.UpdateKubeconfig(ctx, c, cloud.KubeconfigOptions{
+		File: file, DryRun: *dryRun, Stdout: stdout, Stderr: stderr, Timeout: cfg.Timeout(),
 	})
 	if *dryRun {
 		fmt.Fprintln(stdout, strings.Join(cmdArgs, " "))
-		return 0
+		return ExitOK
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "kubeconfig failed: %v\n", err)
-		fmt.Fprintf(stderr, "→ if this looks like a CLI/version problem, run `bankctl doctor` (check your %s CLI)\n", cliForCloud(c.Cloud))
-		return 1
+		var notFound *execx.NotFoundError
+		if !errors.As(err, &notFound) && !errors.Is(err, execx.ErrInterrupted) {
+			fmt.Fprintf(stderr, "→ if this looks like a CLI/version problem, run `bankctl doctor` (check your %s CLI)\n", cliForCloud(c.Cloud))
+		}
+		return ExitFailure
 	}
 	fmt.Fprintf(stdout, "credentials for %q ready", c.Name)
 	if file != "" {
@@ -239,11 +245,11 @@ func cmdKubeconfig(cfgPath string, args []string, stdout, stderr io.Writer) int 
 	// Drift hint: if the cloud CLI stamped a removed exec-auth apiVersion, the
 	// kubeconfig will fail against a modern cluster. Warn (stderr) so scripting
 	// stays clean. Best-effort — skip silently if kubectl can't be inspected.
-	if ver, verr := kube.ExecAuthAPIVersion(file); verr == nil && kube.IsDeprecatedExecAPIVersion(ver) {
+	if ver, verr := kube.ExecAuthAPIVersion(ctx, file); verr == nil && kube.IsDeprecatedExecAPIVersion(ver) {
 		fmt.Fprintf(stderr, "⚠  kubeconfig uses a deprecated auth plugin apiVersion (%s) — "+
 			"update your %s CLI and run `bankctl doctor`.\n", ver, cliForCloud(c.Cloud))
 	}
-	return 0
+	return ExitOK
 }
 
 func cliForCloud(c inventory.Cloud) string {
@@ -253,8 +259,8 @@ func cliForCloud(c inventory.Cloud) string {
 	return "aws"
 }
 
-func cmdLogin(cfgPath string, args []string, stdout, stderr io.Writer) int {
-	rc := cmdKubeconfig(cfgPath, args, stdout, stderr)
+func cmdLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
+	rc := cmdKubeconfig(ctx, cfgPath, args, stdout, stderr)
 	if rc != 0 {
 		return rc
 	}
@@ -270,38 +276,38 @@ func cmdLogin(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs.Bool("dry-run", false, "")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil || len(pos) != 1 {
-		return 0
+		return ExitOK
 	}
 	if c, err := fleet.Find(pos[0]); err == nil {
 		if c.Environment == "prod" || kube.IsProd(c.Name, cfg.ProdPatterns) {
 			fmt.Fprintf(stdout, "\n⚠  %q is a PRODUCTION cluster. Changes require a change record.\n", c.Name)
 		}
 	}
-	return 0
+	return ExitOK
 }
 
 func cmdFleet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "versions" {
 		fmt.Fprintln(stderr, "usage: bankctl fleet versions [--fail-on-stale]")
-		return 2
+		return ExitUsage
 	}
 	fs := flag.NewFlagSet("fleet versions", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	failOnStale := fs.Bool("fail-on-stale", false, "exit 1 if any cluster is STALE")
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args[1:]); err != nil {
-		return 2
+		return ExitUsage
 	}
 	if *output != "table" && *output != "json" {
 		return badOutput(stderr, *output)
 	}
 	cfg, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
-		return 1
+		return ExitFailure
 	}
 	if cfg.TargetKubeVersion == "" {
 		fmt.Fprintln(stderr, "set targetKubeVersion in config to run the drift report")
-		return 1
+		return ExitFailure
 	}
 
 	type row struct {
@@ -328,7 +334,7 @@ func cmdFleet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		}
 		rc := writeJSON(stdout, stderr, rows)
 		if rc == 0 && *failOnStale && stale > 0 {
-			return 1
+			return ExitFailure
 		}
 		return rc
 	}
@@ -342,54 +348,84 @@ func cmdFleet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	tw.Flush()
 	fmt.Fprintf(stdout, "\ntarget %s | %d stale cluster(s)\n", cfg.TargetKubeVersion, stale)
 	if *failOnStale && stale > 0 {
-		return 1
+		return ExitFailure
 	}
-	return 0
+	return ExitOK
 }
 
-func cmdGuard(cfgPath string, args []string, stdout, stderr io.Writer) int {
+// contextStatus is the machine-readable shape shared by guard and current,
+// so scripts parse one schema regardless of which command they call.
+type contextStatus struct {
+	Context    string `json:"context"`
+	Production bool   `json:"production"`
+}
+
+// resolveContext loads config and classifies the current kube-context.
+func resolveContext(ctx context.Context, cfgPath string, stderr io.Writer) (contextStatus, bool) {
+	cfg, _, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "config error: %v\n", err)
+		return contextStatus{}, false
+	}
+	name, err := kube.CurrentContext(ctx)
+	if err != nil {
+		fmt.Fprintf(stderr, "could not read current kube-context: %v\n", err)
+		return contextStatus{}, false
+	}
+	return contextStatus{Context: name, Production: kube.IsProd(name, cfg.ProdPatterns)}, true
+}
+
+func cmdGuard(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("guard", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	block := fs.Bool("block", false, "exit 3 (not 0) when the current context is production")
+	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return ExitUsage
 	}
-	cfg, _, err := config.Load(cfgPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "config error: %v\n", err)
-		return 1
+	if *output != "table" && *output != "json" {
+		return badOutput(stderr, *output)
 	}
-	ctx, err := kube.CurrentContext()
-	if err != nil {
-		fmt.Fprintf(stderr, "could not read current kube-context (is kubectl configured?): %v\n", err)
-		return 1
+	st, ok := resolveContext(ctx, cfgPath, stderr)
+	if !ok {
+		return ExitFailure
 	}
-	if kube.IsProd(ctx, cfg.ProdPatterns) {
-		fmt.Fprintf(stdout, "PROD  %s\n", ctx)
-		if *block {
-			return 3
+	if *output == "json" {
+		if rc := writeJSON(stdout, stderr, st); rc != ExitOK {
+			return rc
 		}
-		return 0
+	} else if st.Production {
+		fmt.Fprintf(stdout, "PROD  %s\n", st.Context)
+	} else {
+		fmt.Fprintf(stdout, "ok    %s\n", st.Context)
 	}
-	fmt.Fprintf(stdout, "ok    %s\n", ctx)
-	return 0
+	if st.Production && *block {
+		return ExitProdContext
+	}
+	return ExitOK
 }
 
-func cmdCurrent(cfgPath string, stdout, stderr io.Writer) int {
-	cfg, _, err := config.Load(cfgPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "config error: %v\n", err)
-		return 1
+func cmdCurrent(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("current", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	output := addOutputFlag(fs)
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
 	}
-	ctx, err := kube.CurrentContext()
-	if err != nil {
-		fmt.Fprintf(stderr, "could not read current kube-context: %v\n", err)
-		return 1
+	if *output != "table" && *output != "json" {
+		return badOutput(stderr, *output)
+	}
+	st, ok := resolveContext(ctx, cfgPath, stderr)
+	if !ok {
+		return ExitFailure
+	}
+	if *output == "json" {
+		return writeJSON(stdout, stderr, st)
 	}
 	status := "non-prod"
-	if kube.IsProd(ctx, cfg.ProdPatterns) {
+	if st.Production {
 		status = "PRODUCTION"
 	}
-	fmt.Fprintf(stdout, "context: %s\nstatus:  %s\n", ctx, status)
-	return 0
+	fmt.Fprintf(stdout, "context: %s\nstatus:  %s\n", st.Context, status)
+	return ExitOK
 }

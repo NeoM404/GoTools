@@ -12,12 +12,24 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/NeoM404/GoTools/internal/app"
 )
 
 func main() {
-	// os.Args[1:] drops the program name; app.Exec owns every exit code.
-	os.Exit(app.Exec(os.Args[1:], os.Stdout, os.Stderr))
+	// SIGINT/SIGTERM cancel the context, which stops any running cloud CLI
+	// rather than orphaning it; app.ExecContext then exits 130. A second
+	// signal falls through to the default handler and kills us immediately.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-ctx.Done()
+		stop() // restore default handling so a second signal is not swallowed
+	}()
+	code := app.ExecContext(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
 }
