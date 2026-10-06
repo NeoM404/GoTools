@@ -76,6 +76,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdShell(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "ec2":
 		return cmdEC2(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "connect":
+		return cmdConnect(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
 		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
@@ -177,6 +179,10 @@ Commands:
                               (legacy: launch sm/SSMshell already signed in)
                               [--change-record CHG… | --break-glass REASON]
   ec2 <start|stop> <instance> Start/stop an instance, audited [--yes]
+  connect <eks-cluster>       Tunnel to a private EKS endpoint through the
+                              devops instance (Session Manager); kubectl
+                              runs locally as YOUR SSO role, TLS verified
+                              [--via-instance I] [--port N] [--tab]
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status

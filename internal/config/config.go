@@ -163,6 +163,17 @@ type AWS struct {
 	// LegacyTool is the existing SSM tool `shell --via legacy` launches
 	// already signed in (default "sm"; e.g. "AWS-EC2-SSMshell.exe").
 	LegacyTool string `json:"legacyTool"`
+	// DevopsInstance is matched against instance names to find the hop for
+	// `bankctl connect` (default "devops").
+	DevopsInstance string `json:"devopsInstance"`
+}
+
+// DevopsName returns the devops-instance name match.
+func (a AWS) DevopsName() string {
+	if a.DevopsInstance == "" {
+		return "devops"
+	}
+	return a.DevopsInstance
 }
 
 // LevelTag returns the access-level tag key.
