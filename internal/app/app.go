@@ -160,6 +160,7 @@ Commands:
                               account + role (picker, or --account/--role);
                               writes an AWS CLI profile, no keys handled
                               [--device-code] [--force] [--format sh|powershell|none]
+                              [--all --break-glass REASON]  (break-glass roles only)
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status

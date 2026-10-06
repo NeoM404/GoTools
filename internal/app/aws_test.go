@@ -228,3 +228,56 @@ func TestAWSLoginNeedsConfiguration(t *testing.T) {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 }
+
+func TestAWSBreakGlassAllUsesOnlyBreakGlassRolesAndFlagsEach(t *testing.T) {
+	w := newAWSWorld(t, "")
+	reason := "P1 INC0012345 payments API down in prod"
+	code, out, errb := run("--config", w.cfg, "aws", "login", "--all", "--break-glass", reason)
+	if code != ExitOK || out != "" {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
+	}
+	cfgText, _ := os.ReadFile(w.awsConfig)
+	if strings.Count(string(cfgText), "[profile ") != 2 || strings.Contains(string(cfgText), "Platform-") {
+		t.Fatalf("only the two BreakGlass-Admin assignments may be signed in to:\n%s", cfgText)
+	}
+	ev := readAudit(t, w.logPath)
+	if len(ev) != 4 {
+		t.Fatalf("want a start+end per account: %+v", ev)
+	}
+	for _, e := range ev {
+		if !e.BreakGlass || e.BreakGlassReason != reason {
+			t.Fatalf("every event must be flagged break-glass: %+v", e)
+		}
+	}
+	if !strings.Contains(errb, "BREAK-GLASS: signing in to 2 account(s)") {
+		t.Fatalf("stderr: %q", errb)
+	}
+}
+
+func TestAWSBreakGlassRefusedWithoutRoleIsRecorded(t *testing.T) {
+	w := newAWSWorld(t, "")
+	w.assignments["111111111111"] = []string{"Platform-ReadOnly"}
+	w.assignments["222222222222"] = []string{"Platform-Admin"}
+	code, _, errb := run("--config", w.cfg, "aws", "login", "--all", "--break-glass", "P1 INC0012345 payments API down")
+	if code != ExitFailure || !strings.Contains(errb, "you hold no break-glass role") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	ev := readAudit(t, w.logPath)
+	if len(ev) != 2 || ev[1].Outcome != audit.OutcomeRefused || !ev[1].BreakGlass {
+		t.Fatalf("a refused break-glass attempt must be on record: %+v", ev)
+	}
+}
+
+func TestAWSBreakGlassFlagRules(t *testing.T) {
+	w := newAWSWorld(t, "")
+	for _, args := range [][]string{
+		{"--all"},
+		{"--break-glass", "P1 INC0012345 payments API down"},
+		{"--all", "--break-glass", "too short"},
+		{"--all", "--break-glass", "P1 INC0012345 payments API down", "--role", "BreakGlass-Admin"},
+	} {
+		if code, _, _ := run(append([]string{"--config", w.cfg, "aws", "login"}, args...)...); code != ExitUsage {
+			t.Fatalf("%v: code=%d", args, code)
+		}
+	}
+}

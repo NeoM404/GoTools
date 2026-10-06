@@ -84,7 +84,20 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	deviceCode := fs.Bool("device-code", false, "sign in with a device code — for a host with no browser, such as a devops box")
 	force := fs.Bool("force", false, "sign in again even if a valid sign-in is cached")
 	format := fs.String("format", defaultEnvFormat(), "what to print on stdout: sh (export AWS_PROFILE=…), powershell, or none")
+	all := fs.Bool("all", false, "break-glass: sign in to every account where you hold a break-glass role (needs --break-glass)")
+	glass := fs.String("break-glass", "", "the incident or reason for signing in to every account; recorded and flagged for review")
 	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	switch {
+	case *all != (*glass != ""):
+		fmt.Fprintln(stderr, "--all and --break-glass go together: signing in to every account is break-glass only")
+		return ExitUsage
+	case *all && (*account != "" || *role != ""):
+		fmt.Fprintln(stderr, "--all signs in to every break-glass assignment; it does not take --account or --role")
+		return ExitUsage
+	case *all && len(strings.TrimSpace(*glass)) < config.MinBreakGlassReason:
+		fmt.Fprintf(stderr, "--break-glass needs a real reason (at least %d characters): it is recorded and reviewed\n", config.MinBreakGlassReason)
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
@@ -103,6 +116,9 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	choices, managed, code := listChoices(ctx, cfg, *deviceCode, *force, stderr)
 	if code != ExitOK {
 		return code
+	}
+	if *all {
+		return breakGlassAll(ctx, cfg, managed, choices, strings.TrimSpace(*glass), stderr)
 	}
 	chosen, code := chooseAssignment(cfg, choices, *account, *role, stderr)
 	if code != ExitOK {
@@ -145,6 +161,53 @@ func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool,
 		choices[i] = awsChoice{as, squad, env}
 	}
 	return choices, managed, ExitOK
+}
+
+// breakGlassAll signs in to every account where the caller holds one of the
+// configured break-glass roles. Identity Center decides who holds those
+// roles; bankctl refuses to use any other role this way, records every
+// sign-in as break-glass, and records a refused attempt too.
+func breakGlassAll(ctx context.Context, cfg config.Config, m awssso.Managed, choices []awsChoice, reason string, stderr io.Writer) int {
+	base := audit.Event{BreakGlass: true, BreakGlassReason: reason}
+	var targets []awsChoice
+	for _, c := range choices {
+		if cfg.AWS.IsBreakGlassRole(c.Role) {
+			targets = append(targets, c)
+		}
+	}
+	if len(targets) == 0 {
+		msg := "you hold no break-glass role in Identity Center"
+		if len(cfg.AWS.BreakGlassRoles) == 0 {
+			msg = "no break-glass roles are configured (aws.breakGlassRoles)"
+		}
+		ev := base
+		ev.Action, ev.Cloud, ev.Detail = "aws-login", "aws", "break-glass sign-in to all accounts"
+		if tr, err := beginAuditEvent(ctx, cfg, ev, stderr); err == nil {
+			tr.end(ctx, audit.OutcomeRefused, "", msg, stderr)
+		}
+		fmt.Fprintln(stderr, "break-glass refused: "+msg)
+		return ExitFailure
+	}
+	fmt.Fprintf(stderr, "\n⚠  BREAK-GLASS: signing in to %d account(s) with %s.\n   Reason: %s\n   Every sign-in is recorded and flagged for review.\n\n",
+		len(targets), strings.Join(cfg.AWS.BreakGlassRoles, ", "), reason)
+	failed := 0
+	for _, c := range targets {
+		if _, code := signInTo(ctx, cfg, m, c, base, stderr); code != ExitOK {
+			failed++
+		}
+		// signInTo saved the profile; reload so the next save keeps it.
+		if path, err := awssso.ConfigPath(); err == nil {
+			if fresh, err := awssso.LoadManaged(path); err == nil {
+				m = fresh
+			}
+		}
+	}
+	if failed > 0 {
+		fmt.Fprintf(stderr, "%d of %d break-glass sign-ins failed — see above\n", failed, len(targets))
+		return ExitFailure
+	}
+	fmt.Fprintf(stderr, "break-glass: signed in to %d account(s); use a profile with --profile or AWS_PROFILE\n", len(targets))
+	return ExitOK
 }
 
 func defaultEnvFormat() string {
