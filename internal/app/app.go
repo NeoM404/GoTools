@@ -72,6 +72,10 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdEvidence(cfgPath, cmdArgs, stdout, stderr)
 	case "aws":
 		return cmdAWS(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "shell":
+		return cmdShell(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "ec2":
+		return cmdEC2(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
 		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
@@ -166,6 +170,13 @@ Commands:
   aws env [--profile P] [--format sh|powershell]
                               Short-term credentials for tools that need
                               keys (sm, SSMshell):  eval "$(bankctl aws env)"
+  shell [FILTER…]             Session Manager shell on an instance in the
+                              profile's account: picker coloured by env,
+                              audited [--instance ID|NAME] [--profile P]
+                              [--tab] (Windows Terminal) [--via aws|legacy]
+                              (legacy: launch sm/SSMshell already signed in)
+                              [--change-record CHG… | --break-glass REASON]
+  ec2 <start|stop> <instance> Start/stop an instance, audited [--yes]
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status

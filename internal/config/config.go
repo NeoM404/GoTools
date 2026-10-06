@@ -157,6 +157,28 @@ type AWS struct {
 	BreakGlassRoles []string `json:"breakGlassRoles"`
 	// SessionTimeout bounds an interactive sign-in or shell (default "12h").
 	SessionTimeout string `json:"sessionTimeout"`
+	// AccessLevelTag is the EC2 tag holding an instance's access level
+	// (default "AccessLevel"), shown in the instance picker.
+	AccessLevelTag string `json:"accessLevelTag"`
+	// LegacyTool is the existing SSM tool `shell --via legacy` launches
+	// already signed in (default "sm"; e.g. "AWS-EC2-SSMshell.exe").
+	LegacyTool string `json:"legacyTool"`
+}
+
+// LevelTag returns the access-level tag key.
+func (a AWS) LevelTag() string {
+	if a.AccessLevelTag == "" {
+		return "AccessLevel"
+	}
+	return a.AccessLevelTag
+}
+
+// Legacy returns the existing SSM tool's command.
+func (a AWS) Legacy() string {
+	if a.LegacyTool == "" {
+		return "sm"
+	}
+	return a.LegacyTool
 }
 
 // AWSAccount is explicit metadata for one account.
@@ -286,6 +308,9 @@ func (c Config) validateAWS() error {
 		if !iamRoleRe.MatchString(r) {
 			errs = append(errs, fmt.Errorf("aws.breakGlassRoles: %q is not an IAM role name", r))
 		}
+	}
+	if strings.ContainsAny(a.AccessLevelTag+a.LegacyTool, "\r\n") || strings.HasPrefix(a.LegacyTool, "-") {
+		errs = append(errs, fmt.Errorf("aws.accessLevelTag / aws.legacyTool: invalid value"))
 	}
 	if _, err := parsePositive("aws.sessionTimeout", a.SessionTimeout, DefaultAWSSessionTimeout); err != nil {
 		errs = append(errs, err)
