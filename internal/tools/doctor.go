@@ -42,6 +42,8 @@ func Catalog() []Tool {
 			Install: "brew install awscli", MinVersion: "2.13", VersionArgs: []string{"--version"}},
 		{Name: "az", Purpose: "Azure CLI — AKS kubeconfig + login", Required: true,
 			Install: "brew install azure-cli", MinVersion: "2.55", VersionArgs: []string{"version", "-o", "json"}},
+		{Name: "session-manager-plugin", Purpose: "AWS Session Manager plugin — bankctl shell/connect", Install: "brew install --cask session-manager-plugin",
+			VersionArgs: []string{"--version"}},
 		{Name: "helm", Purpose: "Kubernetes package manager", Install: "brew install helm",
 			MinVersion: "3.12", VersionArgs: []string{"version", "--short"}},
 		{Name: "kubectx", Purpose: "Fast context switching", Install: "brew install kubectx"},

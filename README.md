@@ -14,6 +14,7 @@ authenticates to production banking clusters.
 | Tool | Status | What it does |
 |---|---|---|
 | **[bankctl](docs/bankctl.md)** | built | Fleet CLI: list every EKS/AKS cluster across the group; reconcile the inventory against the clouds (shadow, missing, drifted clusters); pull credentials — identity-verified, change-record-gated, and recorded in a tamper-evident audit trail; report version drift, support lifecycle and extended-support cost; guard against accidental production access; and produce quarterly access evidence for auditors. |
+| **AWS access** (`bankctl aws`, `shell`, `connect`, `eks`) | built | Sign in with IAM Identity Center and pick one account and role; Session Manager shells and private-EKS tunnels as your own identity, coloured by environment; break-glass for named admins; works alongside `sm`/SSMshell; access-entries reporting. No pasted keys, every access recorded — [aws.md](docs/aws.md), [security.md](docs/security.md). |
 | **kubeconfig sweeper** (`bankctl sweep`) | built | Prune stale EKS/AKS contexts from `~/.kube/config` using the inventory — dry run by default, backup first, removes only what it can prove stale. |
 | _namespace-lint_ | 🔜 planned | Check a namespace request against the platform tenancy standard before it becomes a PR. |
 
@@ -45,6 +46,8 @@ reconciles the reviewed inventory against Azure — see
 cmd/bankctl/        main entrypoint (thin)
 internal/app/       command dispatch + handlers (testable, injected I/O)
 internal/execx/     bounded, cancellable subprocess execution (every CLI call)
+internal/awssso/    IAM Identity Center assignments + the managed AWS CLI profiles
+internal/picker/    type-to-filter terminal picker (no raw mode, no dependencies)
 internal/discovery/ enumerates real EKS/AKS clusters in the configured scope
 internal/reconcile/ declared-vs-observed diff and the proposed inventory (pure)
 internal/support/   support lifecycle + extended-support cost (pure)
@@ -59,6 +62,8 @@ internal/tools/     `doctor` ecosystem-tool catalog
 configs/            example configs + fleet inventories (workstation and bastion)
 inventory/          the declared inventory + pipeline config, reconciled nightly
 .azure-pipelines/   Azure DevOps CI and inventory-reconciliation pipelines
+deploy/terraform/   EKS access entries per Identity Center role
+scripts/            e2e-smoke.sh — the built binary's exit-code contract
 docs/               bankctl.md (full usage) · ecosystem-tools.md (what to install instead)
 ```
 
@@ -66,7 +71,8 @@ docs/               bankctl.md (full usage) · ecosystem-tools.md (what to insta
 
 ```bash
 make tools               # install the pinned staticcheck + govulncheck
-make ci                  # everything CI gates on: fmt, vet, deps, lint, race tests, vulns
+make ci                  # everything CI gates on: fmt, vet, deps, lint, race tests, e2e, vulns
+make e2e                 # end-to-end regression: engineer journey + binary smoke test
 make build               # static, reproducible bin/bankctl
 make checksums           # cross-compile macOS/Linux arm64+amd64 into dist/ + SHA256SUMS
 make repro               # prove the build is byte-for-byte reproducible

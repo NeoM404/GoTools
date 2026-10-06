@@ -1,0 +1,194 @@
+# AWS access with bankctl
+
+bankctl replaces copying keys from the AWS access portal with
+your own short-lived identity. Every step is recorded. `sm` and SSMshell keep
+working, and bankctl can launch them for you already signed in.
+
+| Today | With bankctl |
+|---|---|
+| Copy access key, secret and session token from the portal | `bankctl aws login`: one browser approval, then pick an account and role |
+| Paste them into SSMshell / `sm` | `bankctl shell`, or `bankctl shell --via legacy` to launch `sm` signed in |
+| The session starts as `root`; switch to `ec2-user` and paste the keys again | The session runs as your SSO role; cluster access needs no keys on the box |
+| `kubectl` on the devops box | `bankctl connect <cluster>`: `kubectl` on your laptop, through the box |
+
+For the reasoning behind each choice, and what Information Security is asked
+to configure, see [security.md](security.md).
+
+## Setup
+
+Add an `aws` block to your config (`bankctl init` writes the rest). A complete
+example is [`configs/bankctl.aws.example.json`](../configs/bankctl.aws.example.json).
+
+```json
+"aws": {
+  "startUrl": "https://d-xxxxxxxxxx.awsapps.com/start",
+  "ssoRegion": "af-south-1",
+  "accountNamePattern": "^(?P<squad>[a-z0-9]+)-(?P<env>dev|ete|qa|prod)$",
+  "breakGlassRoles": ["BreakGlass-Admin"]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `startUrl`, `ssoRegion` | The Identity Center access portal and its region. Required. |
+| `ssoSession` | Name of the `[sso-session]` bankctl writes (default `bankctl`). |
+| `region` | Default region of generated profiles (default `ssoRegion`). |
+| `profilePrefix` | Generated profiles are named `<prefix>.<account>.<role>` (default `bankctl`). |
+| `accountNamePattern` | Gets squad and environment from an account's name: named groups `env` and, optionally, `squad`. |
+| `accounts` | Explicit `{id, squad, environment}` per account. Overrides the pattern. |
+| `breakGlassRoles` | The only roles `aws login --all` may use. |
+| `accessLevelTag` | EC2 tag shown as the instance's access level (default `AccessLevel`). |
+| `devopsInstance` | Name match for the devops instance `connect` tunnels through (default `devops`). |
+| `legacyTool` | What `shell --via legacy` launches (default `sm`; e.g. `AWS-EC2-SSMshell.exe`). |
+| `sessionTimeout` | Longest an interactive session may run (default `12h`). |
+
+`environmentColors` (top level) sets tab, picker and prompt colours. The
+defaults match the existing tools: dev `#22c55e`, ete `#f97316`, qa `#3b82f6`,
+prod `#ef4444`.
+
+You need: AWS CLI v2, the Session Manager plugin, and `kubectl` for `connect`.
+Run `bankctl doctor` to check.
+
+## Sign in: `bankctl aws login`
+
+```bash
+eval "$(bankctl aws login)"                       # bash/zsh: picker, then sets AWS_PROFILE
+bankctl aws login --format powershell | iex       # PowerShell
+bankctl aws login --account payments-prod --role Platform-ReadOnly   # no picker
+bankctl aws login --device-code                   # on a host with no browser (devops box)
+```
+
+1. If no valid sign-in is cached, bankctl runs `aws sso login`, the AWS CLI's
+   own flow. You approve it in the browser.
+2. It lists **only the accounts and roles Identity Center assigns you**, in a
+   picker coloured by environment. Type to filter, enter a number to choose.
+   `--account`/`--role` choose without the picker. With no terminal and more
+   than one match, it refuses rather than guessing.
+3. It writes **one** AWS CLI profile for that account and role, in a marked
+   section of `~/.aws/config`. Everything outside that section, including
+   profiles `sm` or you wrote, is left byte for byte.
+4. It checks that the profile really acts in the chosen account
+   (`sts get-caller-identity`), and records the sign-in.
+
+No AWS keys pass through bankctl. The AWS CLI fetches short-term credentials
+for that one account and role when the profile is used. The picker and
+messages go to stderr, so stdout carries only `export AWS_PROFILE=…`.
+
+### Break-glass: every account at once
+
+```bash
+bankctl aws login --all --break-glass "P1 INC0012345: payments API down in prod"
+```
+
+Only for the named admins who hold a break-glass role in Identity Center:
+
+- It needs a reason of at least 20 characters.
+- It uses only `breakGlassRoles`.
+- Every sign-in is flagged for review in the evidence pack, and a refused
+  attempt is recorded too.
+
+Who may use it is decided by Identity Center. bankctl just never signs in to
+every account with an ordinary role.
+
+### Who am I: `bankctl aws whoami`
+
+Shows the profile, account, squad, environment, role and ARN, plus how long the
+sign-in has left. `-o json` for scripts.
+
+### Credentials for older tools: `bankctl aws env`
+
+```bash
+eval "$(bankctl aws env)"; sm        # sm gets the keys without a paste
+```
+
+Prints the profile's short-term credentials as environment variables:
+
+- It refuses to print them onto a terminal screen unless you add `--show`.
+- It validates the AWS CLI's output before passing it on.
+- It records the export. The keys themselves are never recorded.
+
+## A shell on an instance: `bankctl shell`
+
+```bash
+bankctl shell                     # picker: NAME, INSTANCE, PRIVATE IP, STATE, TYPE, ZONE, LEVEL
+bankctl shell devops              # filter; one match goes straight in
+bankctl shell --instance i-0abc…  # by ID or Name tag
+bankctl shell devops --tab        # in a new Windows Terminal tab coloured by environment
+bankctl shell --via legacy        # launch sm / SSMshell already signed in
+bankctl ec2 start payments-batch  # start/stop, confirmed by instance ID in prod
+```
+
+The session is `aws ssm start-session` under your own profile. Before it
+starts, bankctl sets the terminal title and prints a banner in the
+environment's colour. In production it adds a warning that the session is
+recorded. `--tab` works from Windows and from WSL: the tab re-enters the same
+distribution.
+
+## Straight to a cluster: `bankctl connect`
+
+```bash
+bankctl connect payments-eks-prod            # holds the tunnel; Ctrl-C closes it
+export KUBECONFIG=~/.kube/bankctl/payments-eks-prod.json
+kubectl get nodes
+```
+
+1. Looks the cluster up under your profile: endpoint, CA and region.
+2. Opens a Session Manager port-forward through the account's devops instance
+   to the private endpoint (`AWS-StartPortForwardingSessionToRemoteHost`).
+3. Writes an isolated kubeconfig, readable only by you (`0600`):
+   - The server is the local tunnel.
+   - TLS is still verified against the cluster's CA under its EKS hostname
+     (`tls-server-name`).
+   - The token comes from `aws eks get-token` as your SSO role.
+   - Nothing long-lived is stored.
+
+`--tab` holds the tunnel in its own coloured tab. `--via-instance` and
+`--port` override the defaults. `guard` and `prompt` treat the context like
+any other, so production still shows red.
+
+## Moving clusters to access entries: `bankctl eks`
+
+```bash
+bankctl eks auth --all-profiles             # mode, endpoint exposure, next step per cluster
+bankctl eks auth --fail-on-configmap        # exit 1 while any cluster is CONFIG_MAP only
+bankctl eks access payments-eks-prod        # who can reach it, with which policy and scope
+```
+
+[`deploy/terraform/eks-access-entries`](../deploy/terraform/eks-access-entries)
+has the Terraform. It switches a cluster to `API_AND_CONFIG_MAP` (`aws-auth`
+keeps working, and the switch is one-way) and gives each Identity Center role
+and the pipeline their own entry.
+
+## Your prompt
+
+```bash
+PS1='$(bankctl prompt --shell bash) \w\$ '        # bash
+PROMPT='$(bankctl prompt --shell zsh) %~ %# '     # zsh (setopt prompt_subst)
+```
+
+Shows `k8s:<context>[env]` and `aws:<squad>[env]` in the environment's colour,
+with production in bold capitals. It reads only local files and never fails.
+
+## Change records
+
+Change control is switched off for now (`"changeControl": {"enabled": false}`).
+No record is required. One you pass is still format-checked and recorded, and
+the command says change control is off. Set `"enabled": true` to require
+`--change-record` for the environments in `requireFor`. `shell`, `connect`,
+`kubeconfig` and `login` all honour it. `--break-glass "<reason>"` is the
+emergency path.
+
+## What gets recorded
+
+Every action below is written to the hash-chained audit log, and forwarded to
+the SIEM when `audit.forward` is set. Each is included in
+`bankctl evidence --period 2026-Q4`.
+
+| Action | When |
+|---|---|
+| `aws-login` | Each account sign-in (break-glass flagged) |
+| `aws-export-credentials` | `aws env` |
+| `ssm-session` | `shell` |
+| `legacy-ssm-tool` | `shell --via legacy` |
+| `eks-connect` | `connect` |
+| `ec2-start`, `ec2-stop` | `ec2` |

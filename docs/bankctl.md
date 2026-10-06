@@ -101,6 +101,8 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `commandTimeout` | Deadline for each cloud CLI call (`aws`/`az`) as a Go duration, e.g. `"90s"`. Default `"2m"`. An invalid value is a config error, not silently ignored. |
 | `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","ete","qa","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
 | `discovery` | The cloud scope `inventory diff` / `inventory sync` scan — see [Discovery](#discovery). |
+| `aws` | IAM Identity Center sign-in and the EC2/EKS access commands (`aws`, `shell`, `connect`, `eks`) — see [aws.md](aws.md). |
+| `environmentColors` | `#rrggbb` per environment for pickers, terminal tabs and the prompt. Default: dev green, ete orange, qa blue, prod red. |
 
 ### The fleet inventory
 
@@ -139,8 +141,11 @@ under 1 MiB), so a wrong URL cannot exhaust memory.
 
 ### Change control
 
-Credential fetches can require a change record, verified against ServiceNow
-before anything reaches the cloud:
+Credential fetches, bastion logins, `shell` and `connect` can require a change
+record, verified against ServiceNow before anything reaches the cloud.
+`"enabled": false` switches change control off without removing its settings:
+no record is required, one that is given is still format-checked and recorded,
+and the command says change control is off.
 
 ```json
 "changeControl": {
@@ -289,6 +294,13 @@ every completeness claim is made only for it:
 The credentials need only read access: `sts:GetCallerIdentity`,
 `eks:ListClusters` and `eks:DescribeCluster` on AWS; `Reader` (or
 `Microsoft.ContainerService/managedClusters/read`) on each subscription.
+
+## AWS access
+
+`aws login`, `aws whoami`, `aws env`, `shell`, `ec2`, `connect`, `eks auth`,
+`eks access` and `prompt` cover the IAM Identity Center and EC2/EKS access
+flow. They are documented in **[aws.md](aws.md)**, with the security model for
+reviewers in **[security.md](security.md)**.
 
 ## Commands
 
