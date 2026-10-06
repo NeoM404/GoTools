@@ -1,0 +1,49 @@
+{
+  "environments": [
+    "dev",
+    "ete",
+    "qa",
+    "prod"
+  ],
+  "prodEnvironments": [
+    "qa",
+    "prod"
+  ],
+  "prodPatterns": [
+    "(?i)(^|[-_.])(prod|prd|qa)([-_.]|$)"
+  ],
+  "environmentColors": {
+    "dev": "#22c55e",
+    "ete": "#f97316",
+    "qa": "#3b82f6",
+    "prod": "#ef4444"
+  },
+  "changeControl": {
+    "enabled": false,
+    "requireFor": [
+      "qa",
+      "prod"
+    ]
+  },
+  "aws": {
+    "startUrl": "https://d-xxxxxxxxxx.awsapps.com/start",
+    "ssoRegion": "af-south-1",
+    "region": "af-south-1",
+    "accountNamePattern": "^(?P<squad>[a-z0-9]+)-(?P<env>dev|ete|qa|prod)$",
+    "accounts": [],
+    "breakGlassRoles": [
+      "BreakGlass-Admin"
+    ],
+    "accessLevelTag": "AccessLevel",
+    "devopsInstance": "devops",
+    "legacyTool": "sm",
+    "sessionTimeout": "12h"
+  },
+  "audit": {
+    "forward": {
+      "url": "",
+      "tokenEnv": "SIEM_TOKEN",
+      "format": "splunk-hec"
+    }
+  }
+}

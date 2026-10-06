@@ -199,3 +199,27 @@ func TestChangeControlConfigValidated(t *testing.T) {
 		t.Fatalf("code=%d", code)
 	}
 }
+
+func TestChangeControlSwitchedOffKeepsSettings(t *testing.T) {
+	w := newEC2World(t, "prod", "")
+	body, _ := os.ReadFile(w.cfg)
+	off := strings.Replace(string(body), `"audit"`, `"changeControl": {"enabled": false, "requireFor": ["prod"]}, "audit"`, 1)
+	os.WriteFile(w.cfg, []byte(off), 0o600)
+	code, _, errb := run("--config", w.cfg, "shell", "devops")
+	if code != ExitOK || !strings.Contains(errb, "change control is switched off") {
+		t.Fatalf("switched off: code=%d err=%q", code, errb)
+	}
+	code, _, errb = run("--config", w.cfg, "shell", "devops", "--change-record", "CHG0012345")
+	if code != ExitOK || !strings.Contains(errb, "CHG0012345 is recorded but not verified") {
+		t.Fatalf("record given while off: code=%d err=%q", code, errb)
+	}
+	ev := readAudit(t, w.logPath)
+	if ev[len(ev)-1].ChangeRecord != "CHG0012345" || ev[len(ev)-1].ChangeVerified {
+		t.Fatalf("the record is kept, unverified: %+v", ev[len(ev)-1])
+	}
+	// Switching it back on restores the requirement with no other change.
+	os.WriteFile(w.cfg, []byte(strings.Replace(off, `"enabled": false`, `"enabled": true`, 1)), 0o600)
+	if code, _, errb = run("--config", w.cfg, "shell", "devops"); code != ExitFailure || !strings.Contains(errb, "a change record is required for prod") {
+		t.Fatalf("switched on: code=%d err=%q", code, errb)
+	}
+}

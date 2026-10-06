@@ -357,6 +357,11 @@ func (c Config) validateMode() error {
 
 // ChangeControl configures change-record checks for `kubeconfig`/`login`.
 type ChangeControl struct {
+	// Enabled switches change control off without removing its settings:
+	// false means no change record is ever required and none is verified
+	// against ServiceNow (one given is still format-checked and recorded).
+	// Absent means on.
+	Enabled *bool `json:"enabled"`
 	// RequireFor lists environments whose clusters need --change-record
 	// (or --break-glass). Empty: never required, still verified if given.
 	RequireFor []string `json:"requireFor"`
@@ -385,6 +390,15 @@ const MinBreakGlassReason = 20
 
 // Requires reports whether env needs a change record.
 func (c ChangeControl) Requires(env string) bool {
+	return c.On() && c.Listed(env)
+}
+
+// On reports whether change control is enabled.
+func (c ChangeControl) On() bool { return c.Enabled == nil || *c.Enabled }
+
+// Listed reports whether env is in RequireFor, whether or not change
+// control is on.
+func (c ChangeControl) Listed(env string) bool {
 	for _, e := range c.RequireFor {
 		if strings.EqualFold(e, strings.TrimSpace(env)) {
 			return true

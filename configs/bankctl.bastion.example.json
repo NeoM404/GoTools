@@ -20,7 +20,11 @@
     "qa": "1.30"
   },
   "changeControl": {
-    "requireFor": [],
+    "enabled": false,
+    "requireFor": [
+      "qa",
+      "prod"
+    ],
     "serviceNow": {
       "instanceUrl": ""
     }

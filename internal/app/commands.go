@@ -439,6 +439,13 @@ func applyChangeControl(ctx context.Context, cfg config.Config, c inventory.Clus
 	case glass != "":
 		fmt.Fprintf(stderr, "\n⚠  BREAK-GLASS access to %q (%s) without a change record.\n   Reason: %s\n   This access is recorded and flagged for review.\n\n", c.Name, c.Environment, glass)
 		return ExitOK
+	case !cc.On():
+		if cr != "" {
+			fmt.Fprintf(stderr, "note: change control is switched off (changeControl.enabled=false) — %s is recorded but not verified\n", cr)
+		} else if cc.Listed(c.Environment) {
+			fmt.Fprintf(stderr, "note: change control is switched off (changeControl.enabled=false), so no change record is required for %s\n", c.Environment)
+		}
+		return ExitOK
 	case cr == "" && cc.Requires(c.Environment):
 		return refuse(fmt.Sprintf("a change record is required for %s clusters — pass --change-record CHG… (or --break-glass \"<reason>\" in an emergency)", c.Environment))
 	case cr == "":
