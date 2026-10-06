@@ -100,3 +100,23 @@ func TestSummarizeBoundedAndRuneSafe(t *testing.T) {
 		t.Fatalf("whitespace not collapsed: %q", got)
 	}
 }
+
+func TestInteractiveIgnoresCallerCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the operator pressed Ctrl-C: it belongs to the child, not to us
+	var out bytes.Buffer
+	if err := Interactive(ctx, Spec{Name: "sh", Args: []string{"-c", "printf done"}, Stdout: &out, Timeout: 5 * time.Second}); err != nil || out.String() != "done" {
+		t.Fatalf("out=%q err=%v", out.String(), err)
+	}
+}
+
+func TestInteractiveStillHasADeadline(t *testing.T) {
+	err := Interactive(context.Background(), Spec{Name: "sh", Args: []string{"-c", "sleep 30"}, Timeout: 100 * time.Millisecond})
+	var te *TimeoutError
+	if !errors.As(err, &te) {
+		t.Fatalf("want TimeoutError, got %v", err)
+	}
+	if err := Interactive(context.Background(), Spec{Name: "sh"}); err == nil {
+		t.Fatal("an interactive command without a timeout must be refused")
+	}
+}

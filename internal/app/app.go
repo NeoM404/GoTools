@@ -70,6 +70,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdAudit(cfgPath, cmdArgs, stdout, stderr)
 	case "evidence":
 		return cmdEvidence(cfgPath, cmdArgs, stdout, stderr)
+	case "aws":
+		return cmdAWS(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
 		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
@@ -154,6 +156,10 @@ Commands:
                               Evidence pack: accesses, change records and
                               exceptions to review [--log PATH]...
                               [--production] [--out FILE] [-o table|json]
+  aws login                   Sign in with IAM Identity Center and pick ONE
+                              account + role (picker, or --account/--role);
+                              writes an AWS CLI profile, no keys handled
+                              [--device-code] [--force] [--format sh|powershell|none]
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status

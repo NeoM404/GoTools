@@ -15,6 +15,9 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	os.Setenv("XDG_STATE_HOME", dir)
+	// Tests never read the developer's terminal; those that need a picker
+	// feed it explicitly.
+	stdinIsTerminal = func() bool { return false }
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

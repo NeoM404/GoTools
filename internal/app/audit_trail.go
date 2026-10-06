@@ -29,6 +29,21 @@ type changeInfo struct {
 }
 
 func beginAudit(ctx context.Context, cfg config.Config, action string, c *inventory.Cluster, production bool, ci changeInfo, stderr io.Writer) (*trail, error) {
+	base := audit.Event{
+		Action: action, Production: production,
+		ChangeRecord: ci.record, BreakGlass: ci.breakGlassReason != "", BreakGlassReason: ci.breakGlassReason,
+	}
+	if c != nil {
+		base.Cluster, base.Cloud, base.Environment = c.Name, string(c.Cloud), c.Environment
+		base.Account, base.Subscription = c.Account, c.Subscription
+	}
+	return beginAuditEvent(ctx, cfg, base, stderr)
+}
+
+// beginAuditEvent writes the start event for base, filling in who, where and
+// with which tool. Use it for actions that are not about one inventory
+// cluster, such as signing in to an AWS account.
+func beginAuditEvent(ctx context.Context, cfg config.Config, base audit.Event, stderr io.Writer) (*trail, error) {
 	path, err := cfg.AuditLogPath()
 	if err != nil {
 		return nil, err
@@ -42,15 +57,7 @@ func beginAudit(ctx context.Context, cfg config.Config, action string, c *invent
 			rec.Forward = &audit.Forwarder{URL: f.URL, Token: token, Scheme: f.Scheme, Format: f.Format, Timeout: f.ForwardTimeout()}
 		}
 	}
-	base := audit.Event{
-		ID: audit.NewID(), Action: action, Tool: "bankctl", Version: Version,
-		User: currentUser(), Host: hostname(), Production: production,
-		ChangeRecord: ci.record, BreakGlass: ci.breakGlassReason != "", BreakGlassReason: ci.breakGlassReason,
-	}
-	if c != nil {
-		base.Cluster, base.Cloud, base.Environment = c.Name, string(c.Cloud), c.Environment
-		base.Account, base.Subscription = c.Account, c.Subscription
-	}
+	base.ID, base.Tool, base.Version, base.User, base.Host = audit.NewID(), "bankctl", Version, currentUser(), hostname()
 	start := base
 	start.Phase, start.Time = audit.PhaseStart, stamp()
 	if _, err := rec.Record(ctx, start); err != nil {

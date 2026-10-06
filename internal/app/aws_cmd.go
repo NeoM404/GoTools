@@ -1,0 +1,350 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/NeoM404/GoTools/internal/audit"
+	"github.com/NeoM404/GoTools/internal/awssso"
+	"github.com/NeoM404/GoTools/internal/config"
+	"github.com/NeoM404/GoTools/internal/execx"
+	"github.com/NeoM404/GoTools/internal/picker"
+)
+
+// Seams for tests: the operator's terminal and the Identity Center portal.
+var (
+	stdin           io.Reader = os.Stdin
+	stdinIsTerminal           = func() bool { return isTerminal(os.Stdin) }
+	newPortal                 = func(a config.AWS) awssso.Portal { return awssso.Portal{Region: a.SSORegion} }
+)
+
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// colorOn reports whether w should get ANSI colour: a terminal, and NO_COLOR
+// (https://no-color.org) unset.
+func colorOn(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && isTerminal(f) && os.Getenv("NO_COLOR") == ""
+}
+
+// tokenMargin: a cached sign-in expiring sooner than this counts as expired,
+// so a command never starts on a token about to lapse.
+const tokenMargin = 5 * time.Minute
+
+func cmdAWS(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "usage: bankctl aws <login> ...")
+		return ExitUsage
+	}
+	switch args[0] {
+	case "login":
+		return awsLogin(ctx, cfgPath, args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "unknown aws subcommand %q\n", args[0])
+		return ExitUsage
+	}
+}
+
+// awsChoice is one assignment with the metadata bankctl derives for it.
+type awsChoice struct {
+	awssso.Assignment
+	Squad, Environment string
+}
+
+func loadAWSConfig(cfgPath string, stderr io.Writer) (config.Config, bool) {
+	cfg, _, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "config error: %v\n", err)
+		return cfg, false
+	}
+	if !cfg.AWS.Configured() {
+		fmt.Fprintln(stderr, `IAM Identity Center is not configured — set "aws": {"startUrl": "https://<id>.awsapps.com/start", "ssoRegion": "<region>"} in your config (see docs/aws.md)`)
+		return cfg, false
+	}
+	return cfg, true
+}
+
+func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("aws login", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	account := fs.String("account", "", "account ID or name (skips the picker when it and --role match one assignment)")
+	role := fs.String("role", "", "role (permission set) name")
+	deviceCode := fs.Bool("device-code", false, "sign in with a device code — for a host with no browser, such as a devops box")
+	force := fs.Bool("force", false, "sign in again even if a valid sign-in is cached")
+	format := fs.String("format", defaultEnvFormat(), "what to print on stdout: sh (export AWS_PROFILE=…), powershell, or none")
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintln(stderr, "usage: bankctl aws login [--account ID|NAME] [--role ROLE] [--device-code] [--force] [--format sh|powershell|none]")
+		return ExitUsage
+	}
+	if *format != "sh" && *format != "powershell" && *format != "none" {
+		fmt.Fprintf(stderr, "--format %q: want sh, powershell or none\n", *format)
+		return ExitUsage
+	}
+	cfg, ok := loadAWSConfig(cfgPath, stderr)
+	if !ok {
+		return ExitFailure
+	}
+
+	choices, managed, code := listChoices(ctx, cfg, *deviceCode, *force, stderr)
+	if code != ExitOK {
+		return code
+	}
+	chosen, code := chooseAssignment(cfg, choices, *account, *role, stderr)
+	if code != ExitOK {
+		return code
+	}
+	profile, code := signInTo(ctx, cfg, managed, chosen, audit.Event{}, stderr)
+	if code != ExitOK {
+		return code
+	}
+	if err := saveCurrentProfile(cfg, profile); err != nil {
+		fmt.Fprintf(stderr, "warning: could not remember %s as your current profile: %v\n", profile, err)
+	}
+	printProfileEnv(stdout, *format, profile)
+	return ExitOK
+}
+
+// listChoices signs in when needed and lists the caller's assignments with
+// the squad and environment bankctl derives for each.
+func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool, stderr io.Writer) ([]awsChoice, awssso.Managed, int) {
+	a := cfg.AWS
+	tok, managed, code := ensureSignIn(ctx, cfg, deviceCode, force, stderr)
+	if code != ExitOK {
+		return nil, managed, code
+	}
+	assignments, err := newPortal(a).Assignments(ctx, tok)
+	if errors.Is(err, awssso.ErrUnauthorized) && !force {
+		// Revoked server-side although the cache looked valid: sign in once more.
+		if tok, managed, code = ensureSignIn(ctx, cfg, deviceCode, true, stderr); code != ExitOK {
+			return nil, managed, code
+		}
+		assignments, err = newPortal(a).Assignments(ctx, tok)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "listing your Identity Center assignments: %v\n", err)
+		return nil, managed, ExitFailure
+	}
+	choices := make([]awsChoice, len(assignments))
+	for i, as := range assignments {
+		squad, env := a.Classify(as.AccountID, as.AccountName)
+		choices[i] = awsChoice{as, squad, env}
+	}
+	return choices, managed, ExitOK
+}
+
+func defaultEnvFormat() string {
+	if runtime.GOOS == "windows" {
+		return "powershell"
+	}
+	return "sh"
+}
+
+func printProfileEnv(w io.Writer, format, profile string) {
+	switch format {
+	case "sh":
+		fmt.Fprintf(w, "export AWS_PROFILE='%s'\n", profile)
+	case "powershell":
+		fmt.Fprintf(w, "$env:AWS_PROFILE = '%s'\n", profile)
+	}
+}
+
+// ensureSignIn makes sure the managed sso-session exists and a valid
+// Identity Center sign-in is cached, running `aws sso login` when needed.
+func ensureSignIn(ctx context.Context, cfg config.Config, deviceCode, force bool, stderr io.Writer) (awssso.Token, awssso.Managed, int) {
+	a := cfg.AWS
+	path, err := awssso.ConfigPath()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return awssso.Token{}, awssso.Managed{}, ExitFailure
+	}
+	m, err := awssso.LoadManaged(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "reading %s: %v\n", path, err)
+		return awssso.Token{}, m, ExitFailure
+	}
+	want := awssso.Session{Name: a.Session(), StartURL: a.StartURL, Region: a.SSORegion}
+	if m.Session != want {
+		m.Session = want
+		if err := awssso.SaveManaged(path, m); err != nil {
+			fmt.Fprintf(stderr, "writing %s: %v\n", path, err)
+			return awssso.Token{}, m, ExitFailure
+		}
+	}
+	dir, err := awssso.CacheDir()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return awssso.Token{}, m, ExitFailure
+	}
+	if !force {
+		if tok, err := awssso.ReadToken(dir, a.Session(), now(), tokenMargin); err == nil {
+			return tok, m, ExitOK
+		}
+	}
+	args := []string{"sso", "login", "--sso-session", a.Session()}
+	if deviceCode {
+		args = append(args, "--use-device-code")
+	}
+	fmt.Fprintln(stderr, "Signing in to IAM Identity Center — approve the request in your browser.")
+	// stdout stays clean for `eval "$(bankctl aws login)"`; the CLI's
+	// instructions go to the terminal on stderr.
+	if err := execx.Interactive(ctx, execx.Spec{Name: "aws", Args: args, Stdout: stderr, Stderr: stderr, Timeout: 15 * time.Minute}); err != nil {
+		fmt.Fprintf(stderr, "sign-in failed: %v\n", err)
+		return awssso.Token{}, m, ExitFailure
+	}
+	tok, err := awssso.ReadToken(dir, a.Session(), now(), tokenMargin)
+	if err != nil {
+		fmt.Fprintf(stderr, "sign-in did not leave a valid token in %s: %v\n", dir, err)
+		return awssso.Token{}, m, ExitFailure
+	}
+	return tok, m, ExitOK
+}
+
+// chooseAssignment narrows by --account/--role, then asks with the picker
+// when more than one remains. It never guesses.
+func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, stderr io.Writer) (awsChoice, int) {
+	var cands []awsChoice
+	for _, c := range all {
+		if account != "" && c.AccountID != account && !strings.EqualFold(c.AccountName, account) {
+			continue
+		}
+		if role != "" && !strings.EqualFold(c.Role, role) {
+			continue
+		}
+		cands = append(cands, c)
+	}
+	switch {
+	case len(all) == 0:
+		fmt.Fprintln(stderr, "Identity Center assigns you no accounts")
+		return awsChoice{}, ExitFailure
+	case len(cands) == 0:
+		fmt.Fprintf(stderr, "none of your %d assignments matches --account %q --role %q\n", len(all), account, role)
+		return awsChoice{}, ExitFailure
+	case len(cands) == 1:
+		return cands[0], ExitOK
+	case !stdinIsTerminal():
+		fmt.Fprintf(stderr, "%d assignments match — pass --account and --role to choose one without a terminal\n", len(cands))
+		return awsChoice{}, ExitUsage
+	}
+	rows := make([]picker.Row, len(cands))
+	for i, c := range cands {
+		rows[i] = picker.Row{Cells: []string{c.Squad, c.Environment, c.AccountName, c.AccountID, c.Role},
+			Color: cfg.ColorFor(c.Environment), ColorCol: 1}
+	}
+	idx, err := picker.Picker{Title: "Pick an account and role", Header: []string{"SQUAD", "ENV", "ACCOUNT", "ID", "ROLE"},
+		Rows: rows, In: stdin, Out: stderr, Color: colorOn(stderr)}.Pick()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return awsChoice{}, ExitFailure
+	}
+	return cands[idx], ExitOK
+}
+
+// signInTo writes the profile for one assignment, verifies the AWS CLI acts
+// in that account, and records the sign-in. base carries extra audit fields
+// (break-glass). It returns the profile name.
+func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsChoice, base audit.Event, stderr io.Writer) (string, int) {
+	a := cfg.AWS
+	name := awssso.ProfileName(a.Prefix(), c.Assignment)
+	m.Profiles[name] = awssso.Profile{Name: name, AccountID: c.AccountID, Role: c.Role, Region: a.ProfileRegion(),
+		Squad: c.Squad, Environment: c.Environment}
+	path, err := awssso.ConfigPath()
+	if err == nil {
+		err = awssso.SaveManaged(path, m)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "writing the AWS profile: %v\n", err)
+		return "", ExitFailure
+	}
+
+	base.Action, base.Cloud, base.Account, base.Environment = "aws-login", "aws", c.AccountID, c.Environment
+	base.Production = cfg.IsProdEnvironment(c.Environment)
+	base.Detail = fmt.Sprintf("account %s, role %s, profile %s", c.AccountName, c.Role, name)
+	tr, err := beginAuditEvent(ctx, cfg, base, stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v — refusing to sign in: every sign-in must be recorded\n", err)
+		return "", ExitFailure
+	}
+	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "sts", "get-caller-identity", "--profile", name, "--output", "json")
+	if err != nil {
+		tr.end(ctx, audit.OutcomeFailure, "", err.Error(), stderr)
+		fmt.Fprintf(stderr, "verifying the sign-in to %s: %v\n", c.AccountName, err)
+		return "", ExitFailure
+	}
+	var id struct{ Account, Arn string }
+	if err := json.Unmarshal(out, &id); err != nil || id.Account != c.AccountID {
+		msg := fmt.Sprintf("profile %s acts in account %q, not %s — refusing it", name, id.Account, c.AccountID)
+		tr.end(ctx, audit.OutcomeRefused, id.Arn, msg, stderr)
+		fmt.Fprintln(stderr, msg)
+		return "", ExitFailure
+	}
+	tr.end(ctx, audit.OutcomeSuccess, id.Arn, base.Detail, stderr)
+
+	label := fmt.Sprintf("%s · %s · %s", firstNonBlank(c.Squad, c.AccountName), strings.ToUpper(firstNonBlank(c.Environment, "unknown env")), c.Role)
+	if colorOn(stderr) {
+		label = picker.Paint(cfg.ColorFor(c.Environment), label)
+	}
+	fmt.Fprintf(stderr, "Signed in: %s (profile %s)\n", label, name)
+	return name, ExitOK
+}
+
+func firstNonBlank(s ...string) string {
+	for _, v := range s {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// currentProfilePath remembers the last profile signed in to, so a new
+// terminal tab (or `bankctl shell`) can use it without exporting anything.
+func currentProfilePath(cfg config.Config) (string, error) {
+	log, err := cfg.AuditLogPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(log), "aws-profile"), nil
+}
+
+func saveCurrentProfile(cfg config.Config, profile string) error {
+	p, err := currentProfilePath(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	return writeFileAtomic(p, []byte(profile+"\n"), 0o600)
+}
+
+// resolveProfile picks the profile a command acts with: --profile, then
+// $AWS_PROFILE, then the last `bankctl aws login`.
+func resolveProfile(cfg config.Config, flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if p := os.Getenv("AWS_PROFILE"); p != "" {
+		return p
+	}
+	if p, err := currentProfilePath(cfg); err == nil {
+		if data, err := os.ReadFile(p); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return ""
+}

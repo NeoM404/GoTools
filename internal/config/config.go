@@ -105,6 +105,197 @@ type Config struct {
 
 	// ChangeControl gates credential fetches on a change record.
 	ChangeControl ChangeControl `json:"changeControl"`
+
+	// AWS configures IAM Identity Center sign-in and the EC2/EKS access
+	// commands (`bankctl aws`, `shell`, `connect`).
+	AWS AWS `json:"aws"`
+
+	// EnvironmentColors maps an environment to a #rrggbb colour for pickers,
+	// terminal tabs and the prompt. Defaults: dev green, ete orange, qa blue,
+	// prod red.
+	EnvironmentColors map[string]string `json:"environmentColors"`
+}
+
+// DefaultEnvironmentColors matches the colours engineers already know from
+// the SSM tooling.
+var DefaultEnvironmentColors = map[string]string{
+	"dev": "#22c55e", "ete": "#f97316", "qa": "#3b82f6", "prod": "#ef4444",
+}
+
+// ColorFor returns the colour for an environment ("" when none).
+func (c Config) ColorFor(env string) string {
+	env = strings.ToLower(strings.TrimSpace(env))
+	for k, v := range c.EnvironmentColors {
+		if strings.EqualFold(k, env) {
+			return v
+		}
+	}
+	return DefaultEnvironmentColors[env]
+}
+
+// AWS is the IAM Identity Center and EC2/EKS access configuration.
+type AWS struct {
+	// StartURL is the Identity Center access portal, e.g.
+	// https://d-xxxxxxxxxx.awsapps.com/start. Required for `bankctl aws`.
+	StartURL string `json:"startUrl"`
+	// SSORegion is the Identity Center region.
+	SSORegion string `json:"ssoRegion"`
+	// SSOSession names the [sso-session] bankctl writes (default "bankctl").
+	SSOSession string `json:"ssoSession"`
+	// Region is the default region of generated profiles (default SSORegion).
+	Region string `json:"region"`
+	// ProfilePrefix starts every generated profile name (default "bankctl").
+	ProfilePrefix string `json:"profilePrefix"`
+	// AccountNamePattern derives squad and environment from an account's
+	// name: a regex with named groups (?P<env>…) and optionally (?P<squad>…).
+	AccountNamePattern string `json:"accountNamePattern"`
+	// Accounts gives squad/environment explicitly, overriding the pattern.
+	Accounts []AWSAccount `json:"accounts"`
+	// BreakGlassRoles are the Identity Center roles (permission sets) that
+	// `aws login --all` may use. Identity Center decides who holds them;
+	// bankctl only refuses to sign in to every account with anything else.
+	BreakGlassRoles []string `json:"breakGlassRoles"`
+	// SessionTimeout bounds an interactive sign-in or shell (default "12h").
+	SessionTimeout string `json:"sessionTimeout"`
+}
+
+// AWSAccount is explicit metadata for one account.
+type AWSAccount struct {
+	ID          string `json:"id"`
+	Squad       string `json:"squad"`
+	Environment string `json:"environment"`
+}
+
+// DefaultAWSSessionTimeout bounds interactive AWS commands.
+const DefaultAWSSessionTimeout = 12 * time.Hour
+
+// Configured reports whether Identity Center sign-in is set up.
+func (a AWS) Configured() bool { return a.StartURL != "" }
+
+// Session returns the sso-session name.
+func (a AWS) Session() string {
+	if a.SSOSession == "" {
+		return "bankctl"
+	}
+	return a.SSOSession
+}
+
+// Prefix returns the generated-profile prefix.
+func (a AWS) Prefix() string {
+	if a.ProfilePrefix == "" {
+		return "bankctl"
+	}
+	return a.ProfilePrefix
+}
+
+// ProfileRegion returns the region for generated profiles.
+func (a AWS) ProfileRegion() string {
+	if a.Region == "" {
+		return a.SSORegion
+	}
+	return a.Region
+}
+
+// Timeout returns the interactive-session bound.
+func (a AWS) Timeout() time.Duration {
+	d, err := parsePositive("aws.sessionTimeout", a.SessionTimeout, DefaultAWSSessionTimeout)
+	if err != nil {
+		return DefaultAWSSessionTimeout
+	}
+	return d
+}
+
+// Classify returns the squad and environment of an account: explicit
+// metadata first, then the account-name pattern.
+func (a AWS) Classify(id, name string) (squad, env string) {
+	for _, acct := range a.Accounts {
+		if acct.ID == id {
+			return acct.Squad, strings.ToLower(acct.Environment)
+		}
+	}
+	if a.AccountNamePattern == "" {
+		return "", ""
+	}
+	re, err := regexp.Compile(a.AccountNamePattern)
+	if err != nil {
+		return "", ""
+	}
+	m := re.FindStringSubmatch(name)
+	if m == nil {
+		return "", ""
+	}
+	if i := re.SubexpIndex("squad"); i >= 0 {
+		squad = m[i]
+	}
+	return squad, strings.ToLower(m[re.SubexpIndex("env")])
+}
+
+// IsBreakGlassRole reports whether role may be used by `aws login --all`.
+func (a AWS) IsBreakGlassRole(role string) bool {
+	for _, r := range a.BreakGlassRoles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	sessionNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	iamRoleRe     = regexp.MustCompile(`^[\w+=,.@-]{1,64}$`)
+	hexColorRe    = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+)
+
+func (c Config) validateAWS() error {
+	a := c.AWS
+	var errs []error
+	if a.StartURL != "" && !strings.HasPrefix(a.StartURL, "https://") {
+		errs = append(errs, fmt.Errorf("aws.startUrl must be https"))
+	}
+	if a.StartURL != "" && !regionRe.MatchString(a.SSORegion) {
+		errs = append(errs, fmt.Errorf("aws.ssoRegion %q is not an AWS region such as af-south-1", a.SSORegion))
+	}
+	if a.Region != "" && !regionRe.MatchString(a.Region) {
+		errs = append(errs, fmt.Errorf("aws.region %q is not an AWS region", a.Region))
+	}
+	if !sessionNameRe.MatchString(a.Session()) || !sessionNameRe.MatchString(a.Prefix()) {
+		errs = append(errs, fmt.Errorf("aws.ssoSession and aws.profilePrefix may hold only letters, digits, - and _"))
+	}
+	if p := a.AccountNamePattern; p != "" {
+		re, err := regexp.Compile(p)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("aws.accountNamePattern: %w", err))
+		case re.SubexpIndex("env") < 0:
+			errs = append(errs, fmt.Errorf("aws.accountNamePattern %q needs a named group (?P<env>...)", p))
+		}
+	}
+	allowed := map[string]bool{}
+	for _, e := range c.Environments {
+		allowed[strings.ToLower(e)] = true
+	}
+	for i, acct := range a.Accounts {
+		if !accountRe.MatchString(acct.ID) {
+			errs = append(errs, fmt.Errorf("aws.accounts[%d]: id %q must be a 12-digit AWS account ID", i, acct.ID))
+		}
+		if len(allowed) > 0 && !allowed[strings.ToLower(acct.Environment)] {
+			errs = append(errs, fmt.Errorf("aws.accounts[%d]: environment %q is not in environments %v", i, acct.Environment, c.Environments))
+		}
+	}
+	for _, r := range a.BreakGlassRoles {
+		if !iamRoleRe.MatchString(r) {
+			errs = append(errs, fmt.Errorf("aws.breakGlassRoles: %q is not an IAM role name", r))
+		}
+	}
+	if _, err := parsePositive("aws.sessionTimeout", a.SessionTimeout, DefaultAWSSessionTimeout); err != nil {
+		errs = append(errs, err)
+	}
+	for env, col := range c.EnvironmentColors {
+		if !hexColorRe.MatchString(col) {
+			errs = append(errs, fmt.Errorf("environmentColors[%q] %q: want #rrggbb", env, col))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Run modes.
@@ -504,7 +695,7 @@ func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
 	return errors.Join(c.validateMode(), errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
-		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl())
+		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl(), c.validateAWS())
 }
 
 var minorRe = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?$`)

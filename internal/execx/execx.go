@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -68,6 +69,53 @@ type NotFoundError struct{ Name string }
 
 func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("required CLI %q not found in PATH — run `bankctl doctor`", e.Name)
+}
+
+// Interactive runs a command attached to the operator's terminal — an SSO
+// sign-in, a Session Manager shell — streaming to spec.Stdout/Stderr (default
+// the process's own) and reading os.Stdin. It differs from Run in three ways
+// an interactive child needs:
+//
+//   - it stays in bankctl's process group, so it may read the terminal;
+//   - Ctrl-C belongs to the child (a remote shell's Ctrl-C must interrupt the
+//     remote command, not end the session), so bankctl swallows SIGINT while
+//     the child runs and the caller's cancellation does not kill it;
+//   - the deadline still applies: a session left open past spec.Timeout ends.
+func Interactive(ctx context.Context, spec Spec) error {
+	if spec.Timeout <= 0 {
+		return fmt.Errorf("execx: %s started without a timeout", spec.Name)
+	}
+	path, err := exec.LookPath(spec.Name)
+	if err != nil {
+		return &NotFoundError{Name: spec.Name}
+	}
+	swallow := make(chan os.Signal, 1)
+	signal.Notify(swallow, os.Interrupt)
+	defer signal.Stop(swallow)
+
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), spec.Timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, spec.Args...) //nolint:gosec // callers pass typed, validated arguments
+	cmd.WaitDelay = waitDelay
+	cmd.Stdin = os.Stdin
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if spec.Stdout != nil {
+		cmd.Stdout = spec.Stdout
+	}
+	if spec.Stderr != nil {
+		cmd.Stderr = spec.Stderr
+	}
+	if len(spec.Env) > 0 {
+		cmd.Env = append(os.Environ(), spec.Env...)
+	}
+	runErr := cmd.Run()
+	switch {
+	case runErr == nil:
+		return nil
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return &TimeoutError{Name: spec.Name, After: spec.Timeout}
+	}
+	return fmt.Errorf("%s: %w", spec.Name, runErr)
 }
 
 // Run executes spec, streaming to spec.Stdout/Stderr.
