@@ -78,6 +78,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdEC2(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "connect":
 		return cmdConnect(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "eks":
+		return cmdEKS(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "guard":
 		return cmdGuard(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "current":
@@ -183,6 +185,12 @@ Commands:
                               devops instance (Session Manager); kubectl
                               runs locally as YOUR SSO role, TLS verified
                               [--via-instance I] [--port N] [--tab]
+  eks auth [--profile P]… [--all-profiles] [-o table|json]
+                              Authentication mode + endpoint exposure of
+                              every EKS cluster; who still needs to move
+                              off CONFIG_MAP [--fail-on-configmap]
+  eks access <cluster>        Who can reach a cluster via access entries,
+                              with which policy and scope
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status
