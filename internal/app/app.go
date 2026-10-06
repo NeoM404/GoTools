@@ -161,6 +161,11 @@ Commands:
                               writes an AWS CLI profile, no keys handled
                               [--device-code] [--force] [--format sh|powershell|none]
                               [--all --break-glass REASON]  (break-glass roles only)
+  aws whoami [--profile P] [-o table|json]
+                              Who you act as, where, and sign-in time left
+  aws env [--profile P] [--format sh|powershell]
+                              Short-term credentials for tools that need
+                              keys (sm, SSMshell):  eval "$(bankctl aws env)"
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status

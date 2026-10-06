@@ -281,3 +281,54 @@ func TestAWSBreakGlassFlagRules(t *testing.T) {
 		}
 	}
 }
+
+// withExport extends the fake aws CLI with `configure export-credentials`.
+func withExport(t *testing.T, w *awsWorld, output string) {
+	t.Helper()
+	cache := filepath.Join(w.home, ".aws", "sso", "cache")
+	tokenFile := awssso.TokenPath(cache, "bankctl")
+	expires := time.Now().Add(8 * time.Hour).UTC().Format(time.RFC3339)
+	fakeCLI(t, "aws", `case "$*" in
+"configure export-credentials"*) printf '%s\n' `+sq(output)+`;;
+"sso login"*) mkdir -p `+sq(cache)+` && printf '%s' '{"accessToken":"tok-secret","expiresAt":"`+expires+`"}' > `+sq(tokenFile)+`;;
+*"sts get-caller-identity"*)
+  p=$(echo "$*" | sed -n 's/.*--profile \([^ ]*\).*/\1/p')
+  acct=$(awk -v h="[profile $p]" '$0==h{f=1;next} /^\[/{f=0} f&&$1=="sso_account_id"{print $3}' "$AWS_CONFIG_FILE")
+  echo "{\"Account\":\"$acct\",\"Arn\":\"arn:aws:sts::$acct:assumed-role/AWSReservedSSO_r/neo\"}";;
+esac`)
+}
+
+func TestAWSWhoamiAndEnv(t *testing.T) {
+	w := newAWSWorld(t, "")
+	withExport(t, w, "AWS_ACCESS_KEY_ID=ASIAEXAMPLE\nAWS_SECRET_ACCESS_KEY=c2VjcmV0\nAWS_SESSION_TOKEN=dG9rZW4=\nAWS_CREDENTIAL_EXPIRATION=2026-10-06T17:00:00+00:00")
+	if code, _, errb := run("--config", w.cfg, "aws", "login", "--account", "payments-prod", "--role", "Platform-ReadOnly", "--format", "none"); code != ExitOK {
+		t.Fatalf("login: %q", errb)
+	}
+	code, out, errb := run("--config", w.cfg, "aws", "whoami", "-o", "json")
+	if code != ExitOK || !strings.Contains(out, `"environment": "prod"`) || !strings.Contains(out, `"production": true`) ||
+		!strings.Contains(out, `"signInExpires"`) || !strings.Contains(out, `"role": "Platform-ReadOnly"`) {
+		t.Fatalf("whoami: code=%d out=%s err=%q", code, out, errb)
+	}
+	code, out, errb = run("--config", w.cfg, "aws", "env", "--format", "sh")
+	if code != ExitOK || !strings.Contains(out, "export AWS_ACCESS_KEY_ID='ASIAEXAMPLE'") || !strings.Contains(out, "export AWS_SESSION_TOKEN='dG9rZW4='") {
+		t.Fatalf("env: code=%d out=%q err=%q", code, out, errb)
+	}
+	ev := readAudit(t, w.logPath)
+	last := ev[len(ev)-1]
+	if last.Action != "aws-export-credentials" || last.Outcome != audit.OutcomeSuccess {
+		t.Fatalf("export must be recorded: %+v", last)
+	}
+	logText, _ := os.ReadFile(w.logPath)
+	if strings.Contains(string(logText), "ASIAEXAMPLE") || strings.Contains(string(logText), "c2VjcmV0") {
+		t.Fatal("credentials leaked into the audit log")
+	}
+}
+
+func TestAWSEnvRefusesSuspiciousOutput(t *testing.T) {
+	w := newAWSWorld(t, "")
+	withExport(t, w, "AWS_ACCESS_KEY_ID=ASIA'; rm -rf ~; echo '\nAWS_SECRET_ACCESS_KEY=x")
+	code, out, errb := run("--config", w.cfg, "aws", "env", "--profile", "anything")
+	if code != ExitFailure || out != "" || !strings.Contains(errb, "unexpected output") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
+	}
+}

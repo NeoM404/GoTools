@@ -45,12 +45,16 @@ const tokenMargin = 5 * time.Minute
 
 func cmdAWS(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: bankctl aws <login> ...")
+		fmt.Fprintln(stderr, "usage: bankctl aws <login|whoami|env> ...")
 		return ExitUsage
 	}
 	switch args[0] {
 	case "login":
 		return awsLogin(ctx, cfgPath, args[1:], stdout, stderr)
+	case "whoami":
+		return awsWhoami(ctx, cfgPath, args[1:], stdout, stderr)
+	case "env":
+		return awsEnv(ctx, cfgPath, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown aws subcommand %q\n", args[0])
 		return ExitUsage
@@ -410,4 +414,171 @@ func resolveProfile(cfg config.Config, flagValue string) string {
 		}
 	}
 	return ""
+}
+
+// awsIdentity is `aws whoami`'s answer.
+type awsIdentity struct {
+	Profile     string `json:"profile"`
+	Account     string `json:"account"`
+	AccountName string `json:"accountName,omitempty"`
+	Squad       string `json:"squad,omitempty"`
+	Environment string `json:"environment,omitempty"`
+	Production  bool   `json:"production"`
+	Role        string `json:"role,omitempty"`
+	Arn         string `json:"arn"`
+	// SignInExpires is when the Identity Center sign-in lapses (managed
+	// profiles only).
+	SignInExpires string `json:"signInExpires,omitempty"`
+}
+
+func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("aws whoami", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	profileFlag := fs.String("profile", "", "profile to check (default: $AWS_PROFILE, then the last `bankctl aws login`)")
+	output := addOutputFlag(fs)
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if *output != "table" && *output != "json" {
+		return badOutput(stderr, *output)
+	}
+	cfg, _, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "config error: %v\n", err)
+		return ExitFailure
+	}
+	profile := resolveProfile(cfg, *profileFlag)
+	if profile == "" {
+		fmt.Fprintln(stderr, "no profile selected — run `bankctl aws login`, or pass --profile")
+		return ExitFailure
+	}
+	id := awsIdentity{Profile: profile}
+	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "sts", "get-caller-identity", "--profile", profile, "--output", "json")
+	if err != nil {
+		fmt.Fprintf(stderr, "%s is not usable: %v\n→ sign in again with `bankctl aws login`\n", profile, err)
+		return ExitFailure
+	}
+	var sts struct{ Account, Arn string }
+	if err := json.Unmarshal(out, &sts); err != nil {
+		fmt.Fprintf(stderr, "parsing aws sts get-caller-identity: %v\n", err)
+		return ExitFailure
+	}
+	id.Account, id.Arn = sts.Account, sts.Arn
+	if path, err := awssso.ConfigPath(); err == nil {
+		if m, err := awssso.LoadManaged(path); err == nil {
+			if p, ok := m.Profiles[profile]; ok {
+				id.Role, id.Squad, id.Environment = p.Role, p.Squad, p.Environment
+				id.Production = cfg.IsProdEnvironment(p.Environment)
+				if dir, err := awssso.CacheDir(); err == nil {
+					if tok, err := awssso.ReadToken(dir, m.Session.Name, now(), 0); err == nil {
+						id.SignInExpires = tok.ExpiresAt.UTC().Format(time.RFC3339)
+					}
+				}
+			}
+		}
+	}
+	if *output == "json" {
+		return writeJSON(stdout, stderr, id)
+	}
+	env := id.Environment
+	if env != "" && colorOn(stdout) {
+		env = picker.Paint(cfg.ColorFor(id.Environment), strings.ToUpper(env))
+	}
+	fmt.Fprintf(stdout, "profile:    %s\naccount:    %s", id.Profile, id.Account)
+	if id.Squad != "" || env != "" {
+		fmt.Fprintf(stdout, " (%s)", strings.Trim(id.Squad+" · "+env, " ·"))
+	}
+	fmt.Fprintln(stdout)
+	if id.Role != "" {
+		fmt.Fprintf(stdout, "role:       %s\n", id.Role)
+	}
+	fmt.Fprintf(stdout, "acting as:  %s\n", id.Arn)
+	if id.SignInExpires != "" {
+		exp, _ := time.Parse(time.RFC3339, id.SignInExpires)
+		left := exp.Sub(now()).Round(time.Minute)
+		if left > 0 {
+			fmt.Fprintf(stdout, "sign-in:    valid for %s (until %s UTC)\n", left, exp.Format("15:04"))
+		} else {
+			fmt.Fprintln(stdout, "sign-in:    EXPIRED — run `bankctl aws login`")
+		}
+	}
+	return ExitOK
+}
+
+// credentialKeys are the only variables `aws env` passes on.
+var credentialKeys = map[string]bool{
+	"AWS_ACCESS_KEY_ID": true, "AWS_SECRET_ACCESS_KEY": true, "AWS_SESSION_TOKEN": true, "AWS_CREDENTIAL_EXPIRATION": true,
+}
+
+// exportCredentials asks the AWS CLI for a profile's current short-term
+// credentials, as KEY=VALUE entries, for tools that cannot use a profile
+// (sm, SSMshell). The values are secrets: callers hand them to a child
+// process or print them on request, and never log them.
+func exportCredentials(ctx context.Context, cfg config.Config, profile string) ([]string, error) {
+	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "configure", "export-credentials", "--profile", profile, "--format", "env-no-export")
+	if err != nil {
+		return nil, err
+	}
+	var env []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || !credentialKeys[k] || strings.ContainsAny(v, "'\"\\ \t\r\n;$`") {
+			return nil, fmt.Errorf("unexpected output from aws configure export-credentials")
+		}
+		env = append(env, k+"="+v)
+	}
+	if len(env) < 2 {
+		return nil, fmt.Errorf("aws configure export-credentials returned no credentials")
+	}
+	return env, nil
+}
+
+func awsEnv(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("aws env", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	profileFlag := fs.String("profile", "", "profile to export (default: $AWS_PROFILE, then the last `bankctl aws login`)")
+	format := fs.String("format", defaultEnvFormat(), "sh or powershell")
+	show := fs.Bool("show", false, "print the keys even when stdout is a terminal (they would be visible on screen)")
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if *format != "sh" && *format != "powershell" {
+		fmt.Fprintf(stderr, "--format %q: want sh or powershell\n", *format)
+		return ExitUsage
+	}
+	if f, ok := stdout.(*os.File); ok && isTerminal(f) && !*show {
+		fmt.Fprintln(stderr, "refusing to print credentials on the screen — use it as  eval \"$(bankctl aws env)\"  (or pass --show)")
+		return ExitUsage
+	}
+	cfg, _, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "config error: %v\n", err)
+		return ExitFailure
+	}
+	profile := resolveProfile(cfg, *profileFlag)
+	if profile == "" {
+		fmt.Fprintln(stderr, "no profile selected — run `bankctl aws login`, or pass --profile")
+		return ExitFailure
+	}
+	tr, err := beginAuditEvent(ctx, cfg, audit.Event{Action: "aws-export-credentials", Cloud: "aws", Detail: "profile " + profile}, stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v — refusing to export credentials: every export must be recorded\n", err)
+		return ExitFailure
+	}
+	env, err := exportCredentials(ctx, cfg, profile)
+	if err != nil {
+		tr.end(ctx, audit.OutcomeFailure, "", err.Error(), stderr)
+		fmt.Fprintf(stderr, "exporting credentials for %s: %v\n", profile, err)
+		return ExitFailure
+	}
+	tr.end(ctx, audit.OutcomeSuccess, "", "profile "+profile, stderr)
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		if *format == "powershell" {
+			fmt.Fprintf(stdout, "$env:%s = '%s'\n", k, v)
+		} else {
+			fmt.Fprintf(stdout, "export %s='%s'\n", k, v)
+		}
+	}
+	return ExitOK
 }
