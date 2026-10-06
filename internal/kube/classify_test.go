@@ -82,3 +82,38 @@ func TestClassifyCustomProdEnvironments(t *testing.T) {
 		t.Fatalf("dr configured as prod: %+v", cl)
 	}
 }
+
+func TestClassifyCurrentUsesEveryKubeconfigIdentity(t *testing.T) {
+	f := fleet()
+	k := Kubeconfig{CurrentContext: "mine"}
+	k.Contexts = append(k.Contexts, struct {
+		Name    string `json:"name"`
+		Context struct {
+			Cluster string `json:"cluster"`
+			User    string `json:"user"`
+		} `json:"context"`
+	}{Name: "mine"})
+	k.Contexts[0].Context.Cluster, k.Contexts[0].Context.User = "c", "clusterUser_rg_aks-core-live-weu"
+	cl := ClassifyCurrent(k, &f, []string{"prod"}, nil)
+	if !cl.Production || cl.Cluster != "aks-core-live-weu" {
+		t.Fatalf("got %+v", cl)
+	}
+	// A dangling current-context still classifies by its name.
+	k.CurrentContext = "eks-core-live-euw1"
+	if cl := ClassifyCurrent(k, &f, []string{"prod"}, nil); !cl.Production {
+		t.Fatalf("got %+v", cl)
+	}
+}
+
+func TestSharedLocalAccount(t *testing.T) {
+	for h, want := range map[HostContext]bool{
+		{User: "clusterUser_rg_c"}:                              true,
+		{User: "clusterUser_rg_c", Exec: true}:                  false, // kubelogin: a personal Entra ID identity
+		{User: "clusterAdmin_rg_c", Exec: true}:                 true,
+		{User: "arn:aws:eks:eu-west-1:1:cluster/c", Exec: true}: false,
+	} {
+		if got := h.SharedLocalAccount(); got != want {
+			t.Fatalf("%+v: got %v", h, got)
+		}
+	}
+}

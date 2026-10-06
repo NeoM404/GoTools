@@ -31,6 +31,12 @@ const DefaultCommandTimeout = 2 * time.Minute
 // Config controls where the fleet inventory comes from and which contexts are
 // treated as production (for the safety guard).
 type Config struct {
+	// Mode is where bankctl runs: "workstation" (default) fetches credentials
+	// through the aws/az CLIs; "bastion" runs on a jump host whose kubeconfig
+	// the platform already provisions, so bankctl only selects contexts and
+	// never needs a cloud CLI. See ModeBastion.
+	Mode string `json:"mode"`
+
 	// InventoryPath is a local JSON file produced by the IaC pipeline
 	// (e.g. `terraform output -json fleet`). Used when InventoryURL is empty.
 	InventoryPath string `json:"inventoryPath"`
@@ -62,7 +68,7 @@ type Config struct {
 	CommandTimeout string `json:"commandTimeout"`
 
 	// Environments, when set, is the allow-list every inventory cluster's
-	// environment must be on (e.g. ["dev","sit","uat","prod"]), so a typo
+	// environment must be on (e.g. ["dev","ete","qa","prod"]), so a typo
 	// such as "prd" is caught at load time instead of dodging prod checks.
 	Environments []string `json:"environments"`
 
@@ -99,6 +105,27 @@ type Config struct {
 
 	// ChangeControl gates credential fetches on a change record.
 	ChangeControl ChangeControl `json:"changeControl"`
+}
+
+// Run modes.
+const (
+	ModeWorkstation = "workstation"
+	// ModeBastion: credentials are provisioned on the host (kubeconfig with
+	// contexts already present); there may be no az/aws CLI and no internet.
+	// `login` selects the cluster's existing context instead of fetching
+	// credentials, and cloud discovery is left to the IaC pipeline.
+	ModeBastion = "bastion"
+)
+
+// Bastion reports whether bankctl runs on a bastion host.
+func (c Config) Bastion() bool { return strings.EqualFold(c.Mode, ModeBastion) }
+
+func (c Config) validateMode() error {
+	switch strings.ToLower(c.Mode) {
+	case "", ModeWorkstation, ModeBastion:
+		return nil
+	}
+	return fmt.Errorf("mode %q: want %q or %q", c.Mode, ModeWorkstation, ModeBastion)
 }
 
 // ChangeControl configures change-record checks for `kubeconfig`/`login`.
@@ -304,6 +331,28 @@ type Discovery struct {
 	Concurrency int `json:"concurrency"`
 	// TagKeys names the cloud tags that carry inventory metadata.
 	TagKeys TagKeys `json:"tagKeys"`
+	// NameEnvironmentPattern derives a cluster's environment from its name
+	// when it has no environment tag: a regex with a named group "env", e.g.
+	// `^.+-k8s-(?P<env>[a-z]+)-cluster$`. The tag always wins when present.
+	NameEnvironmentPattern string `json:"nameEnvironmentPattern"`
+}
+
+// EnvFromName returns the environment encoded in name by
+// NameEnvironmentPattern, or "" if there is no pattern or no match. Load has
+// already rejected an invalid pattern.
+func (d Discovery) EnvFromName(name string) string {
+	if d.NameEnvironmentPattern == "" {
+		return ""
+	}
+	re, err := regexp.Compile(d.NameEnvironmentPattern)
+	if err != nil {
+		return ""
+	}
+	m := re.FindStringSubmatch(name)
+	if m == nil {
+		return ""
+	}
+	return strings.ToLower(m[re.SubexpIndex("env")])
 }
 
 // AWSTarget is one AWS account, scanned in each listed region.
@@ -406,6 +455,15 @@ func (d Discovery) validate() error {
 		}
 		seen["azure/"+strings.ToLower(s)] = true
 	}
+	if p := d.NameEnvironmentPattern; p != "" {
+		re, err := regexp.Compile(p)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("discovery.nameEnvironmentPattern: %w", err))
+		case re.SubexpIndex("env") < 0:
+			errs = append(errs, fmt.Errorf("discovery.nameEnvironmentPattern %q needs a named group (?P<env>...)", p))
+		}
+	}
 	if d.Concurrency < 0 || d.Concurrency > MaxConcurrency {
 		errs = append(errs, fmt.Errorf("discovery.concurrency %d must be between 1 and %d", d.Concurrency, MaxConcurrency))
 	}
@@ -445,7 +503,7 @@ func parsePositive(field, v string, def time.Duration) (time.Duration, error) {
 func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
-	return errors.Join(errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
+	return errors.Join(c.validateMode(), errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
 		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl())
 }
 

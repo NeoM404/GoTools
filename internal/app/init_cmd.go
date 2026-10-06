@@ -6,17 +6,25 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/NeoM404/GoTools/internal/config"
 )
 
 // starterConfig is written by `bankctl init`. It is valid JSON with sensible
 // defaults so `bankctl` works after the user just fills in an inventory source.
+//
+// QA is a production copy, so it is guarded as production. The prod pattern
+// matches prod/prd/qa only as a whole dash-, dot- or underscore-separated
+// word, so "product-api-k8s-dev-cluster" is not flagged.
 const starterConfig = `{
+  "mode": "%s",
   "inventoryPath": "",
   "inventoryUrl": "",
-  "prodPatterns": ["(?i)prod", "(?i)-prd-"],
+  "prodPatterns": ["(?i)(^|[-_.])(prod|prd|qa)([-_.]|$)"],
   "kubeconfigDir": "",
   "targetKubeVersion": "1.30",
-  "environments": ["dev", "sit", "uat", "prod"],
+  "environments": ["dev", "ete", "qa", "prod"],
+  "prodEnvironments": ["qa", "prod"],
   "commandTimeout": "2m",
   "discovery": {
     "aws": [],
@@ -32,7 +40,12 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	pathFlag := fs.String("path", "", "where to write the config (default: ~/.config/bankctl/config.json)")
 	force := fs.Bool("force", false, "overwrite an existing config")
+	mode := fs.String("mode", config.ModeWorkstation, "where bankctl runs: workstation (fetches credentials via aws/az) or bastion (uses the host's kubeconfig)")
 	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if *mode != config.ModeWorkstation && *mode != config.ModeBastion {
+		fmt.Fprintf(stderr, "--mode %q: want %s or %s\n", *mode, config.ModeWorkstation, config.ModeBastion)
 		return ExitUsage
 	}
 
@@ -58,7 +71,7 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "creating config dir: %v\n", err)
 		return ExitFailure
 	}
-	if err := os.WriteFile(path, []byte(starterConfig), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(fmt.Sprintf(starterConfig, *mode)), 0o644); err != nil {
 		fmt.Fprintf(stderr, "writing config: %v\n", err)
 		return ExitFailure
 	}

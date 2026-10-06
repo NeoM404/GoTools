@@ -103,15 +103,21 @@ func itoa(n int) string {
 
 // Inspect resolves each catalog tool in PATH and, where a floor applies, probes
 // its version and flags it outdated. overrides replaces catalog floors by tool
-// name (from config "minVersions"). Probes run concurrently — each is an
-// independent subprocess — and results keep catalog order.
-func Inspect(ctx context.Context, overrides map[string]string) []Result {
+// name (from config "minVersions"); notRequired demotes required tools that
+// this host does not need (a bastion has no aws/az). Probes run concurrently
+// — each is an independent subprocess — and results keep catalog order.
+func Inspect(ctx context.Context, overrides map[string]string, notRequired ...string) []Result {
 	cat := Catalog()
 	out := make([]Result, len(cat))
 	var wg sync.WaitGroup
 	for i, t := range cat {
 		if ov, ok := overrides[t.Name]; ok {
 			t.MinVersion = ov
+		}
+		for _, n := range notRequired {
+			if t.Name == n {
+				t.Required = false
+			}
 		}
 		wg.Add(1)
 		go func() {

@@ -56,7 +56,12 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	// Config is optional; used only for minVersions overrides. Ignore errors so
 	// doctor always runs (its job is to diagnose a broken setup).
 	cfg, _, _ := config.Load(cfgPath)
-	results := tools.Inspect(ctx, cfg.MinVersions)
+	var notRequired []string
+	if cfg.Bastion() {
+		// Credentials are provisioned on a bastion; bankctl needs only kubectl.
+		notRequired = []string{"aws", "az"}
+	}
+	results := tools.Inspect(ctx, cfg.MinVersions, notRequired...)
 
 	missing := tools.MissingRequired(results)
 	outdatedReq := tools.OutdatedRequired(results)

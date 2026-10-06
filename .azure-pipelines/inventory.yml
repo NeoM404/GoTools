@@ -1,0 +1,75 @@
+# Nightly fleet-inventory reconciliation (AKS).
+#
+# Cloud discovery runs here, not on the bastions: the bastions have no az CLI
+# and no internet, and a pipeline with a read-only service connection is the
+# auditable place for cloud access anyway. The pipeline only READS Azure and
+# never edits the inventory — when reality and inventory/fleet.json disagree it
+# goes red and publishes a proposed inventory for a person to merge by PR.
+#
+# Setup (once): see docs/azure-devops.md
+#   - service connection with Reader on every subscription in inventory/bankctl.json
+#   - fill in the subscription IDs in inventory/bankctl.json
+#   - create the pipeline from this file
+
+name: inventory-$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger: none
+pr: none
+
+schedules:
+  - cron: "0 3 * * *" # 05:00 SAST
+    displayName: Nightly reconciliation
+    branches:
+      include: [main]
+    always: true # the clouds change even when this repo does not
+
+parameters:
+  - name: serviceConnection
+    displayName: Azure service connection (Reader on the in-scope subscriptions)
+    type: string
+    default: sc-bankctl-inventory-reader
+
+variables:
+  BANKCTL_CONFIG: $(Build.SourcesDirectory)/inventory/bankctl.json
+  # Pin to the newest Go patch release: govulncheck in CI fails on a
+  # toolchain with known standard-library CVEs.
+  goVersion: "1.27.1"
+  # Agents without internet: point Go at the internal module proxy, e.g.
+  # GOPROXY: https://<artifactory>/api/go/go-remote
+  # (bankctl has no dependencies; the proxy is only needed for `make tools` in CI.)
+
+pool:
+  vmImage: ubuntu-latest # or the bank's self-hosted pool: `name: <pool-name>`
+
+jobs:
+  - job: reconcile
+    displayName: Reconcile inventory against Azure
+    timeoutInMinutes: 30
+    steps:
+      - checkout: self
+        fetchDepth: 1
+        persistCredentials: false # the job never pushes
+
+      - task: GoTool@0
+        displayName: Go $(goVersion)
+        inputs:
+          version: $(goVersion)
+
+      - script: make build
+        displayName: Build bankctl
+
+      - task: AzureCLI@2
+        displayName: Reconcile (read-only)
+        inputs:
+          azureSubscription: ${{ parameters.serviceConnection }}
+          scriptType: bash
+          scriptLocation: scriptPath
+          scriptPath: inventory/reconcile.sh
+          addSpnToEnvironment: false # the script needs az's session, never the secret
+        env:
+          OUT_DIR: $(Build.ArtifactStagingDirectory)/inventory
+
+      - publish: $(Build.ArtifactStagingDirectory)/inventory
+        displayName: Publish diff and proposal
+        artifact: inventory-reconciliation
+        condition: always() # most useful exactly when reconciliation fails

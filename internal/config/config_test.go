@@ -76,3 +76,26 @@ func TestCacheTTL(t *testing.T) {
 		t.Fatalf("want TTL error, got %v", err)
 	}
 }
+
+func TestModeAndNamePatternValidated(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"mode": "jumpbox"}`: `mode "jumpbox"`,
+		`{"discovery": {"nameEnvironmentPattern": "^(.+)-k8s-([a-z]+)-cluster$"}}`: "needs a named group",
+		`{"discovery": {"nameEnvironmentPattern": "("}}`:                           "nameEnvironmentPattern",
+	} {
+		if _, _, err := Load(writeCfg(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%s: want error containing %q, got %v", body, want, err)
+		}
+	}
+	cfg, _, err := Load(writeCfg(t, `{"mode": "Bastion", "discovery": {"nameEnvironmentPattern": "(?i)^.+-k8s-(?P<env>[a-z]+)-cluster$"}}`))
+	if err != nil || !cfg.Bastion() {
+		t.Fatalf("err=%v bastion=%v", err, cfg.Bastion())
+	}
+	for name, want := range map[string]string{
+		"payments-k8s-QA-cluster": "qa", "payments-k8s-prod-cluster": "prod", "aks-core-prod-weu": "",
+	} {
+		if got := cfg.Discovery.EnvFromName(name); got != want {
+			t.Fatalf("EnvFromName(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

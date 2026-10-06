@@ -93,22 +93,12 @@ type ContextPlan struct {
 // kubeconfig reveals it), and nothing in the inventory matches it by any of
 // the identities the kubeconfig carries.
 func PlanSweep(k Kubeconfig, fleet inventory.Fleet, includeCurrent bool) []ContextPlan {
-	servers := map[string]string{}
-	for _, c := range k.Clusters {
-		servers[c.Name] = c.Cluster.Server
-	}
-	execs := map[string][]string{}
-	for _, u := range k.Users {
-		if u.User.Exec != nil {
-			execs[u.Name] = append([]string{u.User.Exec.Command}, u.User.Exec.Args...)
-		}
-	}
 	covered := coverage(fleet)
+	refs := k.refs()
 
 	plans := make([]ContextPlan, 0, len(k.Contexts))
-	for _, c := range k.Contexts {
-		ref := contextRef{name: c.Name, cluster: c.Context.Cluster, user: c.Context.User,
-			server: servers[c.Context.Cluster], exec: execs[c.Context.User]}
+	for i, c := range k.Contexts {
+		ref := refs[i]
 		p := ContextPlan{Context: c.Name, Cloud: ref.cloud()}
 		switch {
 		case p.Cloud == "":
@@ -157,6 +147,37 @@ func markOrphans(plans []ContextPlan, k Kubeconfig) {
 type contextRef struct {
 	name, cluster, user, server string
 	exec                        []string
+}
+
+// refs returns a contextRef for every context, in kubeconfig order.
+func (k Kubeconfig) refs() []contextRef {
+	servers := map[string]string{}
+	for _, c := range k.Clusters {
+		servers[c.Name] = c.Cluster.Server
+	}
+	execs := map[string][]string{}
+	for _, u := range k.Users {
+		if u.User.Exec != nil {
+			execs[u.Name] = append([]string{u.User.Exec.Command}, u.User.Exec.Args...)
+		}
+	}
+	out := make([]contextRef, len(k.Contexts))
+	for i, c := range k.Contexts {
+		out[i] = contextRef{name: c.Name, cluster: c.Context.Cluster, user: c.Context.User,
+			server: servers[c.Context.Cluster], exec: execs[c.Context.User]}
+	}
+	return out
+}
+
+// ref returns the context named name; a name with no entry (a dangling
+// current-context) still yields a ref carrying the name alone.
+func (k Kubeconfig) ref(name string) contextRef {
+	for i, r := range k.refs() {
+		if k.Contexts[i].Name == name {
+			return r
+		}
+	}
+	return contextRef{name: name}
 }
 
 func (r contextRef) host() string {

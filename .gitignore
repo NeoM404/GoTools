@@ -9,6 +9,9 @@ bankctl.yaml
 bankctl.json
 fleet.json
 !**/*.example.*
+# ...except the declared inventory under inventory/: it is the reviewed
+# control record the pipeline reconciles, so it is committed on purpose.
+!/inventory/*.json
 
 # OS / editor
 .DS_Store

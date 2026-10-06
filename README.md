@@ -29,6 +29,16 @@ make build                     # -> bin/bankctl
 ./bin/bankctl --config configs/bankctl.example.json clusters list
 ```
 
+### Bastions and Azure DevOps
+
+On jump hosts whose kubeconfig the platform provisions (no `az`/`aws`, no
+internet), run bankctl in **bastion mode** (`bankctl init --mode bastion`):
+`login` switches to the cluster's existing context with change control and an
+audit record, and `guard` classifies contexts by everything the kubeconfig
+carries. Cloud discovery moves to a nightly Azure DevOps pipeline that
+reconciles the reviewed inventory against Azure — see
+**[docs/azure-devops.md](docs/azure-devops.md)**.
+
 ## Layout
 
 ```
@@ -46,7 +56,9 @@ internal/cloud/     aws/az CLI orchestration + identity verification
 internal/kube/      context resolution, production detection, kubeconfig sweep
 internal/config/    config resolution & loading
 internal/tools/     `doctor` ecosystem-tool catalog
-configs/            example config + example fleet inventory
+configs/            example configs + fleet inventories (workstation and bastion)
+inventory/          the declared inventory + pipeline config, reconciled nightly
+.azure-pipelines/   Azure DevOps CI and inventory-reconciliation pipelines
 docs/               bankctl.md (full usage) · ecosystem-tools.md (what to install instead)
 ```
 

@@ -262,3 +262,54 @@ func TestInvalidInventoryRejectedByCommands(t *testing.T) {
 		t.Fatalf("ambiguous name must be refused before acting: code=%d err=%q", code, errb)
 	}
 }
+
+func TestInventoryDiffWritesReport(t *testing.T) {
+	exampleEstate().install(t)
+	cfg := writeConfig(t, discoveryBlock)
+	report := filepath.Join(t.TempDir(), "diff.json")
+	code, out, errb := run("--config", cfg, "inventory", "diff", "--report", report)
+	if code != ExitOK || !strings.Contains(out, "IN SYNC") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
+	}
+	data, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep reconcile.Report
+	if err := json.Unmarshal(data, &rep); err != nil || !rep.InSync || rep.Matched == 0 {
+		t.Fatalf("report: err=%v %+v", err, rep)
+	}
+}
+
+// Bootstrapping from an empty inventory: every cluster is new, and the
+// environment comes from the naming convention when clusters are untagged.
+func TestInventorySyncDerivesEnvironmentFromName(t *testing.T) {
+	estate{aks: map[string]aksSub{"sub-apps": {id: "sub-apps-id", clusters: []string{
+		`{"name":"payments-k8s-qa-cluster","location":"southafricanorth","resourceGroup":"rg-p-qa","currentKubernetesVersion":"1.30.4","tags":{}}`,
+		`{"name":"payments-k8s-prod-cluster","location":"southafricanorth","resourceGroup":"rg-p-prod","currentKubernetesVersion":"1.30.4","tags":{"Environment":"prod"}}`,
+	}}}}.install(t)
+	empty := filepath.Join(t.TempDir(), "fleet.json")
+	if err := os.WriteFile(empty, []byte(`{"clusters":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(t.TempDir(), "cfg.json")
+	if err := os.WriteFile(cfg, []byte(`{"inventoryPath": `+quote(empty)+`, "environments": ["dev","ete","qa","prod"],
+	  "discovery": {"azure": [{"subscription": "sub-apps"}], "nameEnvironmentPattern": "^.+-k8s-(?P<env>[a-z]+)-cluster$"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errb := run("--config", cfg, "inventory", "sync")
+	if code != ExitOK {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	var fleet inventory.Fleet
+	if err := json.Unmarshal([]byte(out), &fleet); err != nil {
+		t.Fatal(err)
+	}
+	envs := map[string]string{}
+	for _, c := range fleet.Clusters {
+		envs[c.Name] = c.Environment
+	}
+	if envs["payments-k8s-qa-cluster"] != "qa" || envs["payments-k8s-prod-cluster"] != "prod" {
+		t.Fatalf("environments: %v", envs)
+	}
+}

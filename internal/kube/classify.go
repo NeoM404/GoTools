@@ -66,9 +66,22 @@ type Classification struct {
 // the name patterns still over-warn as before. fleet may be nil (inventory
 // unavailable), leaving the patterns alone.
 func Classify(context string, fleet *inventory.Fleet, prodEnvs, patterns []string) Classification {
+	return classify(contextRef{name: context}, fleet, prodEnvs, patterns)
+}
+
+// ClassifyCurrent classifies k's current context using every identity the
+// kubeconfig carries for it — context name, cluster entry, user entry
+// (az writes clusterUser_<rg>_<name>), API host, exec plugin — so a context
+// renamed by hand is still recognised. The cluster entry's name is checked
+// against the prod patterns as well as the context name.
+func ClassifyCurrent(k Kubeconfig, fleet *inventory.Fleet, prodEnvs, patterns []string) Classification {
+	return classify(k.ref(k.CurrentContext), fleet, prodEnvs, patterns)
+}
+
+func classify(ref contextRef, fleet *inventory.Fleet, prodEnvs, patterns []string) Classification {
 	cl := Classification{Reasons: []string{}}
 	if fleet != nil {
-		if c, ok := Resolve(context, *fleet); ok {
+		if c, ok := ref.resolve(*fleet); ok {
 			cl.Cluster, cl.Environment = c.Name, c.Environment
 			if isProdEnv(c.Environment, prodEnvs) {
 				cl.Production = true
@@ -76,9 +89,14 @@ func Classify(context string, fleet *inventory.Fleet, prodEnvs, patterns []strin
 			}
 		}
 	}
-	if p, ok := matchingPattern(context, patterns); ok {
+	if p, ok := matchingPattern(ref.name, patterns); ok {
 		cl.Production = true
 		cl.Reasons = append(cl.Reasons, "name matches prod pattern "+p)
+	} else if ref.cluster != "" && ref.cluster != ref.name {
+		if p, ok := matchingPattern(ref.cluster, patterns); ok {
+			cl.Production = true
+			cl.Reasons = append(cl.Reasons, "kubeconfig cluster "+ref.cluster+" matches prod pattern "+p)
+		}
 	}
 	return cl
 }

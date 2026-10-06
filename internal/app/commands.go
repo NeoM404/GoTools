@@ -223,6 +223,7 @@ func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, 
 	dryRun := fs.Bool("dry-run", false, "print the CLI command without running it")
 	crFlag := fs.String("change-record", "", "change record authorising this access (e.g. CHG0012345)")
 	glassFlag := fs.String("break-glass", "", "emergency access without a change record; the reason is recorded and flagged")
+	ctxFlag := fs.String("context", "", "bastion mode: which of the cluster's kube-contexts to use, when it has several")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return ExitUsage, nil
@@ -239,6 +240,20 @@ func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, 
 	if err != nil {
 		fmt.Fprintf(stderr, "%v\n", err)
 		return ExitFailure, nil
+	}
+	if code := checkModeFlags(cfg, name, *fileFlag, *ctxFlag, stderr); code != ExitOK {
+		return code, nil
+	}
+	var hostCtx kube.HostContext
+	if cfg.Bastion() {
+		if hostCtx, err = bastionContext(ctx, fleet, c, *ctxFlag); err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", name, err)
+			return ExitFailure, nil
+		}
+		if *dryRun {
+			fmt.Fprintln(stdout, "kubectl config use-context "+hostCtx.Name)
+			return ExitOK, &fetched{cfg, c}
+		}
 	}
 	file := *fileFlag
 	if file == "" && cfg.KubeconfigDir != "" {
@@ -274,13 +289,20 @@ func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, 
 	// cannot be written, the fetch does not happen. Refused attempts are
 	// recorded too.
 	production := cfg.IsProdEnvironment(c.Environment) || kube.IsProd(c.Name, cfg.ProdPatterns)
-	tr, err := beginAudit(ctx, cfg, "credentials", &c, production, changeInfo{record: cr, breakGlassReason: glass}, stderr)
+	action := "credentials"
+	if cfg.Bastion() {
+		action = "use-context"
+	}
+	tr, err := beginAudit(ctx, cfg, action, &c, production, changeInfo{record: cr, breakGlassReason: glass}, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "%v — refusing to fetch credentials: every credential fetch must be recorded\n", err)
 		return ExitFailure, nil
 	}
 	if code := applyChangeControl(ctx, cfg, c, cr, glass, tr, stderr); code != ExitOK {
 		return code, nil
+	}
+	if cfg.Bastion() {
+		return useHostContext(ctx, cfg, c, hostCtx, tr, stdout, stderr)
 	}
 
 	// Confirm the CLI will act in the cluster's own account/subscription:
@@ -321,6 +343,77 @@ func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, 
 		fmt.Fprintf(stderr, "⚠  kubeconfig uses a deprecated auth plugin apiVersion (%s) — "+
 			"update your %s CLI and run `bankctl doctor`.\n", ver, cliForCloud(c.Cloud))
 	}
+	return ExitOK, &fetched{cfg, c}
+}
+
+// checkModeFlags rejects flags that do not apply in the configured mode, and
+// `kubeconfig` on a bastion, where bankctl never fetches credentials.
+func checkModeFlags(cfg config.Config, name, file, context string, stderr io.Writer) int {
+	switch {
+	case cfg.Bastion() && name == "kubeconfig":
+		fmt.Fprintln(stderr, "this host is a bastion (config mode \"bastion\"): its credentials are provisioned by the platform and bankctl does not fetch any — use `bankctl login <cluster>` to select them")
+		return ExitUsage
+	case cfg.Bastion() && file != "":
+		fmt.Fprintln(stderr, "--file does not apply on a bastion: login selects a context in the existing kubeconfig")
+		return ExitUsage
+	case !cfg.Bastion() && context != "":
+		fmt.Fprintln(stderr, "--context applies only in bastion mode")
+		return ExitUsage
+	}
+	return ExitOK
+}
+
+// bastionContext finds the kube-context the platform provisioned for c. It
+// refuses to guess: no match, an ambiguous match, or a --context that does
+// not belong to c is an error.
+func bastionContext(ctx context.Context, fleet inventory.Fleet, c inventory.Cluster, want string) (kube.HostContext, error) {
+	k, err := kube.View(ctx)
+	if err != nil {
+		return kube.HostContext{}, fmt.Errorf("reading the kubeconfig: %w", err)
+	}
+	found := kube.ContextsFor(k, fleet, c)
+	names := make([]string, len(found))
+	for i, h := range found {
+		names[i] = h.Name
+	}
+	if want != "" {
+		for _, h := range found {
+			if h.Name == want {
+				return h, nil
+			}
+		}
+		if len(found) == 0 {
+			return kube.HostContext{}, fmt.Errorf("context %q does not belong to %s, and no context on this host does", want, c.Name)
+		}
+		return kube.HostContext{}, fmt.Errorf("context %q does not belong to %s (its contexts: %s)", want, c.Name, strings.Join(names, ", "))
+	}
+	switch len(found) {
+	case 0:
+		return kube.HostContext{}, fmt.Errorf("no kube-context for %s on this host — its credentials are not provisioned here, "+
+			"or no context identifies it by context name, cluster entry or clusterUser_<resourceGroup>_<name> user", c.Name)
+	case 1:
+		return found[0], nil
+	}
+	return kube.HostContext{}, fmt.Errorf("%d contexts belong to %s (%s) — choose one with --context", len(found), c.Name, strings.Join(names, ", "))
+}
+
+// useHostContext completes a bastion login: switch to the context and close
+// the audit record. The kubeconfig user is recorded as the principal; when it
+// is a shared AKS local account the record says so, because the cluster's own
+// audit log cannot tell the operators using it apart.
+func useHostContext(ctx context.Context, cfg config.Config, c inventory.Cluster, h kube.HostContext, tr *trail, stdout, stderr io.Writer) (int, *fetched) {
+	principal := "kubeconfig-user:" + h.User
+	if err := kube.UseContext(ctx, h.Name); err != nil {
+		tr.end(ctx, audit.OutcomeFailure, principal, err.Error(), stderr)
+		fmt.Fprintf(stderr, "login failed: %v\n", err)
+		return ExitFailure, nil
+	}
+	detail := "selected kube-context " + h.Name
+	if h.SharedLocalAccount() {
+		detail += "; it authenticates as a shared AKS local account, so the cluster audit log cannot attribute actions to this operator"
+	}
+	tr.end(ctx, audit.OutcomeSuccess, principal, detail, stderr)
+	fmt.Fprintf(stdout, "switched to context %q for %q\n", h.Name, c.Name)
 	return ExitOK, &fetched{cfg, c}
 }
 
@@ -416,13 +509,13 @@ func resolveContext(ctx context.Context, cfgPath string, stderr io.Writer) (cont
 		fmt.Fprintf(stderr, "config error: %v\n", err)
 		return contextStatus{}, false
 	}
-	name, err := kube.CurrentContext(ctx)
+	k, err := kube.ViewCurrent(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "could not read current kube-context: %v\n", err)
 		return contextStatus{}, false
 	}
-	cl := kube.Classify(name, guardFleet(cfg, stderr), cfg.ProdEnvs(), cfg.ProdPatterns)
-	return contextStatus{Context: name, Production: cl.Production, Cluster: cl.Cluster,
+	cl := kube.ClassifyCurrent(k, guardFleet(cfg, stderr), cfg.ProdEnvs(), cfg.ProdPatterns)
+	return contextStatus{Context: k.CurrentContext, Production: cl.Production, Cluster: cl.Cluster,
 		Environment: cl.Environment, Reasons: cl.Reasons}, true
 }
 

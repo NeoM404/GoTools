@@ -114,6 +114,7 @@ Usage:
 Commands:
   init                        Write a starter config to ~/.config/bankctl
                               [--path PATH] [--force]
+                              [--mode workstation|bastion]
   clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]
                               List clusters in the fleet inventory
   clusters get <name> [-o table|json]
@@ -122,7 +123,9 @@ Commands:
                               [--file PATH] [--dry-run]
                               [--change-record CHG… | --break-glass REASON]
   login <cluster>             kubeconfig + safety check for the target
-                              (same flags as kubeconfig)
+                              (same flags as kubeconfig). On a bastion:
+                              switch to the cluster's provisioned context,
+                              audited and change-controlled [--context NAME]
   fleet versions [-o table|json]
                               Version-drift report against the target for
                               each cluster's environment
@@ -132,7 +135,9 @@ Commands:
                               [--fail-on-risk]  (exit 1 if any cluster at risk)
   fleet calendar aws          Generate supportCalendar.aws from EKS
                               [--profile P] [--region R]
-  inventory diff [-o table|json]
+  inventory validate [--file PATH]
+                              Check an inventory against the config
+  inventory diff [-o table|json] [--report FILE]
                               Reconcile the inventory against the clouds:
                               shadow, missing and drifted clusters
                               (exit 1 unless complete and in sync)

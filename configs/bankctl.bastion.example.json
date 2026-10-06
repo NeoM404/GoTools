@@ -1,0 +1,28 @@
+{
+  "mode": "bastion",
+  "inventoryPath": "fleet.bastion.example.json",
+  "prodPatterns": [
+    "(?i)(^|[-_.])(prod|prd|qa)([-_.]|$)"
+  ],
+  "environments": [
+    "dev",
+    "ete",
+    "qa",
+    "prod"
+  ],
+  "prodEnvironments": [
+    "qa",
+    "prod"
+  ],
+  "targetKubeVersion": "1.31",
+  "targetKubeVersions": {
+    "prod": "1.30",
+    "qa": "1.30"
+  },
+  "changeControl": {
+    "requireFor": [],
+    "serviceNow": {
+      "instanceUrl": ""
+    }
+  }
+}

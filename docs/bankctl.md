@@ -23,7 +23,8 @@ make cross           # outputs to dist/
 ```
 
 Requires Go 1.26+ (the oldest supported Go release) to build. The built binary needs `kubectl`, `aws`, and `az`
-on PATH for the subcommands that use them — run `bankctl doctor` to check.
+on PATH for the subcommands that use them — run `bankctl doctor` to check. On a
+bastion (`"mode": "bastion"`) it needs only `kubectl`.
 
 ## First run
 
@@ -35,7 +36,29 @@ bankctl clusters list
 ```
 
 `init` never overwrites an existing config unless you pass `--force`; use
-`--path` to write elsewhere.
+`--path` to write elsewhere, and `--mode bastion` on a jump host (see
+[Bastion mode](#bastion-mode)). The starter config uses the `dev`/`ete`/`qa`/`prod`
+environments and treats `qa` and `prod` as production.
+
+## Bastion mode
+
+On a bastion the platform has already provisioned the kubeconfig, and there may
+be no `az`/`aws` CLI and no internet. With `"mode": "bastion"`:
+
+- `login <cluster>` finds the cluster's existing context (by context name,
+  kubeconfig cluster entry, or the `clusterUser_<rg>_<name>` user az writes) and
+  switches to it, after change control and with an audit record. If a cluster
+  has several contexts (e.g. user and admin), choose with `--context NAME`.
+  `--dry-run` prints the `kubectl config use-context` it would run.
+- `kubeconfig` is refused (nothing is fetched on a bastion); so are
+  `inventory diff`/`sync` — discovery runs in the inventory pipeline instead.
+- `doctor` requires only `kubectl`.
+- The audit record's principal is the kubeconfig user. When that is a shared
+  AKS local account (a static `clusterUser_…` credential, or `clusterAdmin_…`),
+  the record says so: the cluster's own audit log cannot tell operators apart.
+
+How the inventory reaches bastions, and the Azure DevOps pipelines that build
+and reconcile it, are in [azure-devops.md](azure-devops.md).
 
 ## Configuration
 
@@ -61,6 +84,7 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 
 | Field | Meaning |
 |---|---|
+| `mode` | `"workstation"` (default: credentials fetched through `aws`/`az`) or `"bastion"` (credentials provisioned on the host) — see [Bastion mode](#bastion-mode). |
 | `inventoryPath` | Local JSON fleet file. Relative paths resolve against the **config file's** directory. |
 | `inventoryUrl` | HTTPS endpoint returning the same JSON (preferred in prod so everyone sees the same live fleet). HTTP is refused. |
 | `prodPatterns` | Regexes; a context/cluster name matching any is treated as production by `guard`. |
@@ -75,7 +99,7 @@ work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.exam
 | `changeControl` | Which environments need a change record for credentials, and how it is verified — see [Change control](#change-control). |
 | `minVersions` | Map of tool→minimum version overriding `doctor`'s built-in floors, e.g. `{"kubectl":"1.29","aws":"2.15"}`. |
 | `commandTimeout` | Deadline for each cloud CLI call (`aws`/`az`) as a Go duration, e.g. `"90s"`. Default `"2m"`. An invalid value is a config error, not silently ignored. |
-| `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","sit","uat","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
+| `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","ete","qa","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
 | `discovery` | The cloud scope `inventory diff` / `inventory sync` scan — see [Discovery](#discovery). |
 
 ### The fleet inventory
@@ -260,6 +284,7 @@ every completeness claim is made only for it:
 | `azure[].subscription` | Subscription name or ID. The inventory may use either form. |
 | `concurrency` | Maximum cloud CLI processes at once across the whole scan (default 8, max 64). |
 | `tagKeys` | Which cloud tags carry `environment`, `owner`, `costCentre` (matched case-insensitively). |
+| `nameEnvironmentPattern` | Fallback for clusters without an environment tag: a regex with a named group `env` applied to the cluster name, e.g. `(?i)^.+-k8s-(?P<env>[a-z]+)-cluster$`. The tag always wins. |
 
 The credentials need only read access: `sts:GetCallerIdentity`,
 `eks:ListClusters` and `eks:DescribeCluster` on AWS; `Reader` (or
@@ -326,7 +351,7 @@ Ctrl-C stops it cleanly (exit 130). Either way the CLI **and every process it
 spawned** are killed — a timed-out `az` does not leave python running in the
 background.
 
-### `bankctl login <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON]`
+### `bankctl login <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON] [--context NAME]`
 `kubeconfig` plus a loud warning if the target is production (a
 `prodEnvironments` environment, or a name matching `prodPatterns`). Takes the
 same flags as `kubeconfig`, including change control.
@@ -334,6 +359,9 @@ same flags as `kubeconfig`, including change control.
 bankctl login eks-payments-prod-euw1
 # ⚠  "eks-payments-prod-euw1" is a PRODUCTION cluster. Changes require a change record.
 ```
+In [bastion mode](#bastion-mode) it switches to the cluster's provisioned
+context instead of fetching credentials; `--context` picks one when the cluster
+has several, and `--file` does not apply.
 
 ### `bankctl fleet versions [--fail-on-stale] [-o table|json]`
 Version-drift report against each cluster's target — `targetKubeVersions` for
@@ -382,7 +410,13 @@ default to the first `discovery.aws` target. Paste the output under
 `supportCalendar.azure` from the
 [AKS release calendar](https://learn.microsoft.com/azure/aks/supported-kubernetes-versions).
 
-### `bankctl inventory diff [-o table|json]`
+### `bankctl inventory validate [--file PATH]`
+Loads the config and the inventory and applies every validation rule, reporting
+all problems at once (exit 1). `--file` checks a candidate — e.g. the inventory
+in a pull request — against the config. CI runs this on every change to the
+inventory.
+
+### `bankctl inventory diff [-o table|json] [--report FILE]`
 Reconciles the inventory against what the clouds actually run. Exits **0 only
 when the scan was complete and there are no findings**; otherwise 1.
 
@@ -409,6 +443,9 @@ described, the whole region is reported as failed, never as partially clean. A
 failed scope never produces `missing` findings — only `unscanned`. `-o json`
 emits the full report, including the exact scopes scanned, for audit evidence.
 
+`--report FILE` also writes the JSON report to a file, so a pipeline gets a
+readable log and a machine-readable artifact from one scan.
+
 ```bash
 bankctl inventory diff                                   # human review
 bankctl inventory diff -o json > evidence/inventory-$(date +%F).json
@@ -425,8 +462,9 @@ kept unchanged, and clusters proven missing removed. Prints to stdout, or to
 It **refuses to write** when:
 - the scan was incomplete — clusters in the failed scopes would be silently dropped;
 - the result would not pass validation — e.g. two real clusters share a name, or
-  an untagged cluster has no environment on the allow-list. Fix at the source
-  (tag or rename), then sync again.
+  an untagged cluster has no environment on the allow-list (and
+  `nameEnvironmentPattern` does not supply one). Fix at the source (tag or
+  rename), then sync again.
 
 ```bash
 bankctl inventory sync --out fleet.proposed.json
@@ -540,7 +578,7 @@ Shows the current context, whether it's production, the inventory cluster it
 resolves to, and why. `-o json` emits the same schema as `guard -o json`.
 
 ### `bankctl doctor [--strict] [-o table|json]`
-Checks required (`kubectl`, `aws`, `az`) and optional ecosystem tools for
+Checks required (`kubectl`, `aws`, `az`; on a bastion only `kubectl`) and optional ecosystem tools for
 **presence and version**. It probes each tool with a floor (`kubectl`, `aws`,
 `az`, `helm` by default), parses the version, and flags anything below its
 floor as `OUTDATED`. Floors are overridable per tool via `minVersions` in

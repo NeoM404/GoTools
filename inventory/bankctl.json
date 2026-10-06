@@ -1,0 +1,20 @@
+{
+  "inventoryPath": "fleet.json",
+  "environments": ["dev", "ete", "qa", "prod"],
+  "prodEnvironments": ["qa", "prod"],
+  "prodPatterns": ["(?i)(^|[-_.])(prod|prd|qa)([-_.]|$)"],
+  "targetKubeVersion": "1.31",
+  "targetKubeVersions": { "prod": "1.30", "qa": "1.30" },
+  "commandTimeout": "3m",
+  "discovery": {
+    "azure": [
+      { "subscription": "REPLACE-with-dev-subscription-id" },
+      { "subscription": "REPLACE-with-ete-subscription-id" },
+      { "subscription": "REPLACE-with-qa-subscription-id" },
+      { "subscription": "REPLACE-with-prod-subscription-id" }
+    ],
+    "concurrency": 8,
+    "nameEnvironmentPattern": "(?i)^.+-k8s-(?P<env>[a-z]+)-cluster$",
+    "tagKeys": { "environment": "environment", "owner": "owner", "costCentre": "cost-centre" }
+  }
+}

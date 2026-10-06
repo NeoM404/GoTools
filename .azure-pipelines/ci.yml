@@ -1,0 +1,65 @@
+# CI for Azure Repos: the same gates as .github/workflows/ci.yml.
+#
+# Azure Repos ignores the `pr:` trigger in YAML — make this pipeline a build
+# validation policy on main (Repos → Branches → main → Branch policies) so
+# every pull request, including inventory changes, must pass it.
+
+trigger:
+  branches:
+    include: [main]
+
+schedules:
+  # Standard-library CVEs are published independently of our commits, so an
+  # unchanged repo can become vulnerable overnight.
+  - cron: "17 3 * * *"
+    displayName: Nightly vulnerability scan
+    branches:
+      include: [main]
+    always: true
+
+variables:
+  goVersion: "1.27.1" # newest patch release; see inventory.yml
+
+pool:
+  vmImage: ubuntu-latest # or the bank's self-hosted pool: `name: <pool-name>`
+
+steps:
+  - checkout: self
+    fetchDepth: 0 # full history so `git describe` stamps a real version
+    persistCredentials: false
+
+  - task: GoTool@0
+    displayName: Go $(goVersion)
+    inputs:
+      version: $(goVersion)
+
+  - script: make fmt-check vet deps-check
+    displayName: Format, vet, dependency policy
+  - script: make tools
+    displayName: Install pinned analysis tools
+  - script: make lint
+    displayName: Static analysis
+  - script: make test
+    displayName: Tests (race detector)
+  - script: make vuln
+    displayName: govulncheck (our code and the standard library)
+
+  # The declared inventory is code: a PR that breaks it fails here.
+  - script: make build && ./bin/bankctl --config inventory/bankctl.json inventory validate
+    displayName: Validate inventory/fleet.json
+
+  - script: make repro checksums
+    displayName: Reproducible cross-compiled build
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'Schedule'))
+
+  - publish: dist
+    displayName: Publish binaries + SHA256SUMS
+    artifact: bankctl
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'Schedule'))
+
+  # What bastions consume. How it reaches them is the team's choice — see
+  # docs/azure-devops.md ("Getting the inventory onto the bastions").
+  - publish: inventory/fleet.json
+    displayName: Publish validated inventory
+    artifact: fleet
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'Schedule'))

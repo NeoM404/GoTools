@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -19,10 +20,12 @@ import (
 
 func cmdInventory(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: bankctl inventory <diff|sync> ...")
+		fmt.Fprintln(stderr, "usage: bankctl inventory <diff|sync|validate> ...")
 		return ExitUsage
 	}
 	switch args[0] {
+	case "validate":
+		return inventoryValidate(cfgPath, args[1:], stdout, stderr)
 	case "diff":
 		return inventoryDiff(ctx, cfgPath, args[1:], stdout, stderr)
 	case "sync":
@@ -37,6 +40,11 @@ func cmdInventory(ctx context.Context, cfgPath string, args []string, stdout, st
 func scan(ctx context.Context, cfgPath string, stderr io.Writer, quiet bool) (config.Config, inventory.Fleet, discovery.Result, bool) {
 	cfg, declared, ok := loadFleet(cfgPath, stderr)
 	if !ok {
+		return cfg, declared, discovery.Result{}, false
+	}
+	if cfg.Bastion() {
+		fmt.Fprintln(stderr, "inventory discovery does not run on a bastion (config mode \"bastion\"): it needs cloud CLI access the bastion does not have. "+
+			"It runs in the inventory pipeline, which publishes the inventory bastions use — see docs/azure-devops.md")
 		return cfg, declared, discovery.Result{}, false
 	}
 	d := cfg.Discovery
@@ -70,6 +78,7 @@ func inventoryDiff(ctx context.Context, cfgPath string, args []string, stdout, s
 	fs := flag.NewFlagSet("inventory diff", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	output := addOutputFlag(fs)
+	report := fs.String("report", "", "also write the JSON report to this file (for pipelines: a readable log and a machine-readable artifact from one scan)")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -84,6 +93,16 @@ func inventoryDiff(ctx context.Context, cfgPath string, args []string, stdout, s
 	code := ExitOK
 	if !rep.InSync {
 		code = ExitFailure
+	}
+	if *report != "" {
+		data, err := json.MarshalIndent(rep, "", "  ")
+		if err == nil {
+			err = writeFileAtomic(*report, append(data, '\n'), 0o644)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "writing report %s: %v\n", *report, err)
+			return ExitFailure
+		}
 	}
 
 	if *output == "json" {
@@ -125,6 +144,69 @@ func inventoryDiff(ctx context.Context, cfgPath string, args []string, stdout, s
 	}
 	fmt.Fprintf(stdout, "\nNOT IN SYNC — %s\n", strings.Join(parts, ", "))
 	return code
+}
+
+// inventoryValidate checks the config and an inventory against it — every
+// rule commands apply at load time, reported in one pass. --file validates a
+// candidate (a proposed inventory in a pull request) instead of the
+// configured one.
+func inventoryValidate(cfgPath string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("inventory validate", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	file := fs.String("file", "", "inventory file to validate (default: the configured inventory)")
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintln(stderr, "usage: bankctl inventory validate [--file PATH]")
+		return ExitUsage
+	}
+	var (
+		cfg   config.Config
+		fleet inventory.Fleet
+		ok    bool
+	)
+	if *file == "" {
+		if cfg, fleet, ok = loadFleet(cfgPath, stderr); !ok {
+			return ExitFailure
+		}
+	} else {
+		var err error
+		if cfg, _, err = config.Load(cfgPath); err != nil {
+			fmt.Fprintf(stderr, "config error: %v\n", err)
+			return ExitFailure
+		}
+		if fleet, err = inventory.LoadFile(*file); err == nil {
+			err = fleet.Validate(cfg.Environments)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "%v\n", err)
+			return ExitFailure
+		}
+	}
+	byEnv := map[string]int{}
+	for _, c := range fleet.Clusters {
+		byEnv[strings.ToLower(c.Environment)]++
+	}
+	envs := make([]string, 0, len(byEnv))
+	for e := range byEnv {
+		envs = append(envs, e)
+	}
+	sort.Strings(envs)
+	parts := make([]string, len(envs))
+	for i, e := range envs {
+		label := e
+		if label == "" {
+			label = "(none)"
+		}
+		parts[i] = fmt.Sprintf("%s %d", label, byEnv[e])
+	}
+	fmt.Fprintf(stdout, "inventory valid: %d cluster(s)", len(fleet.Clusters))
+	if len(parts) > 0 {
+		fmt.Fprintf(stdout, " — %s", strings.Join(parts, ", "))
+	}
+	fmt.Fprintln(stdout)
+	return ExitOK
 }
 
 func inventorySync(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {

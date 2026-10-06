@@ -1,0 +1,44 @@
+{
+  "clusters": [
+    {
+      "name": "payments-k8s-prod-cluster",
+      "cloud": "azure",
+      "environment": "prod",
+      "region": "southafricanorth",
+      "version": "1.30",
+      "owner": "payments",
+      "subscription": "00000000-0000-0000-0000-000000000001",
+      "resourceGroup": "rg-payments-prod"
+    },
+    {
+      "name": "payments-k8s-qa-cluster",
+      "cloud": "azure",
+      "environment": "qa",
+      "region": "southafricanorth",
+      "version": "1.30",
+      "owner": "payments",
+      "subscription": "00000000-0000-0000-0000-000000000002",
+      "resourceGroup": "rg-payments-qa"
+    },
+    {
+      "name": "payments-k8s-ete-cluster",
+      "cloud": "azure",
+      "environment": "ete",
+      "region": "southafricanorth",
+      "version": "1.31",
+      "owner": "payments",
+      "subscription": "00000000-0000-0000-0000-000000000003",
+      "resourceGroup": "rg-payments-ete"
+    },
+    {
+      "name": "product-api-k8s-dev-cluster",
+      "cloud": "azure",
+      "environment": "dev",
+      "region": "southafricanorth",
+      "version": "1.31",
+      "owner": "product-api",
+      "subscription": "00000000-0000-0000-0000-000000000003",
+      "resourceGroup": "rg-product-api-dev"
+    }
+  ]
+}

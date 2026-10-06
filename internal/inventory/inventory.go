@@ -29,7 +29,7 @@ const (
 type Cluster struct {
 	Name        string `json:"name"`
 	Cloud       Cloud  `json:"cloud"`
-	Environment string `json:"environment"` // e.g. dev | sit | uat | prod (see config "environments")
+	Environment string `json:"environment"` // e.g. dev | ete | qa | prod (see config "environments")
 	Region      string `json:"region"`
 	Version     string `json:"version"` // e.g. "1.29"
 	Owner       string `json:"owner"`

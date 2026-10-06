@@ -84,7 +84,7 @@ func (r Result) Complete() bool { return len(r.Errors) == 0 }
 
 // Scan enumerates every configured scope concurrently.
 func Scan(ctx context.Context, run Runner, d config.Discovery) Result {
-	s := &scanner{run: limit(run, d.Workers()), keys: d.Keys()}
+	s := &scanner{run: limit(run, d.Workers()), keys: d.Keys(), envFromName: d.EnvFromName}
 	var wg sync.WaitGroup
 	for _, t := range d.AWS {
 		wg.Add(1)
@@ -114,8 +114,9 @@ func limit(run Runner, n int) Runner {
 }
 
 type scanner struct {
-	run  Runner
-	keys config.TagKeys
+	run         Runner
+	keys        config.TagKeys
+	envFromName func(string) string
 
 	mu       sync.Mutex
 	clusters []Observed
@@ -151,8 +152,13 @@ func clusterKey(o Observed) string {
 
 // meta fills inventory metadata from tags. Tag keys match case-insensitively
 // (Azure tag keys are case-insensitive; AWS teams are rarely consistent).
+// An untagged environment falls back to the one the naming convention
+// encodes, if a pattern is configured.
 func (s *scanner) meta(c *inventory.Cluster, tags map[string]string) {
 	c.Environment = tag(tags, s.keys.Environment)
+	if c.Environment == "" {
+		c.Environment = s.envFromName(c.Name)
+	}
 	c.Owner = tag(tags, s.keys.Owner)
 	c.CostCentre = tag(tags, s.keys.CostCentre)
 }
