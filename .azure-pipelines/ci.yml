@@ -41,6 +41,8 @@ steps:
     displayName: Static analysis
   - script: make test
     displayName: Tests (race detector)
+  - script: make e2e
+    displayName: End-to-end regression (journey + binary smoke test)
   - script: make vuln
     displayName: govulncheck (our code and the standard library)
 

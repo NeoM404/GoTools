@@ -17,7 +17,7 @@ GOVULNCHECK_VERSION := v1.8.0
 GOBIN ?= $(shell go env GOPATH)/bin
 SHA256 := $(shell command -v sha256sum 2>/dev/null || echo "shasum -a 256")
 
-.PHONY: all build install test vet fmt fmt-check lint vuln deps-check ci cross checksums repro tools clean
+.PHONY: all build install test e2e vet fmt fmt-check lint vuln deps-check ci cross checksums repro tools clean
 
 all: ci build
 
@@ -30,6 +30,13 @@ install:
 # -race needs cgo, so tests deliberately do not use $(STATIC).
 test:
 	go test -race -count=1 ./...
+
+# End-to-end regression: the engineer journey through every AWS access
+# command (simulated Identity Center, account, private EKS API, sm), then a
+# smoke test of the built binary's exit-code contract.
+e2e:
+	go test -race -count=1 -run 'E2E' ./internal/app/
+	./scripts/e2e-smoke.sh
 
 vet:
 	go vet ./...
@@ -59,7 +66,7 @@ deps-check:
 	echo "deps-check: stdlib only"
 
 # Everything CI gates on, in one command.
-ci: fmt-check vet deps-check lint test vuln
+ci: fmt-check vet deps-check lint test e2e vuln
 
 cross:
 	$(STATIC) GOOS=darwin GOARCH=arm64 go build $(BUILDFLAGS) -o dist/$(BINARY)-darwin-arm64 $(PKG)
