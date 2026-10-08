@@ -13,8 +13,8 @@ see [ecosystem-tools.md](ecosystem-tools.md).
 ## Install
 
 ```bash
-git clone git@github.com:NeoM404/GoTools.git
-cd GoTools
+git clone https://dev.azure.com/Nedbank-Limited/Enteprise-IAC-AWS/_git/k8s-nedctl
+cd k8s-nedctl
 make build           # produces bin/bankctl
 # or install to $GOBIN / $GOPATH/bin:
 make install
@@ -22,7 +22,7 @@ make install
 make cross           # outputs to dist/
 ```
 
-Requires Go 1.26+ (the oldest supported Go release) to build. The built binary needs `kubectl`, `aws`, and `az`
+Requires Go 1.25.13 or later to build. Go 1.25.5 builds it, but `govulncheck` finds 15 standard-library vulnerabilities in it (TLS, X.509, net/http) that bankctl reaches; all are fixed in 1.25.13. The built binary needs `kubectl`, `aws`, and `az`
 on PATH for the subcommands that use them — run `bankctl doctor` to check. On a
 bastion (`"mode": "bastion"`) it needs only `kubectl`.
 

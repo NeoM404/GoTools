@@ -30,10 +30,9 @@ parameters:
     default: sc-bankctl-inventory-reader
 
 variables:
+  GOTOOLCHAIN: local
   BANKCTL_CONFIG: $(Build.SourcesDirectory)/inventory/bankctl.json
-  # Pin to the newest Go patch release: govulncheck in CI fails on a
-  # toolchain with known standard-library CVEs.
-  goVersion: "1.27.1"
+  goVersion: "1.25.13" # first 1.25 patch with no known reachable stdlib CVEs; bump deliberately
   # Agents without internet: point Go at the internal module proxy, e.g.
   # GOPROXY: https://<artifactory>/api/go/go-remote
   # (bankctl has no dependencies; the proxy is only needed for `make tools` in CI.)

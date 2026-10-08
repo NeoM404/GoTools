@@ -1,0 +1,7 @@
+# Normalise line endings so a checkout on Windows still runs in WSL and on
+# Linux agents: shell scripts with CRLF fail with "bad interpreter".
+* text=auto eol=lf
+*.sh text eol=lf
+Makefile text eol=lf
+*.png binary
+*.drawio text eol=lf

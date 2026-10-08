@@ -14,6 +14,9 @@ STATIC     := CGO_ENABLED=0
 STATICCHECK_VERSION := v0.8.1
 GOVULNCHECK_VERSION := v1.8.0
 
+# Use the installed Go only: internal machines cannot download toolchains.
+export GOTOOLCHAIN := local
+
 GOBIN ?= $(shell go env GOPATH)/bin
 SHA256 := $(shell command -v sha256sum 2>/dev/null || echo "shasum -a 256")
 

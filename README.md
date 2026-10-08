@@ -23,8 +23,8 @@ New tools are added as separate `cmd/<tool>` binaries in this one module.
 ## Quick start
 
 ```bash
-git clone git@github.com:NeoM404/GoTools.git
-cd GoTools
+git clone https://dev.azure.com/Nedbank-Limited/Enteprise-IAC-AWS/_git/k8s-nedctl
+cd k8s-nedctl
 make build                     # -> bin/bankctl
 ./bin/bankctl doctor           # check your ecosystem tools
 ./bin/bankctl --config configs/bankctl.example.json clusters list
@@ -78,7 +78,7 @@ make checksums           # cross-compile macOS/Linux arm64+amd64 into dist/ + SH
 make repro               # prove the build is byte-for-byte reproducible
 ```
 
-Requires Go 1.26+. See **[docs/bankctl.md](docs/bankctl.md)** for full command
+Requires Go 1.25.13 or later (earlier 1.25 patches carry standard-library CVEs that `make vuln` reports). `GOTOOLCHAIN=local` is set in the Makefile so Go never tries to download a toolchain. See **[docs/bankctl.md](docs/bankctl.md)** for full command
 reference, recipes (shell-prompt prod guard, nightly drift gate), and the
 extension guide, and **[docs/ecosystem-tools.md](docs/ecosystem-tools.md)** for
 the curated list of upstream tools to install rather than rebuild.

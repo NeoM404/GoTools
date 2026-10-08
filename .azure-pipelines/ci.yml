@@ -1,4 +1,4 @@
-# CI for Azure Repos: the same gates as .github/workflows/ci.yml.
+# CI for Azure Repos: every gate `make ci` runs.
 #
 # Azure Repos ignores the `pr:` trigger in YAML — make this pipeline a build
 # validation policy on main (Repos → Branches → main → Branch policies) so
@@ -18,7 +18,9 @@ schedules:
     always: true
 
 variables:
-  goVersion: "1.27.1" # newest patch release; see inventory.yml
+  GOTOOLCHAIN: local # never download a toolchain on internal agents
+  # GOPROXY: https://<artifactory>/api/go/go-remote   # needed only by `make tools`
+  goVersion: "1.25.13" # first 1.25 patch with no known reachable stdlib CVEs; bump deliberately
 
 pool:
   vmImage: ubuntu-latest # or the bank's self-hosted pool: `name: <pool-name>`
