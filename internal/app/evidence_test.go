@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/evidence"
+	"nedctl/internal/evidence"
 )
 
-// recordQuarter produces a real audit log by running bankctl: a verified
+// recordQuarter produces a real audit log by running nedctl: a verified
 // prod access, a break-glass access, a refused prod attempt and a uat access.
 func recordQuarter(t *testing.T) (cfg, logPath string) {
 	t.Helper()

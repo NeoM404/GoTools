@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
+	"nedctl/internal/audit"
 )
 
 type access struct {

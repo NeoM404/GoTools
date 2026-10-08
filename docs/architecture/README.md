@@ -6,7 +6,7 @@ official AWS Architecture Icons and Azure icons bundled with draw.io
 
 | Diagram | Shows |
 |---|---|
-| [01-system-context](01-system-context.png) | bankctl on the workstation and AKS bastion, AWS, Azure and enterprise services |
+| [01-system-context](01-system-context.png) | nedctl on the workstation and AKS bastion, AWS, Azure and enterprise services |
 | [02-aws-sign-in](02-aws-sign-in.png) | `aws login`: Identity Center sign-in, assignments, one profile, verification, break-glass |
 | [03-shell-session](03-shell-session.png) | `shell`: instance picker, Session Manager, legacy `sm` path, coloured tabs |
 | [04-connect-tunnel](04-connect-tunnel.png) | `connect`: port-forward through the devops instance to private EKS, TLS and token |

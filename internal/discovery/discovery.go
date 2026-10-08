@@ -3,7 +3,7 @@
 // az CLIs. It is the "observed" side that `inventory diff` reconciles against
 // the declared inventory.
 //
-// Correctness properties the rest of bankctl relies on:
+// Correctness properties the rest of nedctl relies on:
 //   - A scope (one AWS account+region, or one Azure subscription) is either
 //     scanned completely or reported as an error. A partially listed scope
 //     is never reported as scanned, so a completeness claim is never made
@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/config"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
 )
 
 // Runner runs a CLI and returns its stdout. Production uses ExecRunner; tests

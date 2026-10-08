@@ -13,7 +13,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/inventory"
 )
 
 // HoursPerMonth is the average month (8,760 h / 12) cloud pricing uses.

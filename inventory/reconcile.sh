@@ -6,7 +6,7 @@
 # is already signed in as the read-only service connection. It can also be
 # run by hand by anyone with Reader on the subscriptions:
 #
-#   BANKCTL_CONFIG=inventory/bankctl.json OUT_DIR=out inventory/reconcile.sh
+#   NEDCTL_CONFIG=inventory/nedctl.json OUT_DIR=out inventory/reconcile.sh
 #
 # Writes to $OUT_DIR:
 #   diff.json             declared vs actual: shadow, missing, drifted clusters
@@ -17,7 +17,7 @@
 # Exit: 0 in sync · 1 out of sync, or the scan could not complete.
 set -uo pipefail
 
-bankctl="${BANKCTL:-./bin/bankctl}"
+nedctl="${NEDCTL:-./bin/nedctl}"
 out="${OUT_DIR:?set OUT_DIR to the directory for diff.json and proposed-fleet.json}"
 mkdir -p "$out"
 
@@ -26,9 +26,9 @@ error() {
 	if [ -n "${TF_BUILD:-}" ]; then echo "##vso[task.logissue type=error]$*"; else echo "error: $*" >&2; fi
 }
 
-"$bankctl" inventory validate || { error "inventory/fleet.json is invalid — fix it before reconciling"; exit 1; }
+"$nedctl" inventory validate || { error "inventory/fleet.json is invalid — fix it before reconciling"; exit 1; }
 
-"$bankctl" inventory diff --report "$out/diff.json"
+"$nedctl" inventory diff --report "$out/diff.json"
 diff_rc=$?
 if [ "$diff_rc" -eq 0 ]; then
 	exit 0
@@ -40,7 +40,7 @@ fi
 
 # Out of sync, or a scope could not be scanned. sync refuses a partial scan,
 # so a proposal is only ever written from a complete one.
-if "$bankctl" inventory sync --out "$out/proposed-fleet.json" --force; then
+if "$nedctl" inventory sync --out "$out/proposed-fleet.json" --force; then
 	error "inventory NOT in sync with Azure — review diff.json, then merge proposed-fleet.json as inventory/fleet.json by pull request"
 else
 	error "inventory NOT in sync with Azure, and no proposal could be written (incomplete scan or untagged clusters) — see the log above"

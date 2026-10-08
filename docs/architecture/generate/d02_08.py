@@ -15,23 +15,23 @@ def lane(d, label, y, h, fill="#F4F6FA"):
 if "02" in which:
     d = Diagram("02-aws-sign-in", 1760, 880)
     title(d, "aws login — one sign-in, one account and role, no keys handled",
-          "bankctl drives the AWS CLI's own Identity Center flow, lists only your assignments, and writes one profile; the AWS CLI fetches credentials on first use.")
-    lane(d, "Engineer machine — bankctl", 110, 220)
+          "nedctl drives the AWS CLI's own Identity Center flow, lists only your assignments, and writes one profile; the AWS CLI fetches credentials on first use.")
+    lane(d, "Engineer machine — nedctl", 110, 220)
     lane(d, "AWS — IAM Identity Center and STS", 400, 260, fill="#FFF6F7")
     W, H, Y = 230, 104, 170
     xs = [70, 350, 630, 910, 1190, 1460]
-    b1 = d.box("<b>Managed config</b><br>[sso-session bankctl] in a marked section of ~/.aws/config", xs[0], Y, W, H, font=13)
+    b1 = d.box("<b>Managed config</b><br>[sso-session nedctl] in a marked section of ~/.aws/config", xs[0], Y, W, H, font=13)
     b2 = d.box("<b>aws sso login</b><br>browser, or --device-code on a devops box", xs[1], Y, W, H, font=13)
     b3 = d.box("<b>Token cache</b><br>~/.aws/sso/cache — read in memory only", xs[2], Y, W, H, font=13, fill="#FFF8EE", stroke=ORANGE)
     b4 = d.box("<b>Picker</b><br>squad · env · account · role<br>type to filter, number to pick", xs[3], Y, W, H, font=13, stroke=BLUE)
-    b5 = d.box("<b>One profile</b><br>bankctl.&lt;account&gt;.&lt;role&gt;<br>other profiles untouched", xs[4], Y, W, H, font=13)
+    b5 = d.box("<b>One profile</b><br>nedctl.&lt;account&gt;.&lt;role&gt;<br>other profiles untouched", xs[4], Y, W, H, font=13)
     b6 = d.box("<b>Verify + record</b><br>account must match<br>audit start/end event", xs[5], Y, W, H, font=13)
     for i, x in enumerate(xs):
         d.badge(i + 1, x - 12, Y - 12)
     for a, b in [(b1, b2), (b2, b3), (b3, b4), (b4, b5), (b5, b6)]:
         d.edge(a, b, "", color=QUIET, exit=(1, 0.5), entry=(0, 0.5))
-    d.text("stdout carries only  <font face='monospace'>export AWS_PROFILE='bankctl.payments-prod.Platform-ReadOnly'</font>  — so  eval \"$(bankctl aws login)\"  works; the picker runs on stderr.", 70, 700, 1600, 30, font=14, color=INK)
-    d.text("Never: an access key in a clipboard · the token on a command line · the token written to disk by bankctl · a sign-in to every account (except break-glass)", 70, 738, 1600, 30, font=14, color=RED)
+    d.text("stdout carries only  <font face='monospace'>export AWS_PROFILE='nedctl.payments-prod.Platform-ReadOnly'</font>  — so  eval \"$(nedctl aws login)\"  works; the picker runs on stderr.", 70, 700, 1600, 30, font=14, color=INK)
+    d.text("Never: an access key in a clipboard · the token on a command line · the token written to disk by nedctl · a sign-in to every account (except break-glass)", 70, 738, 1600, 30, font=14, color=RED)
     idc = d.aws("single_sign_on", "IAM Identity Center<br>OIDC sign-in", 433, 480, cat="security")
     api = d.aws("single_sign_on", "Portal API<br>ListAccounts · ListAccountRoles", 713, 480, cat="security")
     cred = d.awsres("temporary_security_credential", "GetRoleCredentials<br>by the AWS CLI, on first use", 1277, 485, color="#DD344C")
@@ -51,7 +51,7 @@ if "03" in which:
     title(d, "shell — Session Manager under your own identity, beside the existing tools",
           "Instances are picked by name, IP, state and access level; the session opens as your SSO role in a tab coloured by environment. sm and SSMshell keep working, without the paste.")
     lane(d, "Engineer machine", 110, 400)
-    lap = d.awsres("client", "bankctl shell devops", 90, 190, size=62)
+    lap = d.awsres("client", "nedctl shell devops", 90, 190, size=62)
     pick = d.box("<b>Instance picker</b> (aws ec2 describe-instances)<br><font face='monospace'>NAME · INSTANCE · PRIVATE IP · STATE · TYPE · ZONE · LEVEL</font>", 260, 170, 470, 90, font=13, stroke=BLUE)
     tab = d.box("<b>Windows Terminal tab</b> (--tab, also from WSL)<br>title  payments · PROD · payments-devops", 260, 290, 470, 70, font=13)
     for i, (env, col) in enumerate([("dev", "#22C55E"), ("ete", "#F97316"), ("qa", "#3B82F6"), ("prod", "#EF4444")]):
@@ -85,7 +85,7 @@ if "04" in which:
     kc = d.awsres("client", "kubectl", 80, 190, size=62)
     lp = d.box("<b>127.0.0.1:&lt;free port&gt;</b><br>local listener", 340, 180, 200, 80, font=13)
     plug = d.box("<b>session-manager-plugin</b><br>AWS-StartPortForwarding-<br>SessionToRemoteHost", 600, 175, 260, 90, font=13, stroke=BLUE)
-    cfg = d.box("<b>~/.kube/bankctl/payments-eks-prod.json</b> (0600)<br><font face='monospace'>server: https://127.0.0.1:&lt;port&gt;<br>tls-server-name: &lt;id&gt;.gr7.af-south-1.eks.amazonaws.com<br>certificate-authority-data: from describe-cluster<br>exec: aws eks get-token --profile &lt;yours&gt;</font>", 900, 140, 780, 130, font=13, fill="#FFF8EE", stroke=ORANGE, align="left")
+    cfg = d.box("<b>~/.kube/nedctl/payments-eks-prod.json</b> (0600)<br><font face='monospace'>server: https://127.0.0.1:&lt;port&gt;<br>tls-server-name: &lt;id&gt;.gr7.af-south-1.eks.amazonaws.com<br>certificate-authority-data: from describe-cluster<br>exec: aws eks get-token --profile &lt;yours&gt;</font>", 900, 140, 780, 130, font=13, fill="#FFF8EE", stroke=ORANGE, align="left")
     tok = d.box("<b>aws eks get-token</b> — presigned STS GetCallerIdentity as your SSO role; minted per call, never stored", 80, 330, 460, 80, font=13, align="left")
     d.edge(kc, lp, "TLS (SNI = EKS host)", color=BLUE, exit=(1, 0.5), entry=(0, 0.5))
     d.edge(lp, plug, "", color=BLUE, exit=(1, 0.5), entry=(0, 0.5))
@@ -132,8 +132,8 @@ if "05" in which:
     for p in [p1, p2, p3, p4]:
         d.edge(p, eks, "", color=BLUE, exit=(1, 0.5), entry=(0, 0.5))
     tf = d.box("<b>deploy/terraform/eks-access-entries</b><br>aws_eks_access_entry + aws_eks_access_policy_association per role, applied by the Azure DevOps pipeline", 1080, 330, 600, 90, font=13, stroke=BLUE, align="left")
-    rep = d.box("<b>bankctl eks auth --all-profiles</b><br>mode · endpoint exposure · next step per cluster; --fail-on-configmap gates on it", 1080, 450, 600, 80, font=13, align="left")
-    acc = d.box("<b>bankctl eks access payments-eks-prod</b><br>who can reach it, with which policy and scope — the access review", 1080, 560, 600, 80, font=13, align="left")
+    rep = d.box("<b>nedctl eks auth --all-profiles</b><br>mode · endpoint exposure · next step per cluster; --fail-on-configmap gates on it", 1080, 450, 600, 80, font=13, align="left")
+    acc = d.box("<b>nedctl eks access payments-eks-prod</b><br>who can reach it, with which policy and scope — the access review", 1080, 560, 600, 80, font=13, align="left")
     d.edge(tf, eks, "", color=QUIET, dashed=1, exit=(0, 0.5), entry=(1, 0.2))
     d.text("Test in dev first: whether SSO role ARNs are mapped with or without /aws-reserved/sso.amazonaws.com/.", 1080, 680, 600, 50, font=13, color=RED)
     print(d.save(out))
@@ -152,17 +152,17 @@ if "06" in which:
         d.edge(a, b, "", color=QUIET, exit=(1, 0.5), entry=(0, 0.5))
     refuse = d.box("Cannot write the start event → the action does not happen", 395, 290, 290, 60, font=13, fill="#FDECEC", stroke=RED)
     d.edge(ids[1], refuse, "", color=RED, exit=(0.5, 1), entry=(0.5, 0))
-    log = d.box("<b>audit.jsonl</b> — local, 0600, file-locked<br>each event's hash covers the previous one<br><font face='monospace'>bankctl audit verify</font> detects edits, inserts, deletions", 60, 420, 520, 110, font=13, fill="#FFF8EE", stroke=ORANGE, align="left")
+    log = d.box("<b>audit.jsonl</b> — local, 0600, file-locked<br>each event's hash covers the previous one<br><font face='monospace'>nedctl audit verify</font> detects edits, inserts, deletions", 60, 420, 520, 110, font=13, fill="#FFF8EE", stroke=ORANGE, align="left")
     siem = d.box("<b>SIEM</b> — Splunk HEC or JSON<br>best effort; the local log stays authoritative", 700, 420, 420, 110, font=13, align="left")
-    ev = d.box("<b>bankctl evidence --period 2026-Q4</b><br>pack for auditors + SHA-256<br>exceptions: break-glass · prod without a change record · unverified records · incomplete sessions", 1240, 420, 460, 130, font=13, stroke=BLUE, align="left")
+    ev = d.box("<b>nedctl evidence --period 2026-Q4</b><br>pack for auditors + SHA-256<br>exceptions: break-glass · prod without a change record · unverified records · incomplete sessions", 1240, 420, 460, 130, font=13, stroke=BLUE, align="left")
     d.edge(ids[4], log, "", color=ORANGE, exit=(0.5, 1), entry=(1, 0.2), pts=[(1485, 380), (640, 380), (640, 442)])
     d.edge(log, siem, "forward", color=ORANGE, exit=(1, 0.5), entry=(0, 0.5))
     d.edge(siem, ev, "", color=QUIET, dashed=1, exit=(1, 0.5), entry=(0, 0.5))
-    lane(d, "Authoritative cloud records — bankctl makes them name a person", 600, 260, fill="#FFF6F7")
+    lane(d, "Authoritative cloud records — nedctl makes them name a person", 600, 260, fill="#FFF6F7")
     d.aws("cloudtrail", "CloudTrail<br>sign-ins, StartSession", 180, 680, cat="mgmt")
     d.aws("cloudwatch_2", "Session Manager logs<br>commands run (requested)", 600, 680, cat="mgmt")
     d.aws("eks", "EKS audit log<br>API calls by role session", 1020, 680, cat="containers")
-    d.text("The bankctl trail is attribution of intent from a client; these are the record of what reached the cloud.", 1250, 690, 430, 80, font=14, color=INK)
+    d.text("The nedctl trail is attribution of intent from a client; these are the record of what reached the cloud.", 1250, 690, 430, 80, font=14, color=INK)
     print(d.save(out))
 
 # ---------------------------------------------------------------- 07
@@ -173,7 +173,7 @@ if "07" in which:
     d.azgroup("Azure DevOps", 40, 110, 1000, 380)
     repo = d.box("<b>Repo</b> — inventory/fleet.json<br>the reviewed record (changes only by PR)", 80, 170, 300, 90, font=13)
     ci = d.box("<b>CI pipeline</b> — validate on every PR<br>publish the <i>fleet</i> artifact on main", 80, 330, 300, 90, font=13)
-    night = d.box("<b>Nightly pipeline</b> — AzureCLI@2, service connection with Reader<br>bankctl inventory diff · sync", 470, 170, 360, 100, font=13, stroke=BLUE)
+    night = d.box("<b>Nightly pipeline</b> — AzureCLI@2, service connection with Reader<br>nedctl inventory diff · sync", 470, 170, 360, 100, font=13, stroke=BLUE)
     prop = d.box("<b>diff.json · proposed-fleet.json</b><br>red run when reality differs", 470, 330, 360, 90, font=13, fill="#FFF8EE", stroke=ORANGE)
     d.azure("devops/Azure_DevOps.svg", "", 930, 380, size=72)
     d.edge(night, prop, "", color=ORANGE, exit=(0.5, 1), entry=(0.5, 0))
@@ -188,7 +188,7 @@ if "07" in which:
     d.edge(night, aks[0], "az aks list (read-only)", color=BLUE, exit=(1, 0.3), entry=(0, 0.5))
     d.azgroup("Bastion network (no internet)", 40, 540, 1680, 360, color="#5A6B7B")
     vm = d.azure("compute/Virtual_Machine.svg", "AKS bastion (RHEL)", 120, 640, size=72)
-    bk = d.box("<b>bankctl — mode \"bastion\"</b><br>login &lt;cluster&gt; → kubectl config use-context<br>guard · current · prompt · fleet versions<br>no az, no credentials fetched", 300, 610, 460, 130, font=13, stroke=BLUE, align="left")
+    bk = d.box("<b>nedctl — mode \"bastion\"</b><br>login &lt;cluster&gt; → kubectl config use-context<br>guard · current · prompt · fleet versions<br>no az, no credentials fetched", 300, 610, 460, 130, font=13, stroke=BLUE, align="left")
     kcfg = d.box("<b>Provisioned kubeconfig</b><br>contexts <i>&lt;app&gt;-k8s-&lt;env&gt;-cluster</i><br>users <i>clusterUser_&lt;rg&gt;_&lt;cluster&gt;</i> (static local accounts)", 830, 610, 460, 110, font=13, align="left")
     note = d.box("<b>Recorded per person</b>: the Linux user who ran login, the context and its kubeconfig user; shared local accounts are flagged — the cluster audit log cannot tell people apart. Fix: Entra ID + kubelogin.", 830, 760, 820, 100, font=13, fill="#FDECEC", stroke=RED, align="left")
     d.edge(vm, bk, "", color=QUIET, exit=(1, 0.5), entry=(0, 0.5))
@@ -201,9 +201,9 @@ if "07" in which:
 # ---------------------------------------------------------------- 08
 if "08" in which:
     d = Diagram("08-code-architecture", 1760, 940)
-    title(d, "Inside bankctl — layered Go packages, one boundary to the outside world",
+    title(d, "Inside nedctl — layered Go packages, one boundary to the outside world",
           "Commands compose small, pure, tested packages. Every subprocess goes through execx (deadline, cancellation, process group); every HTTPS call enforces TLS 1.2+ and refuses downgrades.")
-    d.box("<b>cmd/bankctl</b> — main: signals → context, exit code", 60, 120, 1640, 54, font=14, fill="#0F1B2D", stroke="#0F1B2D", color="#FFFFFF")
+    d.box("<b>cmd/nedctl</b> — main: signals → context, exit code", 60, 120, 1640, 54, font=14, fill="#0F1B2D", stroke="#0F1B2D", color="#FFFFFF")
     d.box("<b>internal/app</b> — dispatch + commands, injected I/O, exit-code contract<br>aws · shell · ec2 · connect · eks · prompt · login/kubeconfig · guard/current · inventory · fleet · sweep · audit · evidence · init · doctor", 60, 196, 1640, 80, font=14, stroke=BLUE)
     pk = [("awssso", "Identity Center portal,<br>token cache, managed profiles"), ("picker", "type-to-filter chooser,<br>no raw mode"), ("kube", "classify, resolve, bastion<br>contexts, sweep"),
           ("inventory", "fleet model, validation,<br>HTTPS + cache"), ("discovery", "EKS/AKS scan, bounded,<br>all-or-nothing scopes"), ("reconcile", "declared vs observed<br>(pure)"),

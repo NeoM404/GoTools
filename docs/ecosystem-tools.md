@@ -1,11 +1,11 @@
 # Ecosystem Tools — Install These, Don't Rebuild Them
 
-`bankctl` deliberately only builds the **org-specific glue** (fleet inventory,
+`nedctl` deliberately only builds the **org-specific glue** (fleet inventory,
 prod-context safety, cross-cloud kubeconfig) that no off-the-shelf tool
 provides. For everything else, the community already has mature, battle-tested
 tools. Install these instead of reinventing them.
 
-`bankctl doctor` checks which of these are present on your machine.
+`nedctl doctor` checks which of these are present on your machine.
 
 ## Must-have daily drivers
 
@@ -50,7 +50,7 @@ tools. Install these instead of reinventing them.
 |---|---|---|
 | **Teleport** (`tsh`) | Unified, audited, short-lived access to K8s/SSH/DBs with JIT approvals | Primary recommendation for banking; `tsh kube login` replaces static kubeconfigs |
 | **kubelogin** | OIDC/Entra auth plugin for kubectl | Needed for AKS Entra-integrated clusters |
-| **aws-cli / az-cli** | Cloud auth + `eks update-kubeconfig` / `aks get-credentials` | `bankctl kubeconfig` orchestrates these |
+| **aws-cli / az-cli** | Cloud auth + `eks update-kubeconfig` / `aks get-credentials` | `nedctl kubeconfig` orchestrates these |
 
 ## Cost
 
@@ -60,8 +60,8 @@ tools. Install these instead of reinventing them.
 
 ---
 
-### Why bankctl doesn't wrap all of these
-Every tool you wrap is a tool you must keep compatible as it evolves. `bankctl`
+### Why nedctl doesn't wrap all of these
+Every tool you wrap is a tool you must keep compatible as it evolves. `nedctl`
 wraps only `aws`/`az`/`kubectl` because it must (to turn an inventory entry
 into working credentials) and does so via their stable, documented
 subcommands. Prefer these upstream tools directly for everything else.

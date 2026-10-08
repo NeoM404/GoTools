@@ -46,7 +46,7 @@ func (f *Forwarder) Send(ctx context.Context, e Event) error {
 		t, _ := time.Parse(time.RFC3339Nano, e.Time)
 		body = map[string]any{
 			"time": float64(t.UnixNano()) / 1e9, "host": e.Host,
-			"source": "bankctl", "sourcetype": "bankctl:audit", "event": e,
+			"source": "nedctl", "sourcetype": "nedctl:audit", "event": e,
 		}
 	}
 	payload, err := json.Marshal(body)

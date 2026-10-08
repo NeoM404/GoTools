@@ -11,9 +11,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/kube"
+	"nedctl/internal/audit"
+	"nedctl/internal/config"
+	"nedctl/internal/kube"
 )
 
 type sweepReport struct {
@@ -43,7 +43,7 @@ func cmdSweep(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return badOutput(stderr, *output)
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: bankctl sweep [--apply] [--include-current] [--kubeconfig PATH] [-o table|json]")
+		fmt.Fprintln(stderr, "usage: nedctl sweep [--apply] [--include-current] [--kubeconfig PATH] [-o table|json]")
 		return ExitUsage
 	}
 
@@ -256,7 +256,7 @@ func backupFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	backup := path + ".bankctl-" + now().UTC().Format("20060102T150405Z") + ".bak"
+	backup := path + ".nedctl-" + now().UTC().Format("20060102T150405Z") + ".bak"
 	f, err := os.OpenFile(backup, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return "", err

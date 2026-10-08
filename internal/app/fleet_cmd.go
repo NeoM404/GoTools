@@ -11,10 +11,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
-	"github.com/NeoM404/GoTools/internal/support"
+	"nedctl/internal/config"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
+	"nedctl/internal/support"
 )
 
 // now is the clock; tests pin it so date arithmetic is deterministic.
@@ -22,7 +22,7 @@ var now = time.Now
 
 func cmdFleet(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: bankctl fleet <versions|eol|calendar> ...")
+		fmt.Fprintln(stderr, "usage: nedctl fleet <versions|eol|calendar> ...")
 		return ExitUsage
 	}
 	switch args[0] {
@@ -188,8 +188,8 @@ func fleetEOL(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		return ExitFailure
 	}
 	if cfg.SupportCalendar.Empty() {
-		fmt.Fprintln(stderr, "no supportCalendar configured — generate the AWS part with `bankctl fleet calendar aws`; "+
-			"add Azure dates from the AKS release calendar (Azure publishes no API for them). See docs/bankctl.md.")
+		fmt.Fprintln(stderr, "no supportCalendar configured — generate the AWS part with `nedctl fleet calendar aws`; "+
+			"add Azure dates from the AKS release calendar (Azure publishes no API for them). See docs/nedctl.md.")
 		return ExitFailure
 	}
 
@@ -380,7 +380,7 @@ func fleetCalendar(ctx context.Context, cfgPath string, args []string, stdout, s
 		return ExitUsage
 	}
 	if len(pos) != 1 {
-		fmt.Fprintln(stderr, "usage: bankctl fleet calendar aws [--profile P] [--region R]")
+		fmt.Fprintln(stderr, "usage: nedctl fleet calendar aws [--profile P] [--region R]")
 		return ExitUsage
 	}
 	switch pos[0] {

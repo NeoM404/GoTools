@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
 )
 
 // ErrNoCurrentContext reports a kubeconfig with no current-context.

@@ -4,7 +4,7 @@
 // Events go to an append-only JSON Lines file, one event per line. Each event
 // carries the hash of the previous one (a hash chain), so editing, removing
 // or reordering past events is detectable with Verify. An exclusive file lock
-// serialises appends, so concurrent bankctl runs cannot fork the chain.
+// serialises appends, so concurrent nedctl runs cannot fork the chain.
 //
 // Honest limits: a user who controls the file can rewrite the whole chain,
 // and deleting the most recent events leaves a valid (shorter) chain. The
@@ -92,7 +92,7 @@ type Log struct {
 
 // ErrCorruptTail means the last line of the log is not a valid event, so the
 // chain cannot be extended safely.
-var ErrCorruptTail = errors.New("audit log tail is corrupt — refusing to append; inspect it with `bankctl audit verify`")
+var ErrCorruptTail = errors.New("audit log tail is corrupt — refusing to append; inspect it with `nedctl audit verify`")
 
 // Append chains e onto the log and writes it durably (fsync) under an
 // exclusive lock. It returns the event as written, with its hashes.

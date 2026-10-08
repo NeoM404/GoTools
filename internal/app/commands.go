@@ -12,13 +12,13 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/change"
-	"github.com/NeoM404/GoTools/internal/cloud"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
-	"github.com/NeoM404/GoTools/internal/kube"
+	"nedctl/internal/audit"
+	"nedctl/internal/change"
+	"nedctl/internal/cloud"
+	"nedctl/internal/config"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
+	"nedctl/internal/kube"
 )
 
 // addOutputFlag registers -o/--output (table|json) on a flag set, both names
@@ -82,7 +82,7 @@ func loadFleet(cfgPath string, stderr io.Writer) (config.Config, inventory.Fleet
 
 func cmdClusters(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: bankctl clusters <list|get> ...")
+		fmt.Fprintln(stderr, "usage: nedctl clusters <list|get> ...")
 		return ExitUsage
 	}
 	switch args[0] {
@@ -145,7 +145,7 @@ func clustersGet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 	if len(pos) != 1 {
-		fmt.Fprintln(stderr, "usage: bankctl clusters get <name> [-o table|json]")
+		fmt.Fprintln(stderr, "usage: nedctl clusters get <name> [-o table|json]")
 		return ExitUsage
 	}
 	if *output != "table" && *output != "json" {
@@ -229,7 +229,7 @@ func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, 
 		return ExitUsage, nil
 	}
 	if len(pos) != 1 {
-		fmt.Fprintf(stderr, "usage: bankctl %s <cluster> [--file PATH] [--dry-run] [--change-record CHG…|--break-glass REASON]\n", name)
+		fmt.Fprintf(stderr, "usage: nedctl %s <cluster> [--file PATH] [--dry-run] [--change-record CHG…|--break-glass REASON]\n", name)
 		return ExitUsage, nil
 	}
 	cfg, fleet, ok := loadFleet(cfgPath, stderr)
@@ -332,7 +332,7 @@ func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, 
 	if file != "" {
 		fmt.Fprintf(stdout, " in %s (use: KUBECONFIG=%s kubectl ...)", file, file)
 	} else {
-		fmt.Fprint(stdout, " — run `bankctl current` to confirm the active context")
+		fmt.Fprint(stdout, " — run `nedctl current` to confirm the active context")
 	}
 	fmt.Fprintln(stdout)
 
@@ -341,17 +341,17 @@ func fetchCredentials(ctx context.Context, cfgPath, name string, args []string, 
 	// stays clean. Best-effort — skip silently if kubectl can't be inspected.
 	if ver, verr := kube.ExecAuthAPIVersion(ctx, file); verr == nil && kube.IsDeprecatedExecAPIVersion(ver) {
 		fmt.Fprintf(stderr, "⚠  kubeconfig uses a deprecated auth plugin apiVersion (%s) — "+
-			"update your %s CLI and run `bankctl doctor`.\n", ver, cliForCloud(c.Cloud))
+			"update your %s CLI and run `nedctl doctor`.\n", ver, cliForCloud(c.Cloud))
 	}
 	return ExitOK, &fetched{cfg, c}
 }
 
 // checkModeFlags rejects flags that do not apply in the configured mode, and
-// `kubeconfig` on a bastion, where bankctl never fetches credentials.
+// `kubeconfig` on a bastion, where nedctl never fetches credentials.
 func checkModeFlags(cfg config.Config, name, file, context string, stderr io.Writer) int {
 	switch {
 	case cfg.Bastion() && name == "kubeconfig":
-		fmt.Fprintln(stderr, "this host is a bastion (config mode \"bastion\"): its credentials are provisioned by the platform and bankctl does not fetch any — use `bankctl login <cluster>` to select them")
+		fmt.Fprintln(stderr, "this host is a bastion (config mode \"bastion\"): its credentials are provisioned by the platform and nedctl does not fetch any — use `nedctl login <cluster>` to select them")
 		return ExitUsage
 	case cfg.Bastion() && file != "":
 		fmt.Fprintln(stderr, "--file does not apply on a bastion: login selects a context in the existing kubeconfig")
@@ -476,7 +476,7 @@ func reportCLIFailure(stderr io.Writer, c inventory.Cluster, err error) {
 	fmt.Fprintf(stderr, "kubeconfig failed: %v\n", err)
 	var notFound *execx.NotFoundError
 	if !errors.As(err, &notFound) && !errors.Is(err, execx.ErrInterrupted) {
-		fmt.Fprintf(stderr, "→ if this looks like a CLI/version problem, run `bankctl doctor` (check your %s CLI)\n", cliForCloud(c.Cloud))
+		fmt.Fprintf(stderr, "→ if this looks like a CLI/version problem, run `nedctl doctor` (check your %s CLI)\n", cliForCloud(c.Cloud))
 	}
 }
 

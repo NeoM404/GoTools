@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/audit"
+	"nedctl/internal/audit"
 )
 
 func auditConfig(t *testing.T, extra string) (cfg, logPath string) {
@@ -62,7 +62,7 @@ func TestSuccessfulFetchIsAudited(t *testing.T) {
 		end.Account != "111111111111" || end.Environment != "prod" || !strings.HasPrefix(end.Principal, "arn:aws:sts::111111111111:") {
 		t.Fatalf("end event: %+v", end)
 	}
-	if end.User == "" || end.Host == "" || end.Tool != "bankctl" {
+	if end.User == "" || end.Host == "" || end.Tool != "nedctl" {
 		t.Fatalf("attribution missing: %+v", end)
 	}
 }
@@ -111,10 +111,10 @@ func TestDryRunIsNotAudited(t *testing.T) {
 
 func TestForwardWithoutTokenWarnsButRecordsLocally(t *testing.T) {
 	fakeAWS(t, "111111111111", "exit 0")
-	t.Setenv("BANKCTL_TEST_HEC", "")
-	cfg, logPath := auditConfig(t, `, "forward": {"url": "https://siem.invalid/collector", "tokenEnv": "BANKCTL_TEST_HEC"}`)
+	t.Setenv("NEDCTL_TEST_HEC", "")
+	cfg, logPath := auditConfig(t, `, "forward": {"url": "https://siem.invalid/collector", "tokenEnv": "NEDCTL_TEST_HEC"}`)
 	code, _, errb := run("--config", cfg, "kubeconfig", "eks-payments-prod-euw1")
-	if code != ExitOK || !strings.Contains(errb, "$BANKCTL_TEST_HEC is empty") {
+	if code != ExitOK || !strings.Contains(errb, "$NEDCTL_TEST_HEC is empty") {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 	if len(readAudit(t, logPath)) != 2 {

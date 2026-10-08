@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/support"
+	"nedctl/internal/support"
 )
 
 // pinToday fixes the clock for date arithmetic.

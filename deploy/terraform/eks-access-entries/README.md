@@ -38,8 +38,8 @@ module "payments_prod_access" {
 ## 3. Verify, then retire aws-auth
 
 ```bash
-bankctl eks auth --all-profiles          # which clusters still need step 1
-bankctl eks access payments-eks-prod     # who can reach it, with which policy
+nedctl eks auth --all-profiles          # which clusters still need step 1
+nedctl eks access payments-eks-prod     # who can reach it, with which policy
 ```
 
 Remove a mapping from `aws-auth` only after its access entry is verified.

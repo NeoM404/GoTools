@@ -4,20 +4,20 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/inventory"
 )
 
 // eksARN matches the context name `aws eks update-kubeconfig` writes by default.
 var eksARN = regexp.MustCompile(`^arn:aws[a-z-]*:eks:([a-z0-9-]+):(\d{12}):cluster/(.+)$`)
 
-// accountAlias matches the `<account>.<name>` alias `bankctl kubeconfig` writes.
+// accountAlias matches the `<account>.<name>` alias `nedctl kubeconfig` writes.
 var accountAlias = regexp.MustCompile(`^(\d{12})\.(.+)$`)
 
 // Resolve maps a kube-context name to the inventory cluster it points at,
-// recognising the names the cloud CLIs and bankctl write:
+// recognising the names the cloud CLIs and nedctl write:
 //
 //	arn:aws:eks:<region>:<account>:cluster/<name>   aws eks update-kubeconfig
-//	<account>.<name>                                bankctl kubeconfig (alias)
+//	<account>.<name>                                nedctl kubeconfig (alias)
 //	<name>, <name>-admin                            az aks get-credentials [--admin]
 //
 // Identity-bearing forms (ARN, alias) must match the account too, so a context

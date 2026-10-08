@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/kube"
+	"nedctl/internal/kube"
 )
 
 // A kubeconfig mixing every case. Inventory = the example fleet (accounts

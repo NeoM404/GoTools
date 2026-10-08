@@ -1,13 +1,13 @@
-# bankctl — Banking Kubernetes Fleet CLI
+# nedctl — Banking Kubernetes Fleet CLI
 
-`bankctl` is the platform team's glue CLI over the **fleet inventory**: one
+`nedctl` is the platform team's glue CLI over the **fleet inventory**: one
 command to see every EKS/AKS cluster across the group, pull credentials for any
 of them, check version drift, and stay out of production by accident. It builds
 on the standard cloud CLIs rather than replacing them, and has **zero
 third-party dependencies** — a deliberate supply-chain choice for a tool that
 authenticates to production banking clusters.
 
-For the tools `bankctl` does **not** replace (k9s, kubectx, stern, argocd, …),
+For the tools `nedctl` does **not** replace (k9s, kubectx, stern, argocd, …),
 see [ecosystem-tools.md](ecosystem-tools.md).
 
 ## Install
@@ -15,24 +15,24 @@ see [ecosystem-tools.md](ecosystem-tools.md).
 ```bash
 git clone https://dev.azure.com/Nedbank-Limited/Enteprise-IAC-AWS/_git/k8s-nedctl
 cd k8s-nedctl
-make build           # produces bin/bankctl
+make build           # produces bin/nedctl
 # or install to $GOBIN / $GOPATH/bin:
 make install
 # cross-compile for the team (macOS + Linux, arm64 + amd64):
 make cross           # outputs to dist/
 ```
 
-Requires Go 1.25.13 or later to build. Go 1.25.5 builds it, but `govulncheck` finds 15 standard-library vulnerabilities in it (TLS, X.509, net/http) that bankctl reaches; all are fixed in 1.25.13. The built binary needs `kubectl`, `aws`, and `az`
-on PATH for the subcommands that use them — run `bankctl doctor` to check. On a
+Requires Go 1.25.13 or later to build. Go 1.25.5 builds it, but `govulncheck` finds 15 standard-library vulnerabilities in it (TLS, X.509, net/http) that nedctl reaches; all are fixed in 1.25.13. The built binary needs `kubectl`, `aws`, and `az`
+on PATH for the subcommands that use them — run `nedctl doctor` to check. On a
 bastion (`"mode": "bastion"`) it needs only `kubectl`.
 
 ## First run
 
 ```bash
-bankctl init                 # writes ~/.config/bankctl/config.json
+nedctl init                 # writes ~/.config/nedctl/config.json
 # edit it: set "inventoryPath" or "inventoryUrl"
-bankctl doctor               # check the CLIs bankctl needs
-bankctl clusters list
+nedctl doctor               # check the CLIs nedctl needs
+nedctl clusters list
 ```
 
 `init` never overwrites an existing config unless you pass `--force`; use
@@ -62,15 +62,15 @@ and reconcile it, are in [azure-devops.md](azure-devops.md).
 
 ## Configuration
 
-`bankctl` reads a JSON config, resolved in this order:
+`nedctl` reads a JSON config, resolved in this order:
 
 1. `--config PATH`
-2. `$BANKCTL_CONFIG`
-3. `~/.config/bankctl/config.json` (respects `$XDG_CONFIG_HOME`)
-4. `./bankctl.json`
+2. `$NEDCTL_CONFIG`
+3. `~/.config/nedctl/config.json` (respects `$XDG_CONFIG_HOME`)
+4. `./nedctl.json`
 
 If none is found, defaults are used (so `doctor`, `help`, `version` always
-work). Example — copy [`configs/bankctl.example.json`](../configs/bankctl.example.json):
+work). Example — copy [`configs/nedctl.example.json`](../configs/nedctl.example.json):
 
 ```json
 {
@@ -153,7 +153,7 @@ and the command says change control is off.
   "pattern": "^CHG\\d{7}$",
   "serviceNow": {
     "instanceUrl": "https://bank.service-now.com",
-    "tokenEnv": "BANKCTL_SNOW_TOKEN",
+    "tokenEnv": "NEDCTL_SNOW_TOKEN",
     "allowedStates": ["Scheduled", "Implement"],
     "timeout": "10s"
   }
@@ -161,7 +161,7 @@ and the command says change control is off.
 ```
 
 ```bash
-bankctl login eks-payments-prod-euw1 --change-record CHG0012345
+nedctl login eks-payments-prod-euw1 --change-record CHG0012345
 # change record CHG0012345 verified: Rotate ingress certificates — Implement, window until 2026-09-29 18:00:00 UTC
 ```
 
@@ -212,7 +212,7 @@ the outcome (`success`, `failure`, or `refused`, e.g. wrong account).
   "logPath": "",
   "forward": {
     "url": "https://splunk.bank.example:8088/services/collector/event",
-    "tokenEnv": "BANKCTL_AUDIT_TOKEN",
+    "tokenEnv": "NEDCTL_AUDIT_TOKEN",
     "scheme": "Splunk",
     "format": "splunk-hec",
     "timeout": "5s"
@@ -222,17 +222,17 @@ the outcome (`success`, `failure`, or `refused`, e.g. wrong account).
 
 | Field | Meaning |
 |---|---|
-| `logPath` | Local log. Default `$XDG_STATE_HOME/bankctl/audit.jsonl` (`~/.local/state/bankctl/audit.jsonl`). |
+| `logPath` | Local log. Default `$XDG_STATE_HOME/nedctl/audit.jsonl` (`~/.local/state/nedctl/audit.jsonl`). |
 | `forward.url` | HTTPS collector (HTTP refused, and redirects to HTTP refused). |
 | `forward.tokenEnv` | Name of the environment variable holding the collector token — **the token is never stored in config**. |
 | `forward.scheme` | `Authorization` scheme: `Bearer` (default) or `Splunk` for HEC. |
-| `forward.format` | `json` (the event as-is) or `splunk-hec` (HEC envelope, `sourcetype` `bankctl:audit`). |
+| `forward.format` | `json` (the event as-is) or `splunk-hec` (HEC envelope, `sourcetype` `nedctl:audit`). |
 
 Limits, stated plainly: someone who controls the file can rewrite the whole
 chain, and deleting the most recent events leaves a valid shorter chain. The
 chain proves internal consistency; forwarding is what makes the record
 independent. And like `guard`, this runs on the operator's machine — it records
-intent and attribution for accesses made **through bankctl**; the cloud's own
+intent and attribution for accesses made **through nedctl**; the cloud's own
 audit logs (CloudTrail, Azure Activity Log) and the API server audit log remain
 the authoritative record of what reached the cluster.
 
@@ -262,7 +262,7 @@ after its `standardEnd`.
 
 ### Discovery
 
-`inventory diff` and `inventory sync` scan an **explicit** scope. bankctl never
+`inventory diff` and `inventory sync` scan an **explicit** scope. nedctl never
 guesses which accounts or subscriptions exist, so the scope is reviewable and
 every completeness claim is made only for it:
 
@@ -304,55 +304,55 @@ reviewers in **[security.md](security.md)**.
 
 ## Commands
 
-### `bankctl init [--path PATH] [--force]`
+### `nedctl init [--path PATH] [--force]`
 Scaffold a starter config so you don't hand-write JSON. See **First run** above.
 
-### `bankctl clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]`
+### `nedctl clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]`
 Tabular (or JSON) view of the fleet with optional filters (`--owner` is a
 substring match). `-o json` emits an array — pipe it to `jq`.
 ```bash
-bankctl clusters list --cloud aws --env prod
-bankctl clusters list --cloud azure -o json | jq -r '.[].name'
+nedctl clusters list --cloud aws --env prod
+nedctl clusters list --cloud azure -o json | jq -r '.[].name'
 ```
 
-### `bankctl clusters get <name> [-o table|json]`
+### `nedctl clusters get <name> [-o table|json]`
 Full detail for one cluster (cloud-specific fields included).
 ```bash
-bankctl clusters get eks-payments-prod-euw1
-bankctl clusters get eks-payments-prod-euw1 -o json | jq '{name,account}'
+nedctl clusters get eks-payments-prod-euw1
+nedctl clusters get eks-payments-prod-euw1 -o json | jq '{name,account}'
 ```
 
-### `bankctl kubeconfig <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON]`
+### `nedctl kubeconfig <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON]`
 Fetches credentials by shelling out to the right cloud CLI
 (`aws eks update-kubeconfig` or `az aks get-credentials`). Flags may go before
 or after the cluster name.
 ```bash
-bankctl kubeconfig eks-payments-sit-euw1
-bankctl kubeconfig aks-core-prod-weu --file ~/.kube/aks-core-prod   # isolated
-bankctl kubeconfig aks-core-prod-weu --dry-run                      # print, don't run
+nedctl kubeconfig eks-payments-sit-euw1
+nedctl kubeconfig aks-core-prod-weu --file ~/.kube/aks-core-prod   # isolated
+nedctl kubeconfig aks-core-prod-weu --dry-run                      # print, don't run
 ```
 `--file` (or `kubeconfigDir` in config) writes an **isolated** kubeconfig,
 which is much safer than merging 80 clusters into one file.
 
-**CLI-drift warning.** After writing credentials, `bankctl` inspects the
+**CLI-drift warning.** After writing credentials, `nedctl` inspects the
 kubeconfig's exec auth-plugin `apiVersion`. If an old `aws`/`az` CLI stamped a
 removed version (`client.authentication.k8s.io/v1alpha1`, dropped in Kubernetes
 1.24), it prints a stderr warning telling you to update that CLI and run
-`bankctl doctor`. If the cloud CLI call itself fails, the error is followed by
-the same `bankctl doctor` hint, and quotes the CLI's own error message rather
+`nedctl doctor`. If the cloud CLI call itself fails, the error is followed by
+the same `nedctl doctor` hint, and quotes the CLI's own error message rather
 than a bare exit status. Both go to stderr, so `-o json` and scripts are
 unaffected.
 
 **Identity verified first.** `aws eks update-kubeconfig` uses whatever account
 your active credentials belong to — if that account has a cluster with the same
 name, you would get credentials for the wrong cluster, labelled as the right
-one. So before fetching, bankctl checks `aws sts get-caller-identity` against
+one. So before fetching, nedctl checks `aws sts get-caller-identity` against
 the cluster's `account` and refuses on a mismatch:
 ```text
 kubeconfig refused: active AWS credentials are for account 999999999999 (arn:aws:sts::999999999999:assumed-role/dev/neo),
 but eks-payments-prod-euw1 is in account 111111111111 — select the right profile (e.g. AWS_PROFILE=...) and retry
 ```
-On Azure every call passes `--subscription`; bankctl confirms the subscription
+On Azure every call passes `--subscription`; nedctl confirms the subscription
 is reachable and records who is acting. Every real fetch is recorded in the
 [audit trail](#audit-trail) — `--dry-run` fetches nothing and records nothing.
 
@@ -363,31 +363,31 @@ Ctrl-C stops it cleanly (exit 130). Either way the CLI **and every process it
 spawned** are killed — a timed-out `az` does not leave python running in the
 background.
 
-### `bankctl login <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON] [--context NAME]`
+### `nedctl login <cluster> [--file PATH] [--dry-run] [--change-record CHG… | --break-glass REASON] [--context NAME]`
 `kubeconfig` plus a loud warning if the target is production (a
 `prodEnvironments` environment, or a name matching `prodPatterns`). Takes the
 same flags as `kubeconfig`, including change control.
 ```bash
-bankctl login eks-payments-prod-euw1
+nedctl login eks-payments-prod-euw1
 # ⚠  "eks-payments-prod-euw1" is a PRODUCTION cluster. Changes require a change record.
 ```
 In [bastion mode](#bastion-mode) it switches to the cluster's provisioned
 context instead of fetching credentials; `--context` picks one when the cluster
 has several, and `--file` does not apply.
 
-### `bankctl fleet versions [--fail-on-stale] [-o table|json]`
+### `nedctl fleet versions [--fail-on-stale] [-o table|json]`
 Version-drift report against each cluster's target — `targetKubeVersions` for
 its environment, else `targetKubeVersion`. Status is `current`, `n-1`
 (one minor behind — allowed), or `STALE` (two or more behind). `--fail-on-stale`
 exits 1 if any cluster is STALE — drop it into a scheduled pipeline as a fleet
 hygiene gate. `--fail-on-stale` and `-o json` compose (JSON is still emitted).
 ```bash
-bankctl fleet versions
-bankctl fleet versions --fail-on-stale                        # CI gate
-bankctl fleet versions -o json | jq -r '.[]|select(.status=="STALE").name'
+nedctl fleet versions
+nedctl fleet versions --fail-on-stale                        # CI gate
+nedctl fleet versions -o json | jq -r '.[]|select(.status=="STALE").name'
 ```
 
-### `bankctl fleet eol [--warn-days N] [--by-cost-centre] [--fail-on-risk] [-o table|json]`
+### `nedctl fleet eol [--warn-days N] [--by-cost-centre] [--fail-on-risk] [-o table|json]`
 Where each cluster sits in its cloud's support lifecycle, most at-risk first,
 and what extended support costs. "Two versions behind" is an engineering
 concern; "USD 730/month from 1 December" gets upgrade windows approved.
@@ -414,7 +414,7 @@ extended-support premium: USD 365.00/month now; +USD 730.00/month if the 2 endin
 scheduled gate. Money is computed in integer micro-units (exact, no float
 drift) and appears in JSON as decimal strings, e.g. `"365.00"`.
 
-### `bankctl fleet calendar aws [--profile P] [--region R]`
+### `nedctl fleet calendar aws [--profile P] [--region R]`
 Generates `supportCalendar.aws` from `aws eks describe-cluster-versions`, so
 AWS dates come from AWS rather than being typed by hand. Profile and region
 default to the first `discovery.aws` target. Paste the output under
@@ -422,13 +422,13 @@ default to the first `discovery.aws` target. Paste the output under
 `supportCalendar.azure` from the
 [AKS release calendar](https://learn.microsoft.com/azure/aks/supported-kubernetes-versions).
 
-### `bankctl inventory validate [--file PATH]`
+### `nedctl inventory validate [--file PATH]`
 Loads the config and the inventory and applies every validation rule, reporting
 all problems at once (exit 1). `--file` checks a candidate — e.g. the inventory
 in a pull request — against the config. CI runs this on every change to the
 inventory.
 
-### `bankctl inventory diff [-o table|json] [--report FILE]`
+### `nedctl inventory diff [-o table|json] [--report FILE]`
 Reconciles the inventory against what the clouds actually run. Exits **0 only
 when the scan was complete and there are no findings**; otherwise 1.
 
@@ -459,12 +459,12 @@ emits the full report, including the exact scopes scanned, for audit evidence.
 readable log and a machine-readable artifact from one scan.
 
 ```bash
-bankctl inventory diff                                   # human review
-bankctl inventory diff -o json > evidence/inventory-$(date +%F).json
-bankctl inventory diff -o json | jq -r '.findings[]|select(.kind=="shadow").cluster'
+nedctl inventory diff                                   # human review
+nedctl inventory diff -o json > evidence/inventory-$(date +%F).json
+nedctl inventory diff -o json | jq -r '.findings[]|select(.kind=="shadow").cluster'
 ```
 
-### `bankctl inventory sync [--out FILE] [--force]`
+### `nedctl inventory sync [--out FILE] [--force]`
 Writes the inventory the clouds imply: every observed cluster with its real
 identity and running version, `environment`/`owner`/`costCentre` from tags
 (falling back to the declared values), declared clusters in unscanned scopes
@@ -479,11 +479,11 @@ It **refuses to write** when:
   rename), then sync again.
 
 ```bash
-bankctl inventory sync --out fleet.proposed.json
+nedctl inventory sync --out fleet.proposed.json
 git diff --no-index fleet.json fleet.proposed.json      # review before publishing
 ```
 
-### `bankctl sweep [--apply] [--include-current] [--kubeconfig PATH] [-o table|json]`
+### `nedctl sweep [--apply] [--include-current] [--kubeconfig PATH] [-o table|json]`
 Removes kube-contexts the inventory proves stale — after 80 clusters come and
 go, `~/.kube/config` fills with dead entries that are easy to switch to by
 mistake. It **only removes what it can prove**:
@@ -504,7 +504,7 @@ its `aws eks get-token --cluster-name/--region` arguments or az's
 
 Safety:
 - **dry run by default** — nothing changes without `--apply`;
-- a **byte-identical backup** (`<file>.bankctl-<UTC time>.bak`, 0600) is written first;
+- a **byte-identical backup** (`<file>.nedctl-<UTC time>.bak`, 0600) is written first;
 - edits go through `kubectl config delete-*`, so the file's format is preserved;
   cluster and user entries are removed only when no remaining context uses them;
 - afterwards the file is **re-read and verified**: every planned context gone,
@@ -513,18 +513,18 @@ Safety:
 - a `KUBECONFIG` listing several files is refused (pass `--kubeconfig`), and it
   refuses to run at all without a valid inventory.
 
-Run `bankctl inventory diff` first: the sweep is only as good as the inventory.
+Run `nedctl inventory diff` first: the sweep is only as good as the inventory.
 ```bash
-bankctl sweep                 # review what would go
-bankctl sweep --apply         # remove it (backup first)
+nedctl sweep                 # review what would go
+nedctl sweep --apply         # remove it (backup first)
 ```
 
-### `bankctl audit verify [--log PATH]... [-o table|json]`
+### `nedctl audit verify [--log PATH]... [-o table|json]`
 Checks the hash chain of the audit log (default: the configured one; repeat
 `--log` for several). Exits 1 if any chain is broken or unreadable, naming the
 first bad line and whether an event was modified or removed.
 
-### `bankctl evidence (--period 2026-Q3 | --from DATE --to DATE) [--log PATH]... [--production] [--out FILE] [-o table|json]`
+### `nedctl evidence (--period 2026-Q3 | --from DATE --to DATE) [--log PATH]... [--production] [--out FILE] [-o table|json]`
 Builds the auditor-facing evidence pack for a period (a quarter, a month, or
 inclusive dates, all UTC): every access — start and end events joined — with
 who, which cloud principal, which cluster and environment, the change record
@@ -552,13 +552,13 @@ and accesses that started but never finished. Refused attempts are counted
 - `--out` writes the JSON pack atomically (0600 — it names people and
   principals) and prints its SHA-256, for the auditor's chain of custody.
 
-### `bankctl guard [--block] [-o table|json]`
+### `nedctl guard [--block] [-o table|json]`
 Classifies the **current** kube-context. It is production if **either**:
 
 - the context resolves to an inventory cluster in a `prodEnvironments`
   environment — recognising the names the tools write:
   `arn:aws:eks:<region>:<account>:cluster/<name>` (aws default),
-  `<account>.<name>` (bankctl's alias), `<name>` and `<name>-admin` (az); the
+  `<account>.<name>` (nedctl's alias), `<name>` and `<name>-admin` (az); the
   ARN and alias forms must match the account too, so a same-named cluster in
   another account never resolves to this one; **or**
 - its name matches a `prodPatterns` regex.
@@ -574,9 +574,9 @@ about 10 ms over the `kubectl` call it wraps.
 With `--block` it exits **3** on production — for a shell prompt or a
 pre-apply hook. `-o json` never weakens `--block`.
 ```bash
-bankctl guard --block || echo "refusing destructive op in prod"
+nedctl guard --block || echo "refusing destructive op in prod"
 # PROD  arn:aws:eks:eu-west-1:555555555555:cluster/eks-core-live-euw1  (inventory: eks-core-live-euw1 is in environment prod)
-bankctl guard -o json
+nedctl guard -o json
 # {"context": "...", "production": true, "cluster": "eks-core-live-euw1", "environment": "prod", "reasons": ["inventory: ..."]}
 ```
 
@@ -585,11 +585,11 @@ access control** — an engineer can simply not run it. Enforcement belongs at
 credential issuance (short-lived, JIT-approved credentials) and admission
 policy; do not present `guard` as the control in audit evidence.
 
-### `bankctl current [-o table|json]`
+### `nedctl current [-o table|json]`
 Shows the current context, whether it's production, the inventory cluster it
 resolves to, and why. `-o json` emits the same schema as `guard -o json`.
 
-### `bankctl doctor [--strict] [-o table|json]`
+### `nedctl doctor [--strict] [-o table|json]`
 Checks required (`kubectl`, `aws`, `az`; on a bastion only `kubectl`) and optional ecosystem tools for
 **presence and version**. It probes each tool with a floor (`kubectl`, `aws`,
 `az`, `helm` by default), parses the version, and flags anything below its
@@ -598,15 +598,15 @@ config.
 
 Exit policy:
 - a **missing required** tool → exit 1
-- an **outdated required** tool → exit 1 (bankctl's own commands may misbehave)
+- an **outdated required** tool → exit 1 (nedctl's own commands may misbehave)
 - `--strict` escalates **any** outdated tool (including optional ones) to exit
   1 — use it as a CI hygiene gate on your build agents so a stale `kubectl`/
   `aws`/`az` fails the pipeline.
 
 ```bash
-bankctl doctor            # local check with install/upgrade hints
-bankctl doctor --strict   # CI: fail if any floored tool is behind
-bankctl doctor -o json | jq -r '.tools[]|select(.status!="ok").name'
+nedctl doctor            # local check with install/upgrade hints
+nedctl doctor --strict   # CI: fail if any floored tool is behind
+nedctl doctor -o json | jq -r '.tools[]|select(.status!="ok").name'
 ```
 In `-o json`, `healthy` always agrees with the exit code under the same flags.
 Version probes run concurrently, each with its own deadline.
@@ -614,7 +614,7 @@ Version probes run concurrently, each with its own deadline.
 This is how the tool answers "are our CLIs current?" — see also the
 kubeconfig drift warning under `kubeconfig` above.
 
-### `bankctl version` / `bankctl help`
+### `nedctl version` / `nedctl help`
 
 ## Exit codes
 
@@ -634,45 +634,45 @@ repurposed. They are defined once, in `internal/app/exitcodes.go`.
 
 **Refuse a destructive kubectl in prod** — add to a wrapper or Makefile:
 ```bash
-bankctl guard --block || { echo "In prod — aborting."; exit 1; }
+nedctl guard --block || { echo "In prod — aborting."; exit 1; }
 kubectl delete ...
 ```
 
 **Shell prompt safety** (zsh) — show a red PROD marker:
 ```bash
-precmd() { bankctl guard 2>/dev/null | grep -q '^PROD' && PROD=' %F{red}[PROD]%f' || PROD=''; }
+precmd() { nedctl guard 2>/dev/null | grep -q '^PROD' && PROD=' %F{red}[PROD]%f' || PROD=''; }
 setopt prompt_subst; PROMPT='%~$PROD %# '
 ```
 
 **Nightly fleet drift check** (Azure DevOps / cron):
 ```bash
-bankctl --config /etc/bankctl/config.json fleet versions --fail-on-stale
+nedctl --config /etc/nedctl/config.json fleet versions --fail-on-stale
 ```
 
 **Scheduled hygiene gates** (nightly pipeline; each exits 1 on a finding):
 ```bash
-bankctl inventory diff -o json > inventory-diff.json   # shadow / missing / drift
-bankctl fleet eol --fail-on-risk                      # lifecycle and cost risk
-bankctl doctor --strict                               # build-agent CLIs current
+nedctl inventory diff -o json > inventory-diff.json   # shadow / missing / drift
+nedctl fleet eol --fail-on-risk                      # lifecycle and cost risk
+nedctl doctor --strict                               # build-agent CLIs current
 ```
 
 **Quarterly access evidence** — collect each engineer's log (or a SIEM export),
 then:
 ```bash
-bankctl evidence --period 2026-Q3 --log alice.jsonl --log bob.jsonl --production \
+nedctl evidence --period 2026-Q3 --log alice.jsonl --log bob.jsonl --production \
   --out evidence/2026-Q3-prod-access.json
 # evidence written to evidence/2026-Q3-prod-access.json (sha256 …)
 ```
 
 **Emergency access** when the change system is down:
 ```bash
-bankctl login eks-payments-prod-euw1 --break-glass "P1 INC0099887: payments ingress down, SNOW unavailable"
+nedctl login eks-payments-prod-euw1 --break-glass "P1 INC0099887: payments ingress down, SNOW unavailable"
 ```
 
 **Onboard to a cluster from scratch**:
 ```bash
-bankctl clusters list --owner my-team     # find it
-bankctl login eks-myteam-sit-euw1         # creds + prod check
+nedctl clusters list --owner my-team     # find it
+nedctl login eks-myteam-sit-euw1         # creds + prod check
 kubectl get pods -A                       # you're in
 ```
 

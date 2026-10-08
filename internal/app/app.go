@@ -1,4 +1,4 @@
-// Package app implements the bankctl command dispatch. It is separated from
+// Package app implements the nedctl command dispatch. It is separated from
 // main so the whole CLI is testable.
 package app
 
@@ -12,7 +12,7 @@ import (
 // Version is overridden at build time via -ldflags (see Makefile).
 var Version = "dev"
 
-// Exec runs bankctl without cancellation. It returns a process exit code;
+// Exec runs nedctl without cancellation. It returns a process exit code;
 // stdout/stderr are injected for testability.
 func Exec(args []string, stdout, stderr io.Writer) int {
 	return ExecContext(context.Background(), args, stdout, stderr)
@@ -23,7 +23,7 @@ func Exec(args []string, stdout, stderr io.Writer) int {
 func ExecContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	code := dispatch(ctx, args, stdout, stderr)
 	if code != ExitOK && ctx.Err() != nil {
-		fmt.Fprintln(stderr, "bankctl: interrupted")
+		fmt.Fprintln(stderr, "nedctl: interrupted")
 		return ExitInterrupted
 	}
 	return code
@@ -48,7 +48,7 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		printUsage(stdout)
 		return ExitOK
 	case "version", "--version":
-		fmt.Fprintf(stdout, "bankctl %s\n", Version)
+		fmt.Fprintf(stdout, "nedctl %s\n", Version)
 		return ExitOK
 	case "init":
 		return cmdInit(cmdArgs, stdout, stderr)
@@ -118,13 +118,13 @@ func extractConfig(args []string) (string, []string) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprint(w, `bankctl — banking Kubernetes fleet CLI
+	fmt.Fprint(w, `nedctl — banking Kubernetes fleet CLI
 
 Usage:
-  bankctl [--config PATH] <command> [args]
+  nedctl [--config PATH] <command> [args]
 
 Commands:
-  init                        Write a starter config to ~/.config/bankctl
+  init                        Write a starter config to ~/.config/nedctl
                               [--path PATH] [--force]
                               [--mode workstation|bastion]
   clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]
@@ -175,7 +175,7 @@ Commands:
                               Who you act as, where, and sign-in time left
   aws env [--profile P] [--format sh|powershell]
                               Short-term credentials for tools that need
-                              keys (sm, SSMshell):  eval "$(bankctl aws env)"
+                              keys (sm, SSMshell):  eval "$(nedctl aws env)"
   shell [FILTER…]             Session Manager shell on an instance in the
                               profile's account: picker coloured by env,
                               audited [--instance ID|NAME] [--profile P]
@@ -201,13 +201,13 @@ Commands:
                               in their environment's colour (never fails)
   doctor [-o table|json]      Check ecosystem tools are present & current
                               [--strict]  (exit 1 if any tool is below floor)
-  version                     Print bankctl version
+  version                     Print nedctl version
   help                        Show this help
 
 Exit codes: 0 ok · 1 failed/check found a problem · 2 usage error
             3 production context (guard --block) · 130 interrupted
-Config: --config, $BANKCTL_CONFIG, ~/.config/bankctl/config.json, ./bankctl.json
-First run:  bankctl init  then edit the config's inventory source.
-See docs/bankctl.md for full documentation.
+Config: --config, $NEDCTL_CONFIG, ~/.config/nedctl/config.json, ./nedctl.json
+First run:  nedctl init  then edit the config's inventory source.
+See docs/nedctl.md for full documentation.
 `)
 }

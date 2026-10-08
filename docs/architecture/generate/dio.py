@@ -101,7 +101,7 @@ class Diagram:
         os.makedirs(outdir, exist_ok=True)
         bg = ('<mxCell id="bg" value="" style="rounded=0;fillColor=#FFFFFF;strokeColor=none;" vertex="1" parent="1">'
               f'<mxGeometry x="0" y="0" width="{self.w}" height="{self.h}" as="geometry"/></mxCell>')
-        xml = (f'<mxfile host="bankctl"><diagram name="{self.name}"><mxGraphModel dx="{self.w}" dy="{self.h}" grid="0" '
+        xml = (f'<mxfile host="nedctl"><diagram name="{self.name}"><mxGraphModel dx="{self.w}" dy="{self.h}" grid="0" '
                f'page="1" pageWidth="{self.w}" pageHeight="{self.h}" background="#FFFFFF"><root><mxCell id="0"/>'
                f'<mxCell id="1" parent="0"/>{bg}' + "".join(self.cells) + "</root></mxGraphModel></diagram></mxfile>")
         src = os.path.join(outdir, self.name + ".drawio")

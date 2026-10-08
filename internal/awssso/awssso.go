@@ -1,9 +1,9 @@
 // Package awssso lists the AWS accounts and roles an engineer is assigned in
-// IAM Identity Center, and maintains the AWS CLI profiles bankctl generates
+// IAM Identity Center, and maintains the AWS CLI profiles nedctl generates
 // for the ones they pick.
 //
-// Security properties the rest of bankctl relies on:
-//   - No AWS access keys pass through bankctl. Sign-in is `aws sso login`
+// Security properties the rest of nedctl relies on:
+//   - No AWS access keys pass through nedctl. Sign-in is `aws sso login`
 //     (the AWS CLI's own flow), and the profiles written here make the AWS CLI
 //     fetch role credentials itself, for one account and role, when used.
 //   - The Identity Center access token is read from the AWS CLI's cache only
@@ -283,7 +283,7 @@ var (
 	unsafeRe   = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 )
 
-// ProfileName is the AWS CLI profile bankctl writes for an assignment:
+// ProfileName is the AWS CLI profile nedctl writes for an assignment:
 // <prefix>.<account name>.<role>, restricted to a safe alphabet.
 func ProfileName(prefix string, a Assignment) string {
 	name := a.AccountName

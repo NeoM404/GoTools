@@ -1,20 +1,20 @@
-# bankctl security model
+# nedctl security model
 
-This page is written for Information Security reviewers. It says what bankctl
+This page is written for Information Security reviewers. It says what nedctl
 touches, what it never does, and what it relies on AWS to enforce.
 
-**bankctl is not an access control.** Every control that matters lives in IAM
-Identity Center, IAM, Session Manager and EKS, and bankctl cannot bypass any
+**nedctl is not an access control.** Every control that matters lives in IAM
+Identity Center, IAM, Session Manager and EKS, and nedctl cannot bypass any
 of them. Its job is to make the secure path the easiest one: no pasted keys,
 your own identity everywhere, and a record of every access.
 
-## Secrets: what bankctl touches
+## Secrets: what nedctl touches
 
-| Secret | Does bankctl handle it? | How |
+| Secret | Does nedctl handle it? | How |
 |---|---|---|
 | Identity Center access token | Reads it, for one purpose | Read from the AWS CLI's own cache (`~/.aws/sso/cache`) only to list the caller's account assignments. It is sent only to the Identity Center portal endpoint, in a request header, over TLS 1.2+, and redirects are refused. It is never written, logged, or put on a command line where other users could see it in the process list. |
 | AWS role credentials (access key, secret, session token) | **No**, by default | Generated profiles make the AWS CLI fetch and cache short-term credentials itself, for one account and role, when used. |
-| The same, for tools that need keys (`aws env`, `shell --via legacy`) | Passes them on, on request | Obtained from `aws configure export-credentials` and validated. They are either handed to one child process's environment, or printed to stdout for `eval`. bankctl refuses to print them onto a terminal screen without `--show`. The export is recorded; the values never are. |
+| The same, for tools that need keys (`aws env`, `shell --via legacy`) | Passes them on, on request | Obtained from `aws configure export-credentials` and validated. They are either handed to one child process's environment, or printed to stdout for `eval`. nedctl refuses to print them onto a terminal screen without `--show`. The export is recorded; the values never are. |
 | EKS tokens | **No** | Kubeconfigs use `aws eks get-token` as an exec plugin. No token is stored. |
 | ServiceNow / SIEM tokens | Reads them from the environment | Only the name of the environment variable is in config. Sent over HTTPS only. |
 
@@ -24,7 +24,7 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
 ## Identity
 
 - **Sign-in:** the AWS CLI's own Identity Center flow (`aws sso login`,
-  browser or device code). bankctl never sees a password.
+  browser or device code). nedctl never sees a password.
 - **Least privilege by default:** a sign-in produces a profile for **one**
   account and role. Signing in to every account at once is break-glass only:
   it needs a recorded reason, uses only the configured break-glass roles, and
@@ -42,23 +42,23 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
   `legacy-ssm-tool`, `aws-export-credentials`, `ec2-start`/`ec2-stop`, and
   the cluster credential commands) writes a start event **before** acting.
   If the event cannot be written, the action does not happen.
-- The log is hash-chained and file-locked. `bankctl audit verify` detects any
+- The log is hash-chained and file-locked. `nedctl audit verify` detects any
   edit, insertion or deletion (tested).
 - Events are forwarded to the SIEM (Splunk HEC or JSON) when configured. The
   local log stays authoritative even if the SIEM is down.
-- `bankctl evidence` builds an auditor pack for a quarter or month, with a
+- `nedctl evidence` builds an auditor pack for a quarter or month, with a
   SHA-256 for chain of custody. It lists for review: break-glass use,
   production access without a change record, unverified records, and
   incomplete sessions.
 - **Limitation:** the log is written by a client the engineer runs. It is
   evidence of intent and attribution, not proof of everything that happened.
   The authoritative records are CloudTrail, Session Manager session logs and
-  EKS control-plane audit logs. bankctl's job is to make sure those name a
+  EKS control-plane audit logs. nedctl's job is to make sure those name a
   person.
 
 ## Network and processes
 
-- bankctl itself connects only to: the Identity Center portal, plus ServiceNow,
+- nedctl itself connects only to: the Identity Center portal, plus ServiceNow,
   the SIEM collector and an inventory URL when configured. All are HTTPS,
   TLS 1.2+, and redirects to plain HTTP are refused. Everything else goes
   through the AWS CLI, `kubectl` and the Session Manager plugin.
@@ -67,7 +67,7 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
   group. Interactive sessions are bounded by `aws.sessionTimeout`.
 - Values from AWS are validated before they reach a command line or file:
   account IDs, role names, instance IDs, cluster names, EKS endpoints and
-  certificate data. Writes to the shared `~/.aws/config` touch only bankctl's
+  certificate data. Writes to the shared `~/.aws/config` touch only nedctl's
   marked section, and refuse to overwrite a section someone else owns.
 - `connect` keeps TLS verification. kubectl checks the cluster's own
   certificate under its EKS hostname through the tunnel; a tampered hostname
@@ -87,7 +87,7 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
 
 ## What we ask Information Security to configure
 
-bankctl works without these. They are what turn the secure path into an
+nedctl works without these. They are what turn the secure path into an
 enforced one.
 
 | # | Control | Why |

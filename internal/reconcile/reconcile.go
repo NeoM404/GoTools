@@ -13,8 +13,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/NeoM404/GoTools/internal/discovery"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/discovery"
+	"nedctl/internal/inventory"
 )
 
 // Kind classifies a finding.

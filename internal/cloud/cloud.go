@@ -1,7 +1,7 @@
 // Package cloud wraps the AWS and Azure CLIs to fetch cluster credentials.
 // It never handles long-lived secrets itself: it delegates to `aws eks
 // update-kubeconfig` and `az aks get-credentials`, which use the operator's
-// already-established SSO/federated session. bankctl only orchestrates them.
+// already-established SSO/federated session. nedctl only orchestrates them.
 package cloud
 
 import (
@@ -10,8 +10,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
 )
 
 // KubeconfigOptions controls where credentials are written.

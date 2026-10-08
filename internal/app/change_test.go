@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/change"
-	"github.com/NeoM404/GoTools/internal/config"
+	"nedctl/internal/audit"
+	"nedctl/internal/change"
+	"nedctl/internal/config"
 )
 
 // fakeServiceNow serves CHG0012345 (approved, Implement, window 08:00–18:00
@@ -40,12 +40,12 @@ func fakeServiceNow(t *testing.T, approval string, status int) {
 		return c
 	}
 	t.Cleanup(func() { newChangeChecker = prev })
-	t.Setenv("BANKCTL_TEST_SNOW", "snow-token")
+	t.Setenv("NEDCTL_TEST_SNOW", "snow-token")
 }
 
 const changePolicy = `, "environments": ["dev","sit","uat","prod"], "changeControl": {
   "requireFor": ["prod"],
-  "serviceNow": {"instanceUrl": "https://bank.service-now.example", "tokenEnv": "BANKCTL_TEST_SNOW"}
+  "serviceNow": {"instanceUrl": "https://bank.service-now.example", "tokenEnv": "NEDCTL_TEST_SNOW"}
 }`
 
 // changeSetup: AWS creds for the prod account, a marker proving whether the
@@ -124,9 +124,9 @@ func TestServiceNowDownFailsClosed(t *testing.T) {
 func TestMissingServiceNowTokenFailsClosed(t *testing.T) {
 	fakeServiceNow(t, "approved", http.StatusOK)
 	cfg, marker, _ := changeSetup(t, changePolicy)
-	t.Setenv("BANKCTL_TEST_SNOW", "")
+	t.Setenv("NEDCTL_TEST_SNOW", "")
 	code, _, errb := run("--config", cfg, "kubeconfig", "eks-payments-prod-euw1", "--change-record", "CHG0012345")
-	if code != ExitFailure || !strings.Contains(errb, "$BANKCTL_TEST_SNOW is empty") || fetchedCreds(marker) {
+	if code != ExitFailure || !strings.Contains(errb, "$NEDCTL_TEST_SNOW is empty") || fetchedCreds(marker) {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 }

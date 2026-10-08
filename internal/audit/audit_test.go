@@ -17,7 +17,7 @@ import (
 
 func ev(cluster string) Event {
 	return Event{ID: NewID(), Phase: PhaseStart, Time: time.Now().UTC().Format(time.RFC3339Nano),
-		Action: "credentials", Tool: "bankctl", User: "neo", Host: "laptop", Cluster: cluster, Production: true}
+		Action: "credentials", Tool: "nedctl", User: "neo", Host: "laptop", Cluster: cluster, Production: true}
 }
 
 func logWith(t *testing.T, n int) Log {
@@ -136,7 +136,7 @@ func TestForwarderSplunkHEC(t *testing.T) {
 	if err := f.Send(context.Background(), ev("pay-prod")); err != nil {
 		t.Fatal(err)
 	}
-	if got.auth != "Splunk hec-token" || got.body["sourcetype"] != "bankctl:audit" {
+	if got.auth != "Splunk hec-token" || got.body["sourcetype"] != "nedctl:audit" {
 		t.Fatalf("auth=%q body=%v", got.auth, got.body)
 	}
 	if inner, _ := got.body["event"].(map[string]any); inner["cluster"] != "pay-prod" {

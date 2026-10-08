@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/config"
+	"nedctl/internal/config"
 )
 
 func run(args ...string) (int, string, string) {
@@ -18,10 +18,10 @@ func run(args ...string) (int, string, string) {
 }
 
 func TestHelpAndVersion(t *testing.T) {
-	if code, out, _ := run(); code != 0 || !strings.Contains(out, "bankctl") {
+	if code, out, _ := run(); code != 0 || !strings.Contains(out, "nedctl") {
 		t.Fatalf("bare invocation: code=%d out=%q", code, out)
 	}
-	if code, out, _ := run("version"); code != 0 || !strings.Contains(out, "bankctl") {
+	if code, out, _ := run("version"); code != 0 || !strings.Contains(out, "nedctl") {
 		t.Fatalf("version: code=%d out=%q", code, out)
 	}
 }
@@ -34,7 +34,7 @@ func TestUnknownCommand(t *testing.T) {
 
 func TestClustersListWithExampleFleet(t *testing.T) {
 	// Uses the checked-in example inventory via an explicit config.
-	code, out, errb := run("--config", "../../configs/bankctl.example.json", "clusters", "list", "--cloud", "aws")
+	code, out, errb := run("--config", "../../configs/nedctl.example.json", "clusters", "list", "--cloud", "aws")
 	if code != 0 {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
@@ -48,7 +48,7 @@ func TestClustersListWithExampleFleet(t *testing.T) {
 
 func TestFleetVersionsFailOnStale(t *testing.T) {
 	// The example fleet has dev at 1.27 vs target 1.30 => STALE => exit 1.
-	code, out, _ := run("--config", "../../configs/bankctl.example.json", "fleet", "versions", "--fail-on-stale")
+	code, out, _ := run("--config", "../../configs/nedctl.example.json", "fleet", "versions", "--fail-on-stale")
 	if code != 1 {
 		t.Fatalf("expected exit 1 for stale fleet, got %d\n%s", code, out)
 	}
@@ -59,7 +59,7 @@ func TestFleetVersionsFailOnStale(t *testing.T) {
 
 func TestKubeconfigDryRunFlagAfterArg(t *testing.T) {
 	// Flag AFTER the positional (how people actually type it) must work.
-	code, out, errb := run("--config", "../../configs/bankctl.example.json",
+	code, out, errb := run("--config", "../../configs/nedctl.example.json",
 		"kubeconfig", "aks-core-prod-weu", "--dry-run")
 	if code != 0 {
 		t.Fatalf("code=%d err=%q", code, errb)
@@ -70,7 +70,7 @@ func TestKubeconfigDryRunFlagAfterArg(t *testing.T) {
 }
 
 func TestKubeconfigDryRunFlagBeforeArg(t *testing.T) {
-	code, out, _ := run("--config", "../../configs/bankctl.example.json",
+	code, out, _ := run("--config", "../../configs/nedctl.example.json",
 		"kubeconfig", "--dry-run", "eks-payments-prod-euw1")
 	if code != 0 || !strings.Contains(out, "aws eks update-kubeconfig") {
 		t.Fatalf("code=%d out=%q", code, out)
@@ -78,7 +78,7 @@ func TestKubeconfigDryRunFlagBeforeArg(t *testing.T) {
 }
 
 func TestClustersListJSON(t *testing.T) {
-	code, out, errb := run("--config", "../../configs/bankctl.example.json",
+	code, out, errb := run("--config", "../../configs/nedctl.example.json",
 		"clusters", "list", "--cloud", "azure", "-o", "json")
 	if code != 0 {
 		t.Fatalf("code=%d err=%q", code, errb)
@@ -93,7 +93,7 @@ func TestClustersListJSON(t *testing.T) {
 }
 
 func TestClustersGetJSON(t *testing.T) {
-	code, out, _ := run("--config", "../../configs/bankctl.example.json",
+	code, out, _ := run("--config", "../../configs/nedctl.example.json",
 		"clusters", "get", "eks-payments-prod-euw1", "-o", "json")
 	if code != 0 {
 		t.Fatalf("code=%d", code)
@@ -108,7 +108,7 @@ func TestClustersGetJSON(t *testing.T) {
 }
 
 func TestInvalidOutputFormat(t *testing.T) {
-	code, _, errb := run("--config", "../../configs/bankctl.example.json",
+	code, _, errb := run("--config", "../../configs/nedctl.example.json",
 		"clusters", "list", "-o", "yaml")
 	if code != 2 || !strings.Contains(errb, "invalid output format") {
 		t.Fatalf("code=%d err=%q", code, errb)
@@ -133,7 +133,7 @@ func TestInitWritesConfig(t *testing.T) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("written config is not valid JSON: %v", err)
 	}
-	// The starter config must also pass bankctl's own validation.
+	// The starter config must also pass nedctl's own validation.
 	if _, _, err := config.Load(path); err != nil {
 		t.Fatalf("starter config rejected by config.Load: %v", err)
 	}

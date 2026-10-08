@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
 )
 
 // Identity is who the cloud CLI is acting as for a credential fetch.

@@ -3,7 +3,7 @@ package kube
 import (
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/inventory"
 )
 
 func sweepFleet() inventory.Fleet {

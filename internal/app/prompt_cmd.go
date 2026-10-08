@@ -7,10 +7,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/NeoM404/GoTools/internal/awssso"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/kube"
-	"github.com/NeoM404/GoTools/internal/picker"
+	"nedctl/internal/awssso"
+	"nedctl/internal/config"
+	"nedctl/internal/kube"
+	"nedctl/internal/picker"
 )
 
 // cmdPrompt prints a short, coloured segment for a shell prompt: the current

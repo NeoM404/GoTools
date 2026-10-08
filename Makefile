@@ -1,7 +1,7 @@
-BINARY   := bankctl
-PKG      := ./cmd/bankctl
+BINARY   := nedctl
+PKG      := ./cmd/nedctl
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS  := -s -w -X github.com/NeoM404/GoTools/internal/app.Version=$(VERSION)
+LDFLAGS  := -s -w -X nedctl/internal/app.Version=$(VERSION)
 
 # Release builds are static (no cgo), carry no local filesystem paths
 # (-trimpath) and are reproducible: the same commit and toolchain produce

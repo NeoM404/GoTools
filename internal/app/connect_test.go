@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
+	"nedctl/internal/audit"
 )
 
 const eksHost = "abc123def456.gr7.af-south-1.eks.amazonaws.com"
@@ -90,7 +90,7 @@ func TestConnectTunnelsThroughDevopsBoxAndKubectlWorks(t *testing.T) {
 	if !strings.Contains(calls, want) {
 		t.Fatalf("tunnel must go through the devops instance to the private endpoint:\n%s", calls)
 	}
-	kc := filepath.Join(w.home, ".kube", "bankctl", "payments-eks-prod.json")
+	kc := filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json")
 	if fi, err := os.Stat(kc); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("kubeconfig: %v %v", fi, err)
 	}
@@ -101,7 +101,7 @@ func TestConnectTunnelsThroughDevopsBoxAndKubectlWorks(t *testing.T) {
 	if err != nil || !strings.Contains(string(out), "v1.30.4-eks") {
 		t.Fatalf("kubectl through the tunnel kubeconfig: %v\n%s", err, out)
 	}
-	if !strings.Contains(w.awsCalls(t), "eks get-token --cluster-name payments-eks-prod --region af-south-1 --profile bankctl.payments-prod.Platform-Admin") {
+	if !strings.Contains(w.awsCalls(t), "eks get-token --cluster-name payments-eks-prod --region af-south-1 --profile nedctl.payments-prod.Platform-Admin") {
 		t.Fatalf("token must come from the engineer's own profile:\n%s", w.awsCalls(t))
 	}
 
@@ -130,7 +130,7 @@ func TestConnectKubeconfigRejectsWrongHostname(t *testing.T) {
 	if code, _, errb := run("--config", w.cfg, "connect", "payments-eks-prod", "--port", strconv.Itoa(port)); code != ExitOK {
 		t.Fatalf("err=%q", errb)
 	}
-	kc := filepath.Join(w.home, ".kube", "bankctl", "payments-eks-prod.json")
+	kc := filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json")
 	data, _ := os.ReadFile(kc)
 	var doc map[string]any
 	json.Unmarshal(data, &doc)

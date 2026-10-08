@@ -49,7 +49,7 @@ steps:
     displayName: govulncheck (our code and the standard library)
 
   # The declared inventory is code: a PR that breaks it fails here.
-  - script: make build && ./bin/bankctl --config inventory/bankctl.json inventory validate
+  - script: make build && ./bin/nedctl --config inventory/nedctl.json inventory validate
     displayName: Validate inventory/fleet.json
 
   - script: make repro checksums
@@ -58,7 +58,7 @@ steps:
 
   - publish: dist
     displayName: Publish binaries + SHA256SUMS
-    artifact: bankctl
+    artifact: nedctl
     condition: and(succeeded(), ne(variables['Build.Reason'], 'Schedule'))
 
   # What bastions consume. How it reaches them is the team's choice — see

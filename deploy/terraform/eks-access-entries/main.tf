@@ -9,7 +9,7 @@
 #      access policy that fits — people get their own SSO roles, the
 #      pipeline keeps its own, squads are scoped to their namespaces.
 #   3. Once every aws-auth mapping is mirrored here and verified with
-#      `bankctl eks access <cluster>`, remove the mappings from aws-auth.
+#      `nedctl eks access <cluster>`, remove the mappings from aws-auth.
 #
 # Not validated with `terraform validate` in this repo (no Terraform in its
 # CI); run `terraform init && terraform validate` before the first plan.

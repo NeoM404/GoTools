@@ -13,12 +13,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/awssso"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
-	"github.com/NeoM404/GoTools/internal/picker"
+	"nedctl/internal/audit"
+	"nedctl/internal/awssso"
+	"nedctl/internal/config"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
+	"nedctl/internal/picker"
 )
 
 // ec2Instance is one row of the instance picker.
@@ -28,7 +28,7 @@ type ec2Instance struct {
 
 var instanceIDRe = regexp.MustCompile(`^i-[0-9a-f]{8,17}$`)
 
-// profileContext is what bankctl knows about the profile a command acts with.
+// profileContext is what nedctl knows about the profile a command acts with.
 type profileContext struct {
 	Name               string
 	AccountID, Role    string
@@ -39,7 +39,7 @@ type profileContext struct {
 func loadProfileContext(cfg config.Config, flagValue string, stderr io.Writer) (profileContext, bool) {
 	name := resolveProfile(cfg, flagValue)
 	if name == "" {
-		fmt.Fprintln(stderr, "no profile selected — run `bankctl aws login`, or pass --profile")
+		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile")
 		return profileContext{}, false
 	}
 	pc := profileContext{Name: name}
@@ -161,7 +161,7 @@ func chooseInstance(cfg config.Config, pc profileContext, list []ec2Instance, in
 func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("shell", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `bankctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `nedctl aws login`)")
 	instance := fs.String("instance", "", "instance ID or Name tag (skips the picker)")
 	via := fs.String("via", "aws", "aws (Session Manager directly) or legacy (launch sm/SSMshell already signed in)")
 	tab := fs.Bool("tab", false, "open the session in a new Windows Terminal tab coloured by environment")
@@ -198,7 +198,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return code
 	}
 	if in.State != "running" {
-		fmt.Fprintf(stderr, "%s (%s) is %s — start it with `bankctl ec2 start %s`\n", firstNonBlank(in.Name, in.ID), in.ID, in.State, in.ID)
+		fmt.Fprintf(stderr, "%s (%s) is %s — start it with `nedctl ec2 start %s`\n", firstNonBlank(in.Name, in.ID), in.ID, in.State, in.ID)
 		return ExitFailure
 	}
 	if *tab {
@@ -274,7 +274,7 @@ func launchLegacy(ctx context.Context, cfg config.Config, pc profileContext, std
 }
 
 // openTab hands the session to a new Windows Terminal tab, titled and
-// coloured by environment. The tab runs bankctl again, which records the
+// coloured by environment. The tab runs nedctl again, which records the
 // session itself. From WSL the tab re-enters the same distribution.
 func openTab(cfg config.Config, pc profileContext, in ec2Instance, cr, glass string, stderr io.Writer) int {
 	if os.Getenv("WT_SESSION") == "" {
@@ -288,7 +288,7 @@ func openTab(cfg config.Config, pc profileContext, in ec2Instance, cr, glass str
 	}
 	self, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(stderr, "--tab: locating bankctl: %v\n", err)
+		fmt.Fprintf(stderr, "--tab: locating nedctl: %v\n", err)
 		return ExitFailure
 	}
 	title := pc.label() + " · " + firstNonBlank(in.Name, in.ID)
@@ -318,7 +318,7 @@ func openTab(cfg config.Config, pc profileContext, in ec2Instance, cr, glass str
 
 func cmdEC2(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || (args[0] != "start" && args[0] != "stop") {
-		fmt.Fprintln(stderr, "usage: bankctl ec2 <start|stop> <instance-id|name> [--profile P] [--yes]")
+		fmt.Fprintln(stderr, "usage: nedctl ec2 <start|stop> <instance-id|name> [--profile P] [--yes]")
 		return ExitUsage
 	}
 	action := args[0]
@@ -328,7 +328,7 @@ func cmdEC2(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 	yes := fs.Bool("yes", false, "do not ask for confirmation (required without a terminal in production)")
 	pos, err := parseInterspersed(fs, args[1:])
 	if err != nil || len(pos) != 1 {
-		fmt.Fprintln(stderr, "usage: bankctl ec2 <start|stop> <instance-id|name> [--profile P] [--yes]")
+		fmt.Fprintln(stderr, "usage: nedctl ec2 <start|stop> <instance-id|name> [--profile P] [--yes]")
 		return ExitUsage
 	}
 	cfg, _, err := config.Load(cfgPath)

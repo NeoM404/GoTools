@@ -1,23 +1,23 @@
-# AWS access with bankctl
+# AWS access with nedctl
 
-bankctl replaces copying keys from the AWS access portal with
+nedctl replaces copying keys from the AWS access portal with
 your own short-lived identity. Every step is recorded. `sm` and SSMshell keep
-working, and bankctl can launch them for you already signed in.
+working, and nedctl can launch them for you already signed in.
 
-| Today | With bankctl |
+| Today | With nedctl |
 |---|---|
-| Copy access key, secret and session token from the portal | `bankctl aws login`: one browser approval, then pick an account and role |
-| Paste them into SSMshell / `sm` | `bankctl shell`, or `bankctl shell --via legacy` to launch `sm` signed in |
+| Copy access key, secret and session token from the portal | `nedctl aws login`: one browser approval, then pick an account and role |
+| Paste them into SSMshell / `sm` | `nedctl shell`, or `nedctl shell --via legacy` to launch `sm` signed in |
 | The session starts as `root`; switch to `ec2-user` and paste the keys again | The session runs as your SSO role; cluster access needs no keys on the box |
-| `kubectl` on the devops box | `bankctl connect <cluster>`: `kubectl` on your laptop, through the box |
+| `kubectl` on the devops box | `nedctl connect <cluster>`: `kubectl` on your laptop, through the box |
 
 For the reasoning behind each choice, and what Information Security is asked
 to configure, see [security.md](security.md).
 
 ## Setup
 
-Add an `aws` block to your config (`bankctl init` writes the rest). A complete
-example is [`configs/bankctl.aws.example.json`](../configs/bankctl.aws.example.json).
+Add an `aws` block to your config (`nedctl init` writes the rest). A complete
+example is [`configs/nedctl.aws.example.json`](../configs/nedctl.aws.example.json).
 
 ```json
 "aws": {
@@ -31,9 +31,9 @@ example is [`configs/bankctl.aws.example.json`](../configs/bankctl.aws.example.j
 | Field | Meaning |
 |---|---|
 | `startUrl`, `ssoRegion` | The Identity Center access portal and its region. Required. |
-| `ssoSession` | Name of the `[sso-session]` bankctl writes (default `bankctl`). |
+| `ssoSession` | Name of the `[sso-session]` nedctl writes (default `nedctl`). |
 | `region` | Default region of generated profiles (default `ssoRegion`). |
-| `profilePrefix` | Generated profiles are named `<prefix>.<account>.<role>` (default `bankctl`). |
+| `profilePrefix` | Generated profiles are named `<prefix>.<account>.<role>` (default `nedctl`). |
 | `accountNamePattern` | Gets squad and environment from an account's name: named groups `env` and, optionally, `squad`. |
 | `accounts` | Explicit `{id, squad, environment}` per account. Overrides the pattern. |
 | `breakGlassRoles` | The only roles `aws login --all` may use. |
@@ -47,18 +47,18 @@ defaults match the existing tools: dev `#22c55e`, ete `#f97316`, qa `#3b82f6`,
 prod `#ef4444`.
 
 You need: AWS CLI v2, the Session Manager plugin, and `kubectl` for `connect`.
-Run `bankctl doctor` to check.
+Run `nedctl doctor` to check.
 
-## Sign in: `bankctl aws login`
+## Sign in: `nedctl aws login`
 
 ```bash
-eval "$(bankctl aws login)"                       # bash/zsh: picker, then sets AWS_PROFILE
-bankctl aws login --format powershell | iex       # PowerShell
-bankctl aws login --account payments-prod --role Platform-ReadOnly   # no picker
-bankctl aws login --device-code                   # on a host with no browser (devops box)
+eval "$(nedctl aws login)"                       # bash/zsh: picker, then sets AWS_PROFILE
+nedctl aws login --format powershell | iex       # PowerShell
+nedctl aws login --account payments-prod --role Platform-ReadOnly   # no picker
+nedctl aws login --device-code                   # on a host with no browser (devops box)
 ```
 
-1. If no valid sign-in is cached, bankctl runs `aws sso login`, the AWS CLI's
+1. If no valid sign-in is cached, nedctl runs `aws sso login`, the AWS CLI's
    own flow. You approve it in the browser.
 2. It lists **only the accounts and roles Identity Center assigns you**, in a
    picker coloured by environment. Type to filter, enter a number to choose.
@@ -70,14 +70,14 @@ bankctl aws login --device-code                   # on a host with no browser (d
 4. It checks that the profile really acts in the chosen account
    (`sts get-caller-identity`), and records the sign-in.
 
-No AWS keys pass through bankctl. The AWS CLI fetches short-term credentials
+No AWS keys pass through nedctl. The AWS CLI fetches short-term credentials
 for that one account and role when the profile is used. The picker and
 messages go to stderr, so stdout carries only `export AWS_PROFILE=…`.
 
 ### Break-glass: every account at once
 
 ```bash
-bankctl aws login --all --break-glass "P1 INC0012345: payments API down in prod"
+nedctl aws login --all --break-glass "P1 INC0012345: payments API down in prod"
 ```
 
 Only for the named admins who hold a break-glass role in Identity Center:
@@ -87,18 +87,18 @@ Only for the named admins who hold a break-glass role in Identity Center:
 - Every sign-in is flagged for review in the evidence pack, and a refused
   attempt is recorded too.
 
-Who may use it is decided by Identity Center. bankctl just never signs in to
+Who may use it is decided by Identity Center. nedctl just never signs in to
 every account with an ordinary role.
 
-### Who am I: `bankctl aws whoami`
+### Who am I: `nedctl aws whoami`
 
 Shows the profile, account, squad, environment, role and ARN, plus how long the
 sign-in has left. `-o json` for scripts.
 
-### Credentials for older tools: `bankctl aws env`
+### Credentials for older tools: `nedctl aws env`
 
 ```bash
-eval "$(bankctl aws env)"; sm        # sm gets the keys without a paste
+eval "$(nedctl aws env)"; sm        # sm gets the keys without a paste
 ```
 
 Prints the profile's short-term credentials as environment variables:
@@ -107,28 +107,28 @@ Prints the profile's short-term credentials as environment variables:
 - It validates the AWS CLI's output before passing it on.
 - It records the export. The keys themselves are never recorded.
 
-## A shell on an instance: `bankctl shell`
+## A shell on an instance: `nedctl shell`
 
 ```bash
-bankctl shell                     # picker: NAME, INSTANCE, PRIVATE IP, STATE, TYPE, ZONE, LEVEL
-bankctl shell devops              # filter; one match goes straight in
-bankctl shell --instance i-0abc…  # by ID or Name tag
-bankctl shell devops --tab        # in a new Windows Terminal tab coloured by environment
-bankctl shell --via legacy        # launch sm / SSMshell already signed in
-bankctl ec2 start payments-batch  # start/stop, confirmed by instance ID in prod
+nedctl shell                     # picker: NAME, INSTANCE, PRIVATE IP, STATE, TYPE, ZONE, LEVEL
+nedctl shell devops              # filter; one match goes straight in
+nedctl shell --instance i-0abc…  # by ID or Name tag
+nedctl shell devops --tab        # in a new Windows Terminal tab coloured by environment
+nedctl shell --via legacy        # launch sm / SSMshell already signed in
+nedctl ec2 start payments-batch  # start/stop, confirmed by instance ID in prod
 ```
 
 The session is `aws ssm start-session` under your own profile. Before it
-starts, bankctl sets the terminal title and prints a banner in the
+starts, nedctl sets the terminal title and prints a banner in the
 environment's colour. In production it adds a warning that the session is
 recorded. `--tab` works from Windows and from WSL: the tab re-enters the same
 distribution.
 
-## Straight to a cluster: `bankctl connect`
+## Straight to a cluster: `nedctl connect`
 
 ```bash
-bankctl connect payments-eks-prod            # holds the tunnel; Ctrl-C closes it
-export KUBECONFIG=~/.kube/bankctl/payments-eks-prod.json
+nedctl connect payments-eks-prod            # holds the tunnel; Ctrl-C closes it
+export KUBECONFIG=~/.kube/nedctl/payments-eks-prod.json
 kubectl get nodes
 ```
 
@@ -146,12 +146,12 @@ kubectl get nodes
 `--port` override the defaults. `guard` and `prompt` treat the context like
 any other, so production still shows red.
 
-## Moving clusters to access entries: `bankctl eks`
+## Moving clusters to access entries: `nedctl eks`
 
 ```bash
-bankctl eks auth --all-profiles             # mode, endpoint exposure, next step per cluster
-bankctl eks auth --fail-on-configmap        # exit 1 while any cluster is CONFIG_MAP only
-bankctl eks access payments-eks-prod        # who can reach it, with which policy and scope
+nedctl eks auth --all-profiles             # mode, endpoint exposure, next step per cluster
+nedctl eks auth --fail-on-configmap        # exit 1 while any cluster is CONFIG_MAP only
+nedctl eks access payments-eks-prod        # who can reach it, with which policy and scope
 ```
 
 [`deploy/terraform/eks-access-entries`](../deploy/terraform/eks-access-entries)
@@ -162,8 +162,8 @@ and the pipeline their own entry.
 ## Your prompt
 
 ```bash
-PS1='$(bankctl prompt --shell bash) \w\$ '        # bash
-PROMPT='$(bankctl prompt --shell zsh) %~ %# '     # zsh (setopt prompt_subst)
+PS1='$(nedctl prompt --shell bash) \w\$ '        # bash
+PROMPT='$(nedctl prompt --shell zsh) %~ %# '     # zsh (setopt prompt_subst)
 ```
 
 Shows `k8s:<context>[env]` and `aws:<squad>[env]` in the environment's colour,
@@ -182,7 +182,7 @@ emergency path.
 
 Every action below is written to the hash-chained audit log, and forwarded to
 the SIEM when `audit.forward` is set. Each is included in
-`bankctl evidence --period 2026-Q4`.
+`nedctl evidence --period 2026-Q4`.
 
 | Action | When |
 |---|---|

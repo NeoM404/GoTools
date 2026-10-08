@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/inventory"
 )
 
 var cal = Calendar{

@@ -1,4 +1,4 @@
-// Command bankctl is the banking Kubernetes fleet CLI: one command to see every
+// Command nedctl is the banking Kubernetes fleet CLI: one command to see every
 // EKS/AKS cluster across the group, pull credentials for any of them, report
 // version drift, and stay out of production by accident.
 //
@@ -8,7 +8,7 @@
 // testable without spawning a process. Keep it that way: new commands go in
 // internal/app, not here.
 //
-// See docs/bankctl.md for the full command reference.
+// See docs/nedctl.md for the full command reference.
 package main
 
 import (
@@ -17,7 +17,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/NeoM404/GoTools/internal/app"
+	"nedctl/internal/app"
 )
 
 func main() {

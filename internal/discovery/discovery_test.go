@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/config"
+	"nedctl/internal/inventory"
 )
 
 // fakeCloud answers CLI invocations from a table keyed by a substring of the

@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
+	"nedctl/internal/audit"
 )
 
 // Source is one audit log with its chain verification.
@@ -83,7 +83,7 @@ type Report struct {
 // (whole UTC days).
 func Build(sources []Source, from, to time.Time, productionOnly bool, generated time.Time, version string) Report {
 	rep := Report{
-		GeneratedAt: generated.UTC().Format(time.RFC3339), Tool: "bankctl", Version: version,
+		GeneratedAt: generated.UTC().Format(time.RFC3339), Tool: "nedctl", Version: version,
 		From: from.Format(dateLayout), To: to.Format(dateLayout), Production: productionOnly,
 		Complete: true, Sources: sources, Exceptions: []Exception{}, Accesses: []Access{},
 	}

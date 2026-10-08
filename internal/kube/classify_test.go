@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/inventory"
 )
 
 func fleet() inventory.Fleet {
@@ -18,7 +18,7 @@ func fleet() inventory.Fleet {
 func TestResolveRecognisesToolWrittenNames(t *testing.T) {
 	cases := map[string]string{
 		"arn:aws:eks:eu-west-1:555555555555:cluster/eks-core-live-euw1": "eks-core-live-euw1", // aws default
-		"555555555555.eks-core-live-euw1":                               "eks-core-live-euw1", // bankctl alias
+		"555555555555.eks-core-live-euw1":                               "eks-core-live-euw1", // nedctl alias
 		"EKS-CORE-UAT-EUW1":                                             "eks-core-uat-euw1",  // plain, case-insensitive
 		"aks-core-live-weu":                                             "aks-core-live-weu",  // az default
 		"aks-core-live-weu-admin":                                       "aks-core-live-weu",  // az --admin

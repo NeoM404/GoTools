@@ -7,11 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/NeoM404/GoTools/internal/config"
+	"nedctl/internal/config"
 )
 
-// starterConfig is written by `bankctl init`. It is valid JSON with sensible
-// defaults so `bankctl` works after the user just fills in an inventory source.
+// starterConfig is written by `nedctl init`. It is valid JSON with sensible
+// defaults so `nedctl` works after the user just fills in an inventory source.
 //
 // QA is a production copy, so it is guarded as production. The prod pattern
 // matches prod/prd/qa only as a whole dash-, dot- or underscore-separated
@@ -38,9 +38,9 @@ const starterConfig = `{
 func cmdInit(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	pathFlag := fs.String("path", "", "where to write the config (default: ~/.config/bankctl/config.json)")
+	pathFlag := fs.String("path", "", "where to write the config (default: ~/.config/nedctl/config.json)")
 	force := fs.Bool("force", false, "overwrite an existing config")
-	mode := fs.String("mode", config.ModeWorkstation, "where bankctl runs: workstation (fetches credentials via aws/az) or bastion (uses the host's kubeconfig)")
+	mode := fs.String("mode", config.ModeWorkstation, "where nedctl runs: workstation (fetches credentials via aws/az) or bastion (uses the host's kubeconfig)")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -60,7 +60,7 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 			}
 			base = filepath.Join(home, ".config")
 		}
-		path = filepath.Join(base, "bankctl", "config.json")
+		path = filepath.Join(base, "nedctl", "config.json")
 	}
 
 	if _, err := os.Stat(path); err == nil && !*force {
@@ -76,6 +76,6 @@ func cmdInit(args []string, stdout, stderr io.Writer) int {
 		return ExitFailure
 	}
 	fmt.Fprintf(stdout, "wrote starter config to %s\n", path)
-	fmt.Fprintln(stdout, "next: set \"inventoryPath\" or \"inventoryUrl\", then run `bankctl clusters list`")
+	fmt.Fprintln(stdout, "next: set \"inventoryPath\" or \"inventoryUrl\", then run `nedctl clusters list`")
 	return ExitOK
 }

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/awssso"
+	"nedctl/internal/audit"
+	"nedctl/internal/awssso"
 )
 
 // ec2World is an awsWorld signed in to one profile, with a fake account of
@@ -28,9 +28,9 @@ func newEC2World(t *testing.T, env, extra string) *ec2World {
 	w := &ec2World{awsWorld: newAWSWorld(t, extra)}
 	w.calls = filepath.Join(w.home, "aws-calls")
 	acct := map[string]string{"prod": "111111111111", "dev": "222222222222"}[env]
-	profile := "bankctl.payments-" + env + ".Platform-Admin"
+	profile := "nedctl.payments-" + env + ".Platform-Admin"
 	err := awssso.SaveManaged(w.awsConfig, awssso.Managed{
-		Session:  awssso.Session{Name: "bankctl", StartURL: "https://d-1234567890.awsapps.com/start", Region: "af-south-1"},
+		Session:  awssso.Session{Name: "nedctl", StartURL: "https://d-1234567890.awsapps.com/start", Region: "af-south-1"},
 		Profiles: map[string]awssso.Profile{profile: {Name: profile, AccountID: acct, Role: "Platform-Admin", Squad: "payments", Environment: env}},
 	})
 	if err != nil {
@@ -60,7 +60,7 @@ func TestShellFilterToOneInstanceStartsAuditedSession(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
-	if !strings.Contains(w.awsCalls(t), "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --profile bankctl.payments-dev.Platform-Admin") {
+	if !strings.Contains(w.awsCalls(t), "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --profile nedctl.payments-dev.Platform-Admin") {
 		t.Fatalf("calls:\n%s", w.awsCalls(t))
 	}
 	if !strings.Contains(errb, "▶ payments · DEV · payments-devops") {
@@ -98,7 +98,7 @@ func TestShellPickerColumns(t *testing.T) {
 func TestShellRefusesStoppedAndAmbiguous(t *testing.T) {
 	w := newEC2World(t, "dev", "")
 	code, _, errb := run("--config", w.cfg, "shell", "--instance", "payments-batch")
-	if code != ExitFailure || !strings.Contains(errb, "is stopped — start it with `bankctl ec2 start i-0bbbbbbbbbbbbbbb2`") {
+	if code != ExitFailure || !strings.Contains(errb, "is stopped — start it with `nedctl ec2 start i-0bbbbbbbbbbbbbbb2`") {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 	code, _, errb = run("--config", w.cfg, "shell", "payments")
@@ -160,7 +160,7 @@ func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 			sleepBriefly()
 		}
 	}
-	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--", "shell\n--profile\nbankctl.payments-prod.Platform-Admin\n--instance\ni-0aaaaaaaaaaaaaaa1"} {
+	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--", "shell\n--profile\nnedctl.payments-prod.Platform-Admin\n--instance\ni-0aaaaaaaaaaaaaaa1"} {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf("wt.exe args lack %q:\n%s", want, got)
 		}

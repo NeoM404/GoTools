@@ -1,6 +1,6 @@
-// Package tools implements `bankctl doctor`: it checks that the ecosystem
-// CLIs bankctl orchestrates (and the ones the team standardises on) are
-// installed and, where a floor is defined, recent enough. bankctl deliberately
+// Package tools implements `nedctl doctor`: it checks that the ecosystem
+// CLIs nedctl orchestrates (and the ones the team standardises on) are
+// installed and, where a floor is defined, recent enough. nedctl deliberately
 // does NOT reimplement these — see docs/ecosystem-tools.md.
 package tools
 
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/execx"
+	"nedctl/internal/execx"
 )
 
 // probeTimeout bounds each `<tool> --version` call. Generous because some
@@ -22,10 +22,10 @@ const probeTimeout = 20 * time.Second
 type Tool struct {
 	Name     string // binary name in PATH
 	Purpose  string
-	Required bool // required for bankctl's own subcommands to work
+	Required bool // required for nedctl's own subcommands to work
 	Install  string
 
-	// MinVersion is the floor bankctl warns below (empty = presence-only).
+	// MinVersion is the floor nedctl warns below (empty = presence-only).
 	MinVersion string
 	// VersionArgs is how to ask the tool its version (empty = no version probe).
 	VersionArgs []string
@@ -36,13 +36,13 @@ type Tool struct {
 // "minVersions": {"kubectl": "1.29"}.
 func Catalog() []Tool {
 	return []Tool{
-		{Name: "kubectl", Purpose: "Kubernetes CLI (bankctl guard/current shell out to it)", Required: true,
+		{Name: "kubectl", Purpose: "Kubernetes CLI (nedctl guard/current shell out to it)", Required: true,
 			Install: "brew install kubectl", MinVersion: "1.28", VersionArgs: []string{"version", "--client"}},
 		{Name: "aws", Purpose: "AWS CLI — EKS kubeconfig + SSO login", Required: true,
 			Install: "brew install awscli", MinVersion: "2.13", VersionArgs: []string{"--version"}},
 		{Name: "az", Purpose: "Azure CLI — AKS kubeconfig + login", Required: true,
 			Install: "brew install azure-cli", MinVersion: "2.55", VersionArgs: []string{"version", "-o", "json"}},
-		{Name: "session-manager-plugin", Purpose: "AWS Session Manager plugin — bankctl shell/connect", Install: "brew install --cask session-manager-plugin",
+		{Name: "session-manager-plugin", Purpose: "AWS Session Manager plugin — nedctl shell/connect", Install: "brew install --cask session-manager-plugin",
 			VersionArgs: []string{"--version"}},
 		{Name: "helm", Purpose: "Kubernetes package manager", Install: "brew install helm",
 			MinVersion: "3.12", VersionArgs: []string{"version", "--short"}},

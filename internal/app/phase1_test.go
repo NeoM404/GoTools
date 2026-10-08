@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const exampleConfig = "../../configs/bankctl.example.json"
+const exampleConfig = "../../configs/nedctl.example.json"
 
 // fakeCLI puts an executable script named name first on PATH for this test.
 func fakeCLI(t *testing.T, name, script string) {
@@ -91,7 +91,7 @@ func TestKubeconfigSurfacesCLIError(t *testing.T) {
 	if code != ExitFailure || !strings.Contains(errb, "No cluster found") {
 		t.Fatalf("CLI stderr not surfaced: code=%d err=%q", code, errb)
 	}
-	if !strings.Contains(errb, "bankctl doctor") {
+	if !strings.Contains(errb, "nedctl doctor") {
 		t.Fatalf("expected doctor hint for a CLI failure: %q", errb)
 	}
 }

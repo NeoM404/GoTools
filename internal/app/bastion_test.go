@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/audit"
+	"nedctl/internal/audit"
 )
 
-const bastionConfig = "../../configs/bankctl.bastion.example.json"
+const bastionConfig = "../../configs/nedctl.bastion.example.json"
 
 // bastionKubeconfig is a kubeconfig shaped like the one the platform
 // provisions on an AKS bastion: one context per cluster, named after it, each

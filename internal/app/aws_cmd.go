@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/awssso"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/picker"
+	"nedctl/internal/audit"
+	"nedctl/internal/awssso"
+	"nedctl/internal/config"
+	"nedctl/internal/execx"
+	"nedctl/internal/picker"
 )
 
 // Seams for tests: the operator's terminal and the Identity Center portal.
@@ -45,7 +45,7 @@ const tokenMargin = 5 * time.Minute
 
 func cmdAWS(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: bankctl aws <login|whoami|env> ...")
+		fmt.Fprintln(stderr, "usage: nedctl aws <login|whoami|env> ...")
 		return ExitUsage
 	}
 	switch args[0] {
@@ -61,7 +61,7 @@ func cmdAWS(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 	}
 }
 
-// awsChoice is one assignment with the metadata bankctl derives for it.
+// awsChoice is one assignment with the metadata nedctl derives for it.
 type awsChoice struct {
 	awssso.Assignment
 	Squad, Environment string
@@ -105,7 +105,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: bankctl aws login [--account ID|NAME] [--role ROLE] [--device-code] [--force] [--format sh|powershell|none]")
+		fmt.Fprintln(stderr, "usage: nedctl aws login [--account ID|NAME] [--role ROLE] [--device-code] [--force] [--format sh|powershell|none]")
 		return ExitUsage
 	}
 	if *format != "sh" && *format != "powershell" && *format != "none" {
@@ -140,7 +140,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 }
 
 // listChoices signs in when needed and lists the caller's assignments with
-// the squad and environment bankctl derives for each.
+// the squad and environment nedctl derives for each.
 func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool, stderr io.Writer) ([]awsChoice, awssso.Managed, int) {
 	a := cfg.AWS
 	tok, managed, code := ensureSignIn(ctx, cfg, deviceCode, force, stderr)
@@ -169,7 +169,7 @@ func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool,
 
 // breakGlassAll signs in to every account where the caller holds one of the
 // configured break-glass roles. Identity Center decides who holds those
-// roles; bankctl refuses to use any other role this way, records every
+// roles; nedctl refuses to use any other role this way, records every
 // sign-in as break-glass, and records a refused attempt too.
 func breakGlassAll(ctx context.Context, cfg config.Config, m awssso.Managed, choices []awsChoice, reason string, stderr io.Writer) int {
 	base := audit.Event{BreakGlass: true, BreakGlassReason: reason}
@@ -267,7 +267,7 @@ func ensureSignIn(ctx context.Context, cfg config.Config, deviceCode, force bool
 		args = append(args, "--use-device-code")
 	}
 	fmt.Fprintln(stderr, "Signing in to IAM Identity Center — approve the request in your browser.")
-	// stdout stays clean for `eval "$(bankctl aws login)"`; the CLI's
+	// stdout stays clean for `eval "$(nedctl aws login)"`; the CLI's
 	// instructions go to the terminal on stderr.
 	if err := execx.Interactive(ctx, execx.Spec{Name: "aws", Args: args, Stdout: stderr, Stderr: stderr, Timeout: 15 * time.Minute}); err != nil {
 		fmt.Fprintf(stderr, "sign-in failed: %v\n", err)
@@ -379,7 +379,7 @@ func firstNonBlank(s ...string) string {
 }
 
 // currentProfilePath remembers the last profile signed in to, so a new
-// terminal tab (or `bankctl shell`) can use it without exporting anything.
+// terminal tab (or `nedctl shell`) can use it without exporting anything.
 func currentProfilePath(cfg config.Config) (string, error) {
 	log, err := cfg.AuditLogPath()
 	if err != nil {
@@ -400,7 +400,7 @@ func saveCurrentProfile(cfg config.Config, profile string) error {
 }
 
 // resolveProfile picks the profile a command acts with: --profile, then
-// $AWS_PROFILE, then the last `bankctl aws login`.
+// $AWS_PROFILE, then the last `nedctl aws login`.
 func resolveProfile(cfg config.Config, flagValue string) string {
 	if flagValue != "" {
 		return flagValue
@@ -434,7 +434,7 @@ type awsIdentity struct {
 func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("aws whoami", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to check (default: $AWS_PROFILE, then the last `bankctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to check (default: $AWS_PROFILE, then the last `nedctl aws login`)")
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
@@ -449,13 +449,13 @@ func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stder
 	}
 	profile := resolveProfile(cfg, *profileFlag)
 	if profile == "" {
-		fmt.Fprintln(stderr, "no profile selected — run `bankctl aws login`, or pass --profile")
+		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile")
 		return ExitFailure
 	}
 	id := awsIdentity{Profile: profile}
 	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "sts", "get-caller-identity", "--profile", profile, "--output", "json")
 	if err != nil {
-		fmt.Fprintf(stderr, "%s is not usable: %v\n→ sign in again with `bankctl aws login`\n", profile, err)
+		fmt.Fprintf(stderr, "%s is not usable: %v\n→ sign in again with `nedctl aws login`\n", profile, err)
 		return ExitFailure
 	}
 	var sts struct{ Account, Arn string }
@@ -499,7 +499,7 @@ func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stder
 		if left > 0 {
 			fmt.Fprintf(stdout, "sign-in:    valid for %s (until %s UTC)\n", left, exp.Format("15:04"))
 		} else {
-			fmt.Fprintln(stdout, "sign-in:    EXPIRED — run `bankctl aws login`")
+			fmt.Fprintln(stdout, "sign-in:    EXPIRED — run `nedctl aws login`")
 		}
 	}
 	return ExitOK
@@ -536,7 +536,7 @@ func exportCredentials(ctx context.Context, cfg config.Config, profile string) (
 func awsEnv(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("aws env", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to export (default: $AWS_PROFILE, then the last `bankctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to export (default: $AWS_PROFILE, then the last `nedctl aws login`)")
 	format := fs.String("format", defaultEnvFormat(), "sh or powershell")
 	show := fs.Bool("show", false, "print the keys even when stdout is a terminal (they would be visible on screen)")
 	if err := fs.Parse(args); err != nil {
@@ -547,7 +547,7 @@ func awsEnv(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 		return ExitUsage
 	}
 	if f, ok := stdout.(*os.File); ok && isTerminal(f) && !*show {
-		fmt.Fprintln(stderr, "refusing to print credentials on the screen — use it as  eval \"$(bankctl aws env)\"  (or pass --show)")
+		fmt.Fprintln(stderr, "refusing to print credentials on the screen — use it as  eval \"$(nedctl aws env)\"  (or pass --show)")
 		return ExitUsage
 	}
 	cfg, _, err := config.Load(cfgPath)
@@ -557,7 +557,7 @@ func awsEnv(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 	}
 	profile := resolveProfile(cfg, *profileFlag)
 	if profile == "" {
-		fmt.Fprintln(stderr, "no profile selected — run `bankctl aws login`, or pass --profile")
+		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile")
 		return ExitFailure
 	}
 	tr, err := beginAuditEvent(ctx, cfg, audit.Event{Action: "aws-export-credentials", Cloud: "aws", Detail: "profile " + profile}, stderr)

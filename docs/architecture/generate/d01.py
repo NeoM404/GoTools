@@ -3,16 +3,16 @@ import sys
 out = sys.argv[1]
 
 d = Diagram("01-system-context", 1760, 1060)
-d.text("bankctl — system context", 40, 24, 900, 36, font=24, color=INK, bold=True)
+d.text("nedctl — system context", 40, 24, 900, 36, font=24, color=INK, bold=True)
 d.text("One static binary on the engineer's machine (or an AKS bastion) orchestrating the cloud CLIs. Every control is enforced by AWS, Azure and enterprise services.", 40, 62, 1600, 30, font=15)
 
 eng_bg = d.box("", 40, 130, 340, 890, fill="#F4F6FA", stroke="#D5DBE5")
 d.text("Engineer workstation", 60, 142, 300, 24, font=16, color=INK, bold=True)
 eng = d.awsres("user", "Engineer", 182, 190)
 lap = d.awsres("client", "Laptop · WSL · Windows", 180, 330, size=62)
-d.box("<b>bankctl</b> — Go, static, zero dependencies<br>aws login · shell · connect · eks<br>prompt · guard · evidence", 60, 450, 300, 90, stroke=BLUE, font=13)
+d.box("<b>nedctl</b> — Go, static, zero dependencies<br>aws login · shell · connect · eks<br>prompt · guard · evidence", 60, 450, 300, 90, stroke=BLUE, font=13)
 d.box("AWS CLI v2 · session-manager-plugin<br>kubectl · sm / SSMshell (legacy)", 60, 556, 300, 60, font=13)
-d.box("~/.aws/config — managed section only<br>audit.jsonl — hash-chained, 0600<br>~/.kube/bankctl/*.json — 0600", 60, 632, 300, 80, font=13, fill="#FFF8EE", stroke=ORANGE)
+d.box("~/.aws/config — managed section only<br>audit.jsonl — hash-chained, 0600<br>~/.kube/nedctl/*.json — 0600", 60, 632, 300, 80, font=13, fill="#FFF8EE", stroke=ORANGE)
 d.text("<b>1</b> Sign in — aws sso login (browser or device code)<br><b>2</b> Verify — sts get-caller-identity, eks get-token<br><b>3</b> Sessions — SSM shell or port-forward<br><b>4</b> Audit — every access to the SIEM<br><b>5</b> Inventory — reviewed fleet.json to bastions", 60, 740, 310, 150, font=13, color=INK)
 
 d.group("cloud", "AWS Cloud", 420, 130, 900, 560)
@@ -31,7 +31,7 @@ d.aws("cloudwatch_2", "CloudWatch Logs<br>SSM sessions · EKS audit", 1130, 560,
 d.azgroup("Microsoft Azure", 420, 730, 900, 290)
 ado = d.azure("devops/Azure_DevOps.svg", "Azure DevOps<br>Terraform · inventory", 480, 810)
 d.azure("identity/Azure_Active_Directory.svg", "Entra ID", 700, 810)
-vm = d.azure("compute/Virtual_Machine.svg", "AKS bastion (RHEL)<br>bankctl bastion mode", 920, 810)
+vm = d.azure("compute/Virtual_Machine.svg", "AKS bastion (RHEL)<br>nedctl bastion mode", 920, 810)
 aks = d.azure("containers/Kubernetes_Services.svg", "AKS clusters", 1160, 810)
 
 d.box("", 1360, 130, 360, 890, fill="#F4F6FA", stroke="#D5DBE5")

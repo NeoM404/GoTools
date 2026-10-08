@@ -11,14 +11,14 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/NeoM404/GoTools/internal/awssso"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/execx"
+	"nedctl/internal/awssso"
+	"nedctl/internal/config"
+	"nedctl/internal/execx"
 )
 
 func cmdEKS(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: bankctl eks <auth|access> ...")
+		fmt.Fprintln(stderr, "usage: nedctl eks <auth|access> ...")
 		return ExitUsage
 	}
 	switch args[0] {
@@ -68,7 +68,7 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	fs.SetOutput(stderr)
 	var profiles multiFlag
 	fs.Var(&profiles, "profile", "profile to report on (repeatable; default: the current profile)")
-	allProfiles := fs.Bool("all-profiles", false, "every profile `bankctl aws login` has written")
+	allProfiles := fs.Bool("all-profiles", false, "every profile `nedctl aws login` has written")
 	failOnConfigMap := fs.Bool("fail-on-configmap", false, "exit 1 if any cluster still uses CONFIG_MAP only")
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
@@ -100,7 +100,7 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		}
 	}
 	if len(profiles) == 0 {
-		fmt.Fprintln(stderr, "no profile selected — run `bankctl aws login`, or pass --profile / --all-profiles")
+		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile / --all-profiles")
 		return ExitFailure
 	}
 
@@ -236,7 +236,7 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 		return ExitUsage
 	}
 	if len(pos) != 1 || !eksNameRe.MatchString(pos[0]) {
-		fmt.Fprintln(stderr, "usage: bankctl eks access <cluster> [--profile P] [-o table|json]")
+		fmt.Fprintln(stderr, "usage: nedctl eks access <cluster> [--profile P] [-o table|json]")
 		return ExitUsage
 	}
 	if *output != "table" && *output != "json" {
@@ -249,13 +249,13 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 	}
 	profile := resolveProfile(cfg, *profileFlag)
 	if profile == "" {
-		fmt.Fprintln(stderr, "no profile selected — run `bankctl aws login`, or pass --profile")
+		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile")
 		return ExitFailure
 	}
 	name := pos[0]
 	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "list-access-entries", "--cluster-name", name, "--profile", profile, "--output", "json")
 	if err != nil {
-		fmt.Fprintf(stderr, "listing access entries for %s: %v\n→ a cluster on CONFIG_MAP has none: see `bankctl eks auth`\n", name, err)
+		fmt.Fprintf(stderr, "listing access entries for %s: %v\n→ a cluster on CONFIG_MAP has none: see `nedctl eks auth`\n", name, err)
 		return ExitFailure
 	}
 	var list struct {

@@ -39,7 +39,7 @@ func ValidateFormat(number, pattern string) error {
 	return nil
 }
 
-// Record is the subset of a change request bankctl checks.
+// Record is the subset of a change request nedctl checks.
 type Record struct {
 	Number      string `json:"number"`
 	State       string `json:"state"`

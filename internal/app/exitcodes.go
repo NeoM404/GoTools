@@ -1,6 +1,6 @@
 package app
 
-// Exit codes are a stable, documented contract (docs/bankctl.md, "Exit
+// Exit codes are a stable, documented contract (docs/nedctl.md, "Exit
 // codes"): shell prompts, CI gates and wrapper scripts branch on them. Add new
 // codes; never renumber or repurpose an existing one.
 const (

@@ -1,12 +1,12 @@
 # Build output
 /bin/
 /dist/
-/bankctl
+/nedctl
 *.exe
 
 # Local config with real endpoints/paths — never commit
-bankctl.yaml
-bankctl.json
+nedctl.yaml
+nedctl.json
 fleet.json
 !**/*.example.*
 # ...except the declared inventory under inventory/: it is the reviewed

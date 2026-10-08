@@ -1,10 +1,10 @@
-// Package execx runs the external CLIs bankctl orchestrates (kubectl, aws, az
-// and the tools doctor probes). Every subprocess bankctl starts goes through
+// Package execx runs the external CLIs nedctl orchestrates (kubectl, aws, az
+// and the tools doctor probes). Every subprocess nedctl starts goes through
 // here, so three guarantees hold everywhere:
 //
 //   - Bounded: every command has a deadline. A hung cloud CLI (an SSO prompt
 //     nobody answers, a stalled network call) fails with a TimeoutError
-//     instead of hanging bankctl, a CI job or a shell prompt indefinitely.
+//     instead of hanging nedctl, a CI job or a shell prompt indefinitely.
 //   - Cancellable: the caller's context is honoured, so Ctrl-C / SIGTERM stops
 //     the child process instead of orphaning it.
 //   - Diagnosable: a failing command's stderr is carried in the error, so the
@@ -68,7 +68,7 @@ var ErrInterrupted = errors.New("interrupted")
 type NotFoundError struct{ Name string }
 
 func (e *NotFoundError) Error() string {
-	return fmt.Sprintf("required CLI %q not found in PATH — run `bankctl doctor`", e.Name)
+	return fmt.Sprintf("required CLI %q not found in PATH — run `nedctl doctor`", e.Name)
 }
 
 // Interactive runs a command attached to the operator's terminal — an SSO
@@ -76,9 +76,9 @@ func (e *NotFoundError) Error() string {
 // the process's own) and reading os.Stdin. It differs from Run in three ways
 // an interactive child needs:
 //
-//   - it stays in bankctl's process group, so it may read the terminal;
+//   - it stays in nedctl's process group, so it may read the terminal;
 //   - Ctrl-C belongs to the child (a remote shell's Ctrl-C must interrupt the
-//     remote command, not end the session), so bankctl swallows SIGINT while
+//     remote command, not end the session), so nedctl swallows SIGINT while
 //     the child runs and the caller's cancellation does not kill it;
 //   - the deadline still applies: a session left open past spec.Timeout ends.
 func Interactive(ctx context.Context, spec Spec) error {

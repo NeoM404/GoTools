@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/execx"
+	"nedctl/internal/execx"
 )
 
 // localTimeout bounds kubectl calls that only read local kubeconfig state.

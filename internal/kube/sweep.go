@@ -9,12 +9,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
 )
 
 // Kubeconfig is the subset of `kubectl config view -o json` the sweeper
-// needs. It is read through kubectl (not parsed from YAML), keeping bankctl
+// needs. It is read through kubectl (not parsed from YAML), keeping nedctl
 // dependency-free and always consistent with what kubectl sees; secrets are
 // redacted in that view, and none are needed.
 type Kubeconfig struct {

@@ -7,8 +7,8 @@
 # goes red and publishes a proposed inventory for a person to merge by PR.
 #
 # Setup (once): see docs/azure-devops.md
-#   - service connection with Reader on every subscription in inventory/bankctl.json
-#   - fill in the subscription IDs in inventory/bankctl.json
+#   - service connection with Reader on every subscription in inventory/nedctl.json
+#   - fill in the subscription IDs in inventory/nedctl.json
 #   - create the pipeline from this file
 
 name: inventory-$(Date:yyyyMMdd)$(Rev:.r)
@@ -27,15 +27,15 @@ parameters:
   - name: serviceConnection
     displayName: Azure service connection (Reader on the in-scope subscriptions)
     type: string
-    default: sc-bankctl-inventory-reader
+    default: sc-nedctl-inventory-reader
 
 variables:
   GOTOOLCHAIN: local
-  BANKCTL_CONFIG: $(Build.SourcesDirectory)/inventory/bankctl.json
+  NEDCTL_CONFIG: $(Build.SourcesDirectory)/inventory/nedctl.json
   goVersion: "1.25.13" # first 1.25 patch with no known reachable stdlib CVEs; bump deliberately
   # Agents without internet: point Go at the internal module proxy, e.g.
   # GOPROXY: https://<artifactory>/api/go/go-remote
-  # (bankctl has no dependencies; the proxy is only needed for `make tools` in CI.)
+  # (nedctl has no dependencies; the proxy is only needed for `make tools` in CI.)
 
 pool:
   vmImage: ubuntu-latest # or the bank's self-hosted pool: `name: <pool-name>`
@@ -55,7 +55,7 @@ jobs:
           version: $(goVersion)
 
       - script: make build
-        displayName: Build bankctl
+        displayName: Build nedctl
 
       - task: AzureCLI@2
         displayName: Reconcile (read-only)

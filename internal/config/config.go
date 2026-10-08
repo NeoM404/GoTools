@@ -1,12 +1,12 @@
-// Package config loads bankctl configuration and locates the fleet inventory.
+// Package config loads nedctl configuration and locates the fleet inventory.
 //
 // Config is JSON (stdlib only). Resolution order for the config file:
 //  1. --config flag
-//  2. $BANKCTL_CONFIG
-//  3. $XDG_CONFIG_HOME/bankctl/config.json  (or ~/.config/bankctl/config.json)
-//  4. ./bankctl.json
+//  2. $NEDCTL_CONFIG
+//  3. $XDG_CONFIG_HOME/nedctl/config.json  (or ~/.config/nedctl/config.json)
+//  4. ./nedctl.json
 //
-// If no config is found, sensible zero-value defaults are used so `bankctl
+// If no config is found, sensible zero-value defaults are used so `nedctl
 // doctor` and `--help` still work out of the box.
 package config
 
@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/support"
+	"nedctl/internal/support"
 )
 
 // DefaultCommandTimeout bounds a cloud CLI call when the config sets none.
@@ -31,9 +31,9 @@ const DefaultCommandTimeout = 2 * time.Minute
 // Config controls where the fleet inventory comes from and which contexts are
 // treated as production (for the safety guard).
 type Config struct {
-	// Mode is where bankctl runs: "workstation" (default) fetches credentials
+	// Mode is where nedctl runs: "workstation" (default) fetches credentials
 	// through the aws/az CLIs; "bastion" runs on a jump host whose kubeconfig
-	// the platform already provisions, so bankctl only selects contexts and
+	// the platform already provisions, so nedctl only selects contexts and
 	// never needs a cloud CLI. See ModeBastion.
 	Mode string `json:"mode"`
 
@@ -46,7 +46,7 @@ type Config struct {
 	InventoryURL string `json:"inventoryUrl"`
 
 	// ProdPatterns are regular expressions; a cluster or kube-context whose
-	// name matches any of them is treated as production by `bankctl guard`,
+	// name matches any of them is treated as production by `nedctl guard`,
 	// in addition to any cluster whose inventory Environment == "prod".
 	ProdPatterns []string `json:"prodPatterns"`
 
@@ -55,12 +55,12 @@ type Config struct {
 	KubeconfigDir string `json:"kubeconfigDir"`
 
 	// TargetKubeVersion is the fleet's desired minor version (e.g. "1.30").
-	// `bankctl fleet versions` flags anything more than one minor behind.
+	// `nedctl fleet versions` flags anything more than one minor behind.
 	TargetKubeVersion string `json:"targetKubeVersion"`
 
 	// MinVersions overrides the built-in `doctor` version floors by tool name,
 	// e.g. {"kubectl": "1.29", "aws": "2.15"}. Lets the team raise the bar
-	// centrally without a bankctl release.
+	// centrally without a nedctl release.
 	MinVersions map[string]string `json:"minVersions"`
 
 	// CommandTimeout bounds each cloud CLI call (aws/az), as a Go duration
@@ -92,7 +92,7 @@ type Config struct {
 
 	// SupportCalendar is each minor version's end of standard and extended
 	// support, per cloud, for `fleet eol`. Generate the AWS part with
-	// `bankctl fleet calendar aws`.
+	// `nedctl fleet calendar aws`.
 	SupportCalendar support.Calendar `json:"supportCalendar"`
 
 	// CostRates are control-plane prices used to estimate the
@@ -107,7 +107,7 @@ type Config struct {
 	ChangeControl ChangeControl `json:"changeControl"`
 
 	// AWS configures IAM Identity Center sign-in and the EC2/EKS access
-	// commands (`bankctl aws`, `shell`, `connect`).
+	// commands (`nedctl aws`, `shell`, `connect`).
 	AWS AWS `json:"aws"`
 
 	// EnvironmentColors maps an environment to a #rrggbb colour for pickers,
@@ -136,15 +136,15 @@ func (c Config) ColorFor(env string) string {
 // AWS is the IAM Identity Center and EC2/EKS access configuration.
 type AWS struct {
 	// StartURL is the Identity Center access portal, e.g.
-	// https://d-xxxxxxxxxx.awsapps.com/start. Required for `bankctl aws`.
+	// https://d-xxxxxxxxxx.awsapps.com/start. Required for `nedctl aws`.
 	StartURL string `json:"startUrl"`
 	// SSORegion is the Identity Center region.
 	SSORegion string `json:"ssoRegion"`
-	// SSOSession names the [sso-session] bankctl writes (default "bankctl").
+	// SSOSession names the [sso-session] nedctl writes (default "nedctl").
 	SSOSession string `json:"ssoSession"`
 	// Region is the default region of generated profiles (default SSORegion).
 	Region string `json:"region"`
-	// ProfilePrefix starts every generated profile name (default "bankctl").
+	// ProfilePrefix starts every generated profile name (default "nedctl").
 	ProfilePrefix string `json:"profilePrefix"`
 	// AccountNamePattern derives squad and environment from an account's
 	// name: a regex with named groups (?P<env>…) and optionally (?P<squad>…).
@@ -153,7 +153,7 @@ type AWS struct {
 	Accounts []AWSAccount `json:"accounts"`
 	// BreakGlassRoles are the Identity Center roles (permission sets) that
 	// `aws login --all` may use. Identity Center decides who holds them;
-	// bankctl only refuses to sign in to every account with anything else.
+	// nedctl only refuses to sign in to every account with anything else.
 	BreakGlassRoles []string `json:"breakGlassRoles"`
 	// SessionTimeout bounds an interactive sign-in or shell (default "12h").
 	SessionTimeout string `json:"sessionTimeout"`
@@ -164,7 +164,7 @@ type AWS struct {
 	// already signed in (default "sm"; e.g. "AWS-EC2-SSMshell.exe").
 	LegacyTool string `json:"legacyTool"`
 	// DevopsInstance is matched against instance names to find the hop for
-	// `bankctl connect` (default "devops").
+	// `nedctl connect` (default "devops").
 	DevopsInstance string `json:"devopsInstance"`
 }
 
@@ -208,7 +208,7 @@ func (a AWS) Configured() bool { return a.StartURL != "" }
 // Session returns the sso-session name.
 func (a AWS) Session() string {
 	if a.SSOSession == "" {
-		return "bankctl"
+		return "nedctl"
 	}
 	return a.SSOSession
 }
@@ -216,7 +216,7 @@ func (a AWS) Session() string {
 // Prefix returns the generated-profile prefix.
 func (a AWS) Prefix() string {
 	if a.ProfilePrefix == "" {
-		return "bankctl"
+		return "nedctl"
 	}
 	return a.ProfilePrefix
 }
@@ -344,7 +344,7 @@ const (
 	ModeBastion = "bastion"
 )
 
-// Bastion reports whether bankctl runs on a bastion host.
+// Bastion reports whether nedctl runs on a bastion host.
 func (c Config) Bastion() bool { return strings.EqualFold(c.Mode, ModeBastion) }
 
 func (c Config) validateMode() error {
@@ -450,7 +450,7 @@ func (c Config) validateChangeControl() error {
 // Audit configures the audit trail.
 type Audit struct {
 	// LogPath is the local hash-chained log. Default:
-	// $XDG_STATE_HOME/bankctl/audit.jsonl (~/.local/state/bankctl/audit.jsonl).
+	// $XDG_STATE_HOME/nedctl/audit.jsonl (~/.local/state/nedctl/audit.jsonl).
 	LogPath string `json:"logPath"`
 	// Forward, when URL is set, sends each event to a SIEM collector.
 	Forward AuditForward `json:"forward"`
@@ -483,7 +483,7 @@ func (c Config) AuditLogPath() (string, error) {
 		}
 		base = filepath.Join(home, ".local", "state")
 	}
-	return filepath.Join(base, "bankctl", "audit.jsonl"), nil
+	return filepath.Join(base, "nedctl", "audit.jsonl"), nil
 }
 
 // ForwardTimeout returns the effective collector timeout.
@@ -562,7 +562,7 @@ func (c Config) CacheTTL() time.Duration {
 }
 
 // Discovery defines exactly which cloud scopes are scanned. It is explicit so
-// it can be reviewed and audited: bankctl never guesses which accounts or
+// it can be reviewed and audited: nedctl never guesses which accounts or
 // subscriptions exist, and a completeness claim is only ever made for these.
 type Discovery struct {
 	AWS   []AWSTarget   `json:"aws"`
@@ -821,7 +821,7 @@ func Load(explicitPath string) (Config, string, error) {
 		return cfg, path, fmt.Errorf("config %s: %w", path, err)
 	}
 	// A relative inventoryPath is resolved against the config file's directory,
-	// not the current working directory, so `bankctl` works from anywhere.
+	// not the current working directory, so `nedctl` works from anywhere.
 	if cfg.InventoryPath != "" && !filepath.IsAbs(cfg.InventoryPath) {
 		cfg.InventoryPath = filepath.Join(filepath.Dir(path), cfg.InventoryPath)
 	}
@@ -832,7 +832,7 @@ func resolvePath(explicit string) string {
 	if explicit != "" {
 		return explicit
 	}
-	if env := os.Getenv("BANKCTL_CONFIG"); env != "" {
+	if env := os.Getenv("NEDCTL_CONFIG"); env != "" {
 		return env
 	}
 	base := os.Getenv("XDG_CONFIG_HOME")
@@ -842,13 +842,13 @@ func resolvePath(explicit string) string {
 		}
 	}
 	if base != "" {
-		p := filepath.Join(base, "bankctl", "config.json")
+		p := filepath.Join(base, "nedctl", "config.json")
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 	}
-	if _, err := os.Stat("bankctl.json"); err == nil {
-		return "bankctl.json"
+	if _, err := os.Stat("nedctl.json"); err == nil {
+		return "nedctl.json"
 	}
 	return ""
 }

@@ -21,7 +21,7 @@ answered with evidence.
                      │                                              + diff.json
                      ▼
         CI validates on every PR ──▶ published "fleet" artifact ──▶ bastions
-                                                                 (bankctl guard / login)
+                                                                 (nedctl guard / login)
 ```
 
 1. **`inventory/fleet.json` is the record.** One entry per cluster: name,
@@ -67,8 +67,8 @@ because it is an exact copy of production.
 
 | # | Item | Who | Notes |
 |---|---|---|---|
-| 1 | **Service connection** `sc-bankctl-inventory-reader` | ADO / cloud admins | Workload identity federation (no secret). Role: **Reader** on each in-scope subscription, or narrower: `Microsoft.ContainerService/managedClusters/read`. |
-| 2 | **Subscription IDs** | Platform team | Replace the `REPLACE-…` entries in `inventory/bankctl.json`. |
+| 1 | **Service connection** `sc-nedctl-inventory-reader` | ADO / cloud admins | Workload identity federation (no secret). Role: **Reader** on each in-scope subscription, or narrower: `Microsoft.ContainerService/managedClusters/read`. |
+| 2 | **Subscription IDs** | Platform team | Replace the `REPLACE-…` entries in `inventory/nedctl.json`. |
 | 3 | **Agent pool** | ADO admins | `ubuntu-latest` works. For a self-hosted pool, set `pool: name:`. Agents need Go (installed by the `GoTool` task) and `az`. Without internet, also set `GOPROXY` to the internal Go proxy. |
 | 4 | **Branch policy** on `main` | Repo admins | Make `ci.yml` a required build validation and require at least one reviewer. Azure Repos ignores YAML `pr:` triggers. |
 | 5 | **Delivery to bastions** | Platform team | See below. |
@@ -87,7 +87,7 @@ Reader access and a machine with `az`:
 ```bash
 make build
 az login
-BANKCTL_CONFIG=inventory/bankctl.json OUT_DIR=out inventory/reconcile.sh
+NEDCTL_CONFIG=inventory/nedctl.json OUT_DIR=out inventory/reconcile.sh
 ```
 
 ## Getting the inventory onto the bastions
@@ -96,15 +96,15 @@ The bastions have no internet. The team needs to pick one of these:
 
 | Option | How | Trade-off |
 |---|---|---|
-| **A. Existing deploy path** | Whatever already puts files on the bastions (Ansible, Satellite, an ADO deployment group) copies the `fleet` artifact to a fixed path, e.g. `/etc/bankctl/fleet.json`. | Simplest when such a path exists. Updates follow that tool's cadence. |
+| **A. Existing deploy path** | Whatever already puts files on the bastions (Ansible, Satellite, an ADO deployment group) copies the `fleet` artifact to a fixed path, e.g. `/etc/nedctl/fleet.json`. | Simplest when such a path exists. Updates follow that tool's cadence. |
 | **B. Internal HTTPS endpoint** | Pipeline uploads `fleet.json` to an internal web or artifact server (Artifactory/Nexus) that the bastions can reach. Bastions set `"inventoryUrl"`. | Always current. `guard` caches it, so a network blip falls back to the last good copy. The endpoint must serve without per-user auth. |
 | **C. Azure Storage, private endpoint** | Static website on a storage account reachable only through a private endpoint in the bastions' VNet. | Fully Azure-native. Needs network/DNS work, and the bank's storage policy may forbid anonymous read. |
 
 Each bastion then uses a config like
-[`configs/bankctl.bastion.example.json`](../configs/bankctl.bastion.example.json)
-(`"mode": "bastion"`), created with `bankctl init --mode bastion`.
+[`configs/nedctl.bastion.example.json`](../configs/nedctl.bastion.example.json)
+(`"mode": "bastion"`), created with `nedctl init --mode bastion`.
 
-## What bankctl does on a bastion
+## What nedctl does on a bastion
 
 | Command | Bastion behaviour |
 |---|---|
@@ -126,7 +126,7 @@ access means rotating the credential for everyone.
 The bastion login records the individual Linux user, and flags each such
 access as using a shared local account. That is attribution of intent, not a
 control. The durable fix is Entra ID integration with `kubelogin` and
-`--disable-local-accounts`. bankctl handles that case already: a kubelogin user
+`--disable-local-accounts`. nedctl handles that case already: a kubelogin user
 is recognised as personal.
 
 ## Change control (optional for now)
@@ -142,6 +142,6 @@ and network path from the bastions exist:
 ```
 
 `instanceUrl` is the instance's **base URL**, without the `/sp` Service Portal
-path. bankctl calls the Table API at `/api/now/table/change_request` under it.
+path. nedctl calls the Table API at `/api/now/table/change_request` under it.
 Until then, `--change-record CHG…` is format-checked and recorded, but not
 verified.

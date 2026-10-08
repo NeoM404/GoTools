@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/awssso"
-	"github.com/NeoM404/GoTools/internal/config"
+	"nedctl/internal/audit"
+	"nedctl/internal/awssso"
+	"nedctl/internal/config"
 )
 
 // awsWorld is a simulated engineer's machine and Identity Center: an
@@ -46,10 +46,10 @@ func newAWSWorld(t *testing.T, extra string) *awsWorld {
 	}
 
 	cache := filepath.Join(w.home, ".aws", "sso", "cache")
-	tokenFile := awssso.TokenPath(cache, "bankctl")
+	tokenFile := awssso.TokenPath(cache, "nedctl")
 	expires := time.Now().Add(8 * time.Hour).UTC().Format(time.RFC3339)
 	fakeCLI(t, "aws", `case "$*" in
-"sso login --sso-session bankctl"*)
+"sso login --sso-session nedctl"*)
   mkdir -p `+sq(cache)+` && printf '%s' '{"accessToken":"tok-secret","expiresAt":"`+expires+`","region":"af-south-1"}' > `+sq(tokenFile)+`
   echo "$*" > `+sq(w.loginMarker)+`;;
 *"sts get-caller-identity"*)
@@ -85,7 +85,7 @@ esac`)
 	newPortal = func(config.AWS) awssso.Portal { return awssso.Portal{BaseURL: srv.URL, Client: srv.Client()} }
 	t.Cleanup(func() { newPortal = old })
 
-	w.cfg = filepath.Join(w.home, "bankctl.json")
+	w.cfg = filepath.Join(w.home, "nedctl.json")
 	body := `{"environments": ["dev","ete","qa","prod"], "prodEnvironments": ["qa","prod"],
 	  "audit": {"logPath": ` + quote(w.logPath) + `},
 	  "aws": {"startUrl": "https://d-1234567890.awsapps.com/start", "ssoRegion": "af-south-1",
@@ -111,7 +111,7 @@ func TestAWSLoginWithFlagsWritesOneVerifiedProfile(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
-	const profile = "bankctl.payments-prod.Platform-ReadOnly"
+	const profile = "nedctl.payments-prod.Platform-ReadOnly"
 	if out != "export AWS_PROFILE='"+profile+"'\n" {
 		t.Fatalf("stdout must be only the export line (for eval): %q", out)
 	}
@@ -152,7 +152,7 @@ func TestAWSLoginPickerFiltersAndColoursByEnvironment(t *testing.T) {
 	w := newAWSWorld(t, "")
 	answer(t, "dev platform\n1\n")
 	code, out, errb := run("--config", w.cfg, "aws", "login", "--format", "powershell")
-	if code != ExitOK || out != "$env:AWS_PROFILE = 'bankctl.payments-dev.Platform-Admin'\n" {
+	if code != ExitOK || out != "$env:AWS_PROFILE = 'nedctl.payments-dev.Platform-Admin'\n" {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
 	}
 	for _, want := range []string{"SQUAD", "lending", "ete", `filter: "dev platform" (1 of 5)`} {
@@ -206,7 +206,7 @@ func TestAWSLoginRefusesProfileActingInAnotherAccount(t *testing.T) {
 	// the next login rewrites it, so simulate the CLI resolving wrongly instead.
 	fakeCLI(t, "aws", `case "$*" in
 *"sts get-caller-identity"*) echo '{"Account":"999999999999","Arn":"arn:aws:sts::999999999999:assumed-role/x/y"}';;
-"sso login"*) mkdir -p "$HOME/.aws/sso/cache"; printf '%s' '{"accessToken":"tok-secret","expiresAt":"`+time.Now().Add(time.Hour).UTC().Format(time.RFC3339)+`"}' > "$HOME/.aws/sso/cache/e0721f7377d8ab9c121e259752704d9f86c899ec.json";;
+"sso login"*) mkdir -p "$HOME/.aws/sso/cache"; printf '%s' '{"accessToken":"tok-secret","expiresAt":"`+time.Now().Add(time.Hour).UTC().Format(time.RFC3339)+`"}' > "$HOME/.aws/sso/cache/1ed1f11d95712761bde8be84597801e59ab9632a.json";;
 esac`)
 	code, _, errb := run("--config", w.cfg, "aws", "login", "--account", "lending-ete")
 	if code != ExitFailure || !strings.Contains(errb, `acts in account "999999999999", not 333333333333`) {
@@ -286,7 +286,7 @@ func TestAWSBreakGlassFlagRules(t *testing.T) {
 func withExport(t *testing.T, w *awsWorld, output string) {
 	t.Helper()
 	cache := filepath.Join(w.home, ".aws", "sso", "cache")
-	tokenFile := awssso.TokenPath(cache, "bankctl")
+	tokenFile := awssso.TokenPath(cache, "nedctl")
 	expires := time.Now().Add(8 * time.Hour).UTC().Format(time.RFC3339)
 	fakeCLI(t, "aws", `case "$*" in
 "configure export-credentials"*) printf '%s\n' `+sq(output)+`;;

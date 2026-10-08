@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NeoM404/GoTools/internal/inventory"
-	"github.com/NeoM404/GoTools/internal/reconcile"
+	"nedctl/internal/inventory"
+	"nedctl/internal/reconcile"
 )
 
 // estate describes a simulated cloud. It is rendered into fake aws and az

@@ -19,7 +19,7 @@ type Source struct {
 
 // LoadURLCached serves an https inventory from a local cache when the cached
 // copy is younger than ttl, so latency-sensitive callers (a shell prompt
-// running `bankctl guard`) do not hit the network every time.
+// running `nedctl guard`) do not hit the network every time.
 //
 // On a stale or missing cache it fetches; if that fetch fails but any cached
 // copy exists, the copy is returned with Kind "stale-cache" and the fetch
@@ -82,11 +82,11 @@ func writeCache(path string, f Fleet) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// DefaultCacheDir is the per-user cache directory for bankctl.
+// DefaultCacheDir is the per-user cache directory for nedctl.
 func DefaultCacheDir() (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("locating cache directory: %w", err)
 	}
-	return filepath.Join(base, "bankctl"), nil
+	return filepath.Join(base, "nedctl"), nil
 }

@@ -29,23 +29,23 @@ func writeToken(t *testing.T, dir, session string, expires time.Time) {
 
 func TestTokenPathMatchesAWSCLINaming(t *testing.T) {
 	// The AWS CLI names an sso-session's cache file by the SHA-1 of the
-	// session name; sha1("bankctl") is fixed, so this pins the convention.
-	if got := filepath.Base(TokenPath("/x", "bankctl")); got != "e0721f7377d8ab9c121e259752704d9f86c899ec.json" {
+	// session name; sha1("nedctl") is fixed, so this pins the convention.
+	if got := filepath.Base(TokenPath("/x", "nedctl")); got != "1ed1f11d95712761bde8be84597801e59ab9632a.json" {
 		t.Fatalf("got %s", got)
 	}
 }
 
 func TestReadToken(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := ReadToken(dir, "bankctl", now, time.Minute); !errors.Is(err, ErrNoToken) {
+	if _, err := ReadToken(dir, "nedctl", now, time.Minute); !errors.Is(err, ErrNoToken) {
 		t.Fatalf("missing cache: %v", err)
 	}
-	writeToken(t, dir, "bankctl", now.Add(30*time.Second))
-	if _, err := ReadToken(dir, "bankctl", now, time.Minute); !errors.Is(err, ErrNoToken) {
+	writeToken(t, dir, "nedctl", now.Add(30*time.Second))
+	if _, err := ReadToken(dir, "nedctl", now, time.Minute); !errors.Is(err, ErrNoToken) {
 		t.Fatalf("token expiring inside the margin must count as expired: %v", err)
 	}
-	writeToken(t, dir, "bankctl", now.Add(8*time.Hour))
-	tok, err := ReadToken(dir, "bankctl", now, time.Minute)
+	writeToken(t, dir, "nedctl", now.Add(8*time.Hour))
+	tok, err := ReadToken(dir, "nedctl", now, time.Minute)
 	if err != nil || tok.AccessToken != "tok-secret" {
 		t.Fatalf("tok=%+v err=%v", tok, err)
 	}
@@ -145,19 +145,19 @@ func TestPortalRefusesPlainHTTP(t *testing.T) {
 }
 
 func TestProfileName(t *testing.T) {
-	if got := ProfileName("bankctl", Assignment{AccountID: "111111111111", AccountName: "Payments Prod (ZA)", Role: "Platform-Admin"}); got != "bankctl.Payments-Prod-ZA.Platform-Admin" {
+	if got := ProfileName("nedctl", Assignment{AccountID: "111111111111", AccountName: "Payments Prod (ZA)", Role: "Platform-Admin"}); got != "nedctl.Payments-Prod-ZA.Platform-Admin" {
 		t.Fatalf("got %q", got)
 	}
-	if got := ProfileName("bankctl", Assignment{AccountID: "111111111111", Role: "R"}); got != "bankctl.111111111111.R" {
+	if got := ProfileName("nedctl", Assignment{AccountID: "111111111111", Role: "R"}); got != "nedctl.111111111111.R" {
 		t.Fatalf("got %q", got)
 	}
 }
 
 func managed() Managed {
 	return Managed{
-		Session: Session{Name: "bankctl", StartURL: "https://d-1.awsapps.com/start", Region: "af-south-1"},
-		Profiles: map[string]Profile{"bankctl.payments-prod.Platform-ReadOnly": {
-			Name: "bankctl.payments-prod.Platform-ReadOnly", AccountID: "111111111111", Role: "Platform-ReadOnly",
+		Session: Session{Name: "nedctl", StartURL: "https://d-1.awsapps.com/start", Region: "af-south-1"},
+		Profiles: map[string]Profile{"nedctl.payments-prod.Platform-ReadOnly": {
+			Name: "nedctl.payments-prod.Platform-ReadOnly", AccountID: "111111111111", Role: "Platform-ReadOnly",
 			Region: "af-south-1", Squad: "payments", Environment: "prod"}},
 	}
 }
@@ -173,7 +173,7 @@ func TestSaveManagedKeepsOtherProfilesByteForByte(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Second save with one more profile replaces the block, not appends.
-	m.Profiles["bankctl.payments-dev.Platform-Admin"] = Profile{Name: "bankctl.payments-dev.Platform-Admin", AccountID: "222222222222", Role: "Platform-Admin"}
+	m.Profiles["nedctl.payments-dev.Platform-Admin"] = Profile{Name: "nedctl.payments-dev.Platform-Admin", AccountID: "222222222222", Role: "Platform-Admin"}
 	if err := SaveManaged(path, m); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestSaveManagedKeepsOtherProfilesByteForByte(t *testing.T) {
 	if !strings.HasPrefix(text, theirs) {
 		t.Fatalf("content outside the block changed:\n%s", text)
 	}
-	if strings.Count(text, beginMarker) != 1 || strings.Count(text, "[sso-session bankctl]") != 1 {
+	if strings.Count(text, beginMarker) != 1 || strings.Count(text, "[sso-session nedctl]") != 1 {
 		t.Fatalf("block duplicated:\n%s", text)
 	}
 	if fi, _ := os.Stat(path); fi.Mode().Perm() != 0o640 {
@@ -192,17 +192,17 @@ func TestSaveManagedKeepsOtherProfilesByteForByte(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Session != m.Session || len(got.Profiles) != 2 || got.Profiles["bankctl.payments-prod.Platform-ReadOnly"] != m.Profiles["bankctl.payments-prod.Platform-ReadOnly"] {
+	if got.Session != m.Session || len(got.Profiles) != 2 || got.Profiles["nedctl.payments-prod.Platform-ReadOnly"] != m.Profiles["nedctl.payments-prod.Platform-ReadOnly"] {
 		t.Fatalf("round trip: %+v", got)
 	}
 }
 
 func TestSaveManagedRefusesSomeoneElsesSection(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config")
-	if err := os.WriteFile(path, []byte("[sso-session bankctl]\nsso_start_url = https://other\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[sso-session nedctl]\nsso_start_url = https://other\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveManaged(path, managed()); err == nil || !strings.Contains(err.Error(), "outside the bankctl section") {
+	if err := SaveManaged(path, managed()); err == nil || !strings.Contains(err.Error(), "outside the nedctl section") {
 		t.Fatalf("got %v", err)
 	}
 }

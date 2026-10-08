@@ -66,7 +66,7 @@ func TestStderrSurfacedOnFailure(t *testing.T) {
 func TestMissingBinary(t *testing.T) {
 	_, err := Output(context.Background(), time.Second, "definitely-not-a-real-cli-xyz")
 	var nf *NotFoundError
-	if !errors.As(err, &nf) || !strings.Contains(err.Error(), "bankctl doctor") {
+	if !errors.As(err, &nf) || !strings.Contains(err.Error(), "nedctl doctor") {
 		t.Fatalf("want NotFoundError with doctor hint, got %v", err)
 	}
 }
@@ -80,8 +80,8 @@ func TestZeroTimeoutRefused(t *testing.T) {
 func TestRunStreamsAndEnv(t *testing.T) {
 	var out bytes.Buffer
 	err := Run(context.Background(), Spec{
-		Name: "sh", Args: []string{"-c", "printf %s \"$BANKCTL_TEST\""},
-		Env: []string{"BANKCTL_TEST=streamed"}, Stdout: &out, Timeout: 5 * time.Second,
+		Name: "sh", Args: []string{"-c", "printf %s \"$NEDCTL_TEST\""},
+		Env: []string{"NEDCTL_TEST=streamed"}, Stdout: &out, Timeout: 5 * time.Second,
 	})
 	if err != nil || out.String() != "streamed" {
 		t.Fatalf("got %q err=%v", out.String(), err)

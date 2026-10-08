@@ -12,9 +12,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/evidence"
+	"nedctl/internal/audit"
+	"nedctl/internal/config"
+	"nedctl/internal/evidence"
 )
 
 // stringList is a repeatable string flag (--log a --log b).
@@ -43,7 +43,7 @@ func auditLogs(cfgPath string, explicit stringList, stderr io.Writer) ([]string,
 
 func cmdAudit(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "verify" {
-		fmt.Fprintln(stderr, "usage: bankctl audit verify [--log PATH]... [-o table|json]")
+		fmt.Fprintln(stderr, "usage: nedctl audit verify [--log PATH]... [-o table|json]")
 		return ExitUsage
 	}
 	fs := flag.NewFlagSet("audit verify", flag.ContinueOnError)

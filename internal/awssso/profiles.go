@@ -9,11 +9,11 @@ import (
 )
 
 // The AWS CLI config is shared with other tools (sm, SSMshell, hand-written
-// profiles). bankctl owns only the lines between these markers and never
+// profiles). nedctl owns only the lines between these markers and never
 // touches anything outside them.
 const (
-	beginMarker = "# >>> bankctl managed — edits here are overwritten by `bankctl aws login` >>>"
-	endMarker   = "# <<< bankctl managed <<<"
+	beginMarker = "# >>> nedctl managed — edits here are overwritten by `nedctl aws login` >>>"
+	endMarker   = "# <<< nedctl managed <<<"
 )
 
 // Session is an [sso-session] block.
@@ -44,7 +44,7 @@ func ConfigPath() (string, error) {
 	return filepath.Join(home, ".aws", "config"), nil
 }
 
-// Managed is the bankctl-owned part of the AWS CLI config.
+// Managed is the nedctl-owned part of the AWS CLI config.
 type Managed struct {
 	Session  Session
 	Profiles map[string]Profile // by name
@@ -60,7 +60,7 @@ func split(text string) (before string, block []string, after string, err error)
 	rest := text[b+len(beginMarker):]
 	e := strings.Index(rest, endMarker)
 	if e < 0 {
-		return "", nil, "", fmt.Errorf("the bankctl section of the AWS config has a start marker but no end marker — fix the file by hand")
+		return "", nil, "", fmt.Errorf("the nedctl section of the AWS config has a start marker but no end marker — fix the file by hand")
 	}
 	after = strings.TrimPrefix(rest[e+len(endMarker):], "\n")
 	return text[:b], strings.Split(strings.Trim(rest[:e], "\n"), "\n"), after, nil
@@ -191,7 +191,7 @@ func SaveManaged(path string, m Managed) error {
 	for _, h := range headers {
 		for _, line := range strings.Split(outside, "\n") {
 			if strings.TrimSpace(line) == h {
-				return fmt.Errorf("%s already exists in %s outside the bankctl section — rename one of them", h, path)
+				return fmt.Errorf("%s already exists in %s outside the nedctl section — rename one of them", h, path)
 			}
 		}
 	}
@@ -207,7 +207,7 @@ func SaveManaged(path string, m Managed) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".config.bankctl-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config.nedctl-*")
 	if err != nil {
 		return err
 	}

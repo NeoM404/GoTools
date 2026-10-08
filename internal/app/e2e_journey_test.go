@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/awssso"
-	"github.com/NeoM404/GoTools/internal/evidence"
+	"nedctl/internal/awssso"
+	"nedctl/internal/evidence"
 )
 
 // TestE2EEngineerJourney is the regression test for the AWS access
-// proposal: one engineer's day, in order, through bankctl's real command
+// proposal: one engineer's day, in order, through nedctl's real command
 // paths, against a simulated Identity Center, AWS account, private EKS API
 // and the legacy sm tool. Each step depends on the state the previous ones
 // left (AWS config, current profile, kubeconfig, audit chain), as in real
@@ -36,13 +36,13 @@ func TestE2EEngineerJourney(t *testing.T) {
 	}
 	ca := fakeEKSAPI(t, port)
 	cache := filepath.Join(w.home, ".aws", "sso", "cache")
-	tokenFile := awssso.TokenPath(cache, "bankctl")
+	tokenFile := awssso.TokenPath(cache, "nedctl")
 	expires := time.Now().Add(8 * time.Hour).UTC().Format(time.RFC3339)
 	desc := `{"cluster":{"name":"payments-eks-prod","arn":"arn:aws:eks:af-south-1:111111111111:cluster/payments-eks-prod","endpoint":"https://` + eksHost +
 		`","version":"1.30","accessConfig":{"authenticationMode":"CONFIG_MAP"},"resourcesVpcConfig":{"endpointPrivateAccess":true},"certificateAuthority":{"data":"` + ca + `"}}}`
 	fakeCLI(t, "aws", `echo "$*" >> `+sq(calls)+`
 case "$*" in
-"sso login --sso-session bankctl"*) mkdir -p `+sq(cache)+` && printf '%s' '{"accessToken":"tok-secret","expiresAt":"`+expires+`"}' > `+sq(tokenFile)+`;;
+"sso login --sso-session nedctl"*) mkdir -p `+sq(cache)+` && printf '%s' '{"accessToken":"tok-secret","expiresAt":"`+expires+`"}' > `+sq(tokenFile)+`;;
 *"sts get-caller-identity"*)
   p=$(echo "$*" | sed -n 's/.*--profile \([^ ]*\).*/\1/p')
   acct=$(awk -v h="[profile $p]" '$0==h{f=1;next} /^\[/{f=0} f&&$1=="sso_account_id"{print $3}' "$AWS_CONFIG_FILE")
@@ -70,7 +70,7 @@ esac`)
 	// 1. Morning: one browser approval, pick payments prod read-only.
 	answer(t, "payments prod readonly\n1\n")
 	out, _ := step("sign in and pick", ExitOK, "aws", "login", "--format", "sh")
-	if out != "export AWS_PROFILE='bankctl.payments-prod.Platform-ReadOnly'\n" {
+	if out != "export AWS_PROFILE='nedctl.payments-prod.Platform-ReadOnly'\n" {
 		t.Fatalf("login stdout: %q", out)
 	}
 	// 2. Confirm who I am.
@@ -85,7 +85,7 @@ esac`)
 	}
 	// 4. Straight to the private cluster from the laptop, then real kubectl.
 	step("connect", ExitOK, "connect", "payments-eks-prod", "--port", strconv.Itoa(port))
-	kc := filepath.Join(w.home, ".kube", "bankctl", "payments-eks-prod.json")
+	kc := filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json")
 	if raw, err := exec.Command("kubectl", "--kubeconfig", kc, "get", "--raw", "/version").CombinedOutput(); err != nil || !strings.Contains(string(raw), "eks") {
 		t.Fatalf("kubectl: %v %s", err, raw)
 	}

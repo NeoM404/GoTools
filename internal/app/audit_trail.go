@@ -8,9 +8,9 @@ import (
 	"os/user"
 	"time"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/audit"
+	"nedctl/internal/config"
+	"nedctl/internal/inventory"
 )
 
 // trail records one audited action as a start/end event pair.
@@ -57,7 +57,7 @@ func beginAuditEvent(ctx context.Context, cfg config.Config, base audit.Event, s
 			rec.Forward = &audit.Forwarder{URL: f.URL, Token: token, Scheme: f.Scheme, Format: f.Format, Timeout: f.ForwardTimeout()}
 		}
 	}
-	base.ID, base.Tool, base.Version, base.User, base.Host = audit.NewID(), "bankctl", Version, currentUser(), hostname()
+	base.ID, base.Tool, base.Version, base.User, base.Host = audit.NewID(), "nedctl", Version, currentUser(), hostname()
 	start := base
 	start.Phase, start.Time = audit.PhaseStart, stamp()
 	if _, err := rec.Record(ctx, start); err != nil {

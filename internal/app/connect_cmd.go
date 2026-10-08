@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/NeoM404/GoTools/internal/audit"
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/execx"
-	"github.com/NeoM404/GoTools/internal/inventory"
+	"nedctl/internal/audit"
+	"nedctl/internal/config"
+	"nedctl/internal/execx"
+	"nedctl/internal/inventory"
 )
 
 var (
@@ -98,7 +98,7 @@ func freePort() (int, error) {
 func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("connect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `bankctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `nedctl aws login`)")
 	viaInstance := fs.String("via-instance", "", "instance to tunnel through (default: the account's devops instance)")
 	port := fs.Int("port", 0, "local port for the tunnel (default: a free one)")
 	tab := fs.Bool("tab", false, "hold the tunnel in a new Windows Terminal tab coloured by environment")
@@ -109,7 +109,7 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 		return ExitUsage
 	}
 	if len(pos) != 1 || !eksNameRe.MatchString(pos[0]) {
-		fmt.Fprintln(stderr, "usage: bankctl connect <eks-cluster> [--profile P] [--via-instance ID|NAME] [--port N] [--tab] [--change-record CHG…|--break-glass REASON]")
+		fmt.Fprintln(stderr, "usage: nedctl connect <eks-cluster> [--profile P] [--via-instance ID|NAME] [--port N] [--tab] [--change-record CHG…|--break-glass REASON]")
 		return ExitUsage
 	}
 	if *port < 0 || *port > 65535 {
@@ -189,7 +189,7 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 }
 
 // writeTunnelKubeconfig writes the isolated kubeconfig (0600) under
-// kubeconfigDir, or ~/.kube/bankctl, and returns its path.
+// kubeconfigDir, or ~/.kube/nedctl, and returns its path.
 func writeTunnelKubeconfig(cfg config.Config, c eksTarget, profile string, port int) (string, error) {
 	dir := cfg.KubeconfigDir
 	if dir == "" {
@@ -197,7 +197,7 @@ func writeTunnelKubeconfig(cfg config.Config, c eksTarget, profile string, port 
 		if err != nil {
 			return "", err
 		}
-		dir = filepath.Join(home, ".kube", "bankctl")
+		dir = filepath.Join(home, ".kube", "nedctl")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
@@ -210,7 +210,7 @@ func writeTunnelKubeconfig(cfg config.Config, c eksTarget, profile string, port 
 	return path, writeFileAtomic(path, append(data, '\n'), 0o600)
 }
 
-// openTunnelTab runs `bankctl connect` in a new coloured Windows Terminal
+// openTunnelTab runs `nedctl connect` in a new coloured Windows Terminal
 // tab that holds the tunnel; this terminal keeps working with KUBECONFIG.
 func openTunnelTab(cfg config.Config, pc profileContext, c eksTarget, hop ec2Instance, port int, kc, cr, glass string, stderr io.Writer) int {
 	if os.Getenv("WT_SESSION") == "" {
@@ -224,7 +224,7 @@ func openTunnelTab(cfg config.Config, pc profileContext, c eksTarget, hop ec2Ins
 	}
 	self, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(stderr, "--tab: locating bankctl: %v\n", err)
+		fmt.Fprintf(stderr, "--tab: locating nedctl: %v\n", err)
 		return ExitFailure
 	}
 	title := "tunnel · " + pc.label() + " · " + c.Name

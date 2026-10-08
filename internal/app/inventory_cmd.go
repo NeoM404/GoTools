@@ -12,15 +12,15 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/discovery"
-	"github.com/NeoM404/GoTools/internal/inventory"
-	"github.com/NeoM404/GoTools/internal/reconcile"
+	"nedctl/internal/config"
+	"nedctl/internal/discovery"
+	"nedctl/internal/inventory"
+	"nedctl/internal/reconcile"
 )
 
 func cmdInventory(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: bankctl inventory <diff|sync|validate> ...")
+		fmt.Fprintln(stderr, "usage: nedctl inventory <diff|sync|validate> ...")
 		return ExitUsage
 	}
 	switch args[0] {
@@ -49,7 +49,7 @@ func scan(ctx context.Context, cfgPath string, stderr io.Writer, quiet bool) (co
 	}
 	d := cfg.Discovery
 	if !d.Configured() {
-		fmt.Fprintln(stderr, `no discovery scope configured — add a "discovery" block listing the AWS accounts/regions and Azure subscriptions to scan (see docs/bankctl.md)`)
+		fmt.Fprintln(stderr, `no discovery scope configured — add a "discovery" block listing the AWS accounts/regions and Azure subscriptions to scan (see docs/nedctl.md)`)
 		return cfg, declared, discovery.Result{}, false
 	}
 	if !quiet {
@@ -158,7 +158,7 @@ func inventoryValidate(cfgPath string, args []string, stdout, stderr io.Writer) 
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: bankctl inventory validate [--file PATH]")
+		fmt.Fprintln(stderr, "usage: nedctl inventory validate [--file PATH]")
 		return ExitUsage
 	}
 	var (
@@ -218,7 +218,7 @@ func inventorySync(ctx context.Context, cfgPath string, args []string, stdout, s
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: bankctl inventory sync [--out FILE] [--force]")
+		fmt.Fprintln(stderr, "usage: nedctl inventory sync [--out FILE] [--force]")
 		return ExitUsage
 	}
 	if *out != "" && !*force {

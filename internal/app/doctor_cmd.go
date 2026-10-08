@@ -7,8 +7,8 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/NeoM404/GoTools/internal/config"
-	"github.com/NeoM404/GoTools/internal/tools"
+	"nedctl/internal/config"
+	"nedctl/internal/tools"
 )
 
 // doctorTool is one row of `doctor -o json`.
@@ -58,7 +58,7 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	cfg, _, _ := config.Load(cfgPath)
 	var notRequired []string
 	if cfg.Bastion() {
-		// Credentials are provisioned on a bastion; bankctl needs only kubectl.
+		// Credentials are provisioned on a bastion; nedctl needs only kubectl.
 		notRequired = []string{"aws", "az"}
 	}
 	results := tools.Inspect(ctx, cfg.MinVersions, notRequired...)
@@ -68,7 +68,7 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	outdatedAll := tools.AnyOutdated(results)
 
 	// Exit policy: a missing REQUIRED tool always fails. An outdated REQUIRED
-	// tool fails too (bankctl's own commands may misbehave). --strict escalates
+	// tool fails too (nedctl's own commands may misbehave). --strict escalates
 	// ANY outdated tool (incl. optional) to a failure, for a CI hygiene gate.
 	code := ExitOK
 	if len(missing) > 0 || len(outdatedReq) > 0 || (*strict && len(outdatedAll) > 0) {
