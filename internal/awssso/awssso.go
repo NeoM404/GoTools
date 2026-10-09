@@ -278,12 +278,15 @@ var (
 	// it reaches a file or a command line.
 	roleNameRe = regexp.MustCompile(`^[\w+=,.@-]{1,64}$`)
 	unsafeRe   = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+	// accountTagRe matches a leading "[NONPROD] "-style label, which says
+	// nothing a profile name needs.
+	accountTagRe = regexp.MustCompile(`^\s*\[[^\]]*\]\s*`)
 )
 
 // ProfileName is the AWS CLI profile nedctl writes for an assignment:
 // <prefix>.<account name>.<role>, restricted to a safe alphabet.
 func ProfileName(prefix string, a Assignment) string {
-	name := a.AccountName
+	name := strings.TrimSpace(accountTagRe.ReplaceAllString(a.AccountName, ""))
 	if name == "" {
 		name = a.AccountID
 	}

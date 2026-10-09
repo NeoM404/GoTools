@@ -162,7 +162,7 @@ func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool,
 	}
 	choices := make([]awsChoice, len(assignments))
 	for i, as := range assignments {
-		squad, env := a.Classify(as.AccountID, as.AccountName)
+		squad, env := a.Classify(as.AccountID, as.AccountName, cfg.Environments)
 		choices[i] = awsChoice{as, squad, env}
 	}
 	return choices, managed, ExitOK
@@ -310,7 +310,7 @@ func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, 
 	}
 	rows := make([]picker.Row, len(cands))
 	for i, c := range cands {
-		rows[i] = picker.Row{Cells: []string{c.Squad, c.Environment, c.AccountName, c.AccountID, c.Role},
+		rows[i] = picker.Row{Cells: []string{c.Squad, c.Environment, config.StripAccountTag(c.AccountName), c.AccountID, c.Role},
 			Color: cfg.ColorFor(c.Environment), ColorCol: 1}
 	}
 	idx, err := picker.Picker{Title: "Pick an account and role", Header: []string{"SQUAD", "ENV", "ACCOUNT", "ID", "ROLE"},

@@ -35,7 +35,7 @@ example is [`configs/nedctl.aws.example.json`](../configs/nedctl.aws.example.jso
 | `region` | Default region of generated profiles (default `ssoRegion`). Rarely needed: commands find regions themselves (below). |
 | `regions` | The exact regions to search, overriding automatic discovery. |
 | `profilePrefix` | Generated profiles are named `<prefix>.<account>.<role>` (default `nedctl`). |
-| `accountNamePattern` | Gets squad and environment from an account's name: named groups `env` and, optionally, `squad`. |
+| `accountNamePattern` | Optional. By default nedctl reads the account name itself: a leading `[TAG]` is dropped, and the environment is the last part of the name that is one of your `environments` (dev, ete, qa, prod). The squad is what comes before it, less `aws-`, so `[NONPROD] aws-mov-lms-dev` → squad `mov-lms`, env `dev`. Set a regex with named groups `env` and optionally `squad` only for names that don't follow that shape. |
 | `accounts` | Explicit `{id, squad, environment}` per account. Overrides the pattern. |
 | `breakGlassRoles` | The only roles `aws login --all` may use. |
 | `accessLevelTag` | EC2 tag shown as the instance's access level (default `AccessLevel`). |

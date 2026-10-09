@@ -246,27 +246,65 @@ func (a AWS) Timeout() time.Duration {
 
 // Classify returns the squad and environment of an account: explicit
 // metadata first, then the account-name pattern.
-func (a AWS) Classify(id, name string) (squad, env string) {
+//
+// Without either, it reads the name itself: an optional leading "[TAG]" is
+// dropped, the name is split on - _ . and spaces, the environment is the
+// last part that is one of envs (the configured environments, or dev, ete,
+// qa, prod, sit, uat), and the squad is what comes before it, less a
+// leading "aws". So "[NONPROD] aws-mov-lms-dev" is squad mov-lms, env dev,
+// with no configuration at all.
+func (a AWS) Classify(id, name string, envs []string) (squad, env string) {
 	for _, acct := range a.Accounts {
 		if acct.ID == id {
 			return acct.Squad, strings.ToLower(acct.Environment)
 		}
 	}
-	if a.AccountNamePattern == "" {
-		return "", ""
+	if a.AccountNamePattern != "" {
+		if re, err := regexp.Compile(a.AccountNamePattern); err == nil {
+			if m := re.FindStringSubmatch(name); m != nil {
+				if i := re.SubexpIndex("squad"); i >= 0 {
+					squad = m[i]
+				}
+				return squad, strings.ToLower(m[re.SubexpIndex("env")])
+			}
+		}
 	}
-	re, err := regexp.Compile(a.AccountNamePattern)
-	if err != nil {
-		return "", ""
+	return inferFromName(name, envs)
+}
+
+// DefaultEnvironmentWords are recognised in account names when no
+// environments are configured.
+var DefaultEnvironmentWords = []string{"dev", "ete", "qa", "prod", "sit", "uat"}
+
+var (
+	accountTagRe   = regexp.MustCompile(`^\s*\[[^\]]*\]\s*`)
+	nameSeparators = regexp.MustCompile(`[-_.\s]+`)
+)
+
+// StripAccountTag removes a leading "[TAG]" such as "[NONPROD] " from an
+// account name.
+func StripAccountTag(name string) string { return accountTagRe.ReplaceAllString(name, "") }
+
+func inferFromName(name string, envs []string) (squad, env string) {
+	if len(envs) == 0 {
+		envs = DefaultEnvironmentWords
 	}
-	m := re.FindStringSubmatch(name)
-	if m == nil {
-		return "", ""
+	known := map[string]bool{}
+	for _, e := range envs {
+		known[strings.ToLower(e)] = true
 	}
-	if i := re.SubexpIndex("squad"); i >= 0 {
-		squad = m[i]
+	parts := nameSeparators.Split(strings.TrimSpace(StripAccountTag(name)), -1)
+	for i := len(parts) - 1; i >= 0; i-- {
+		if !known[strings.ToLower(parts[i])] {
+			continue
+		}
+		rest := parts[:i]
+		if len(rest) > 0 && strings.EqualFold(rest[0], "aws") {
+			rest = rest[1:]
+		}
+		return strings.ToLower(strings.Join(rest, "-")), strings.ToLower(parts[i])
 	}
-	return squad, strings.ToLower(m[re.SubexpIndex("env")])
+	return "", ""
 }
 
 // IsBreakGlassRole reports whether role may be used by `aws login --all`.

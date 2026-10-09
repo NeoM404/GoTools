@@ -99,3 +99,39 @@ func TestModeAndNamePatternValidated(t *testing.T) {
 		}
 	}
 }
+
+// The bank's real account names, classified with no configuration at all.
+func TestClassifyInfersSquadAndEnvironmentFromBankNames(t *testing.T) {
+	var a AWS
+	envs := []string{"dev", "ete", "qa", "prod"}
+	for name, want := range map[string][2]string{
+		"[NONPROD] aws-mov-lms-dev": {"mov-lms", "dev"},
+		"[NONPROD] aws-gt-elp-ete":  {"gt-elp", "ete"},
+		"[PROD] aws-gt-elp-qa":      {"gt-elp", "qa"},
+		"aws-cib-bancs-prod":        {"cib-bancs", "prod"},
+		"aws-mov-Lms-qa":            {"mov-lms", "qa"},
+		"aws-gt-nvanatest-dev":      {"gt-nvanatest", "dev"},
+		"shared-services":           {"", ""},
+		"aws-rsss-actimize-qa":      {"rsss-actimize", "qa"},
+		"payments_prod":             {"payments", "prod"},
+		"aws-ret-clm-dev-sandbox-x": {"ret-clm", "dev"},
+	} {
+		squad, env := a.Classify("000000000000", name, envs)
+		if squad != want[0] || env != want[1] {
+			t.Errorf("%q: got squad=%q env=%q, want %q %q", name, squad, env, want[0], want[1])
+		}
+	}
+	// Explicit metadata and a matching pattern still win; a pattern that
+	// does not match falls back to the name.
+	a = AWS{Accounts: []AWSAccount{{ID: "111111111111", Squad: "pay", Environment: "PROD"}},
+		AccountNamePattern: `^team-(?P<squad>\w+)-(?P<env>\w+)$`}
+	if s, e := a.Classify("111111111111", "anything", envs); s != "pay" || e != "prod" {
+		t.Fatalf("explicit: %q %q", s, e)
+	}
+	if s, e := a.Classify("2", "team-x-uat", envs); s != "x" || e != "uat" {
+		t.Fatalf("pattern: %q %q", s, e)
+	}
+	if s, e := a.Classify("2", "aws-mov-lms-dev", envs); s != "mov-lms" || e != "dev" {
+		t.Fatalf("fallback: %q %q", s, e)
+	}
+}

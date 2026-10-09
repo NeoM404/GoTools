@@ -221,3 +221,10 @@ func TestSaveManagedRefusesBrokenBlockAndBadValues(t *testing.T) {
 		t.Fatal("a newline in a value must be refused")
 	}
 }
+
+func TestProfileNameDropsAccountTag(t *testing.T) {
+	got := ProfileName("nedctl", Assignment{AccountID: "268484138261", AccountName: "[NONPROD] aws-gt-nvanatest-dev", Role: "aws-gt-nvanatest-dev-devops"})
+	if got != "nedctl.aws-gt-nvanatest-dev.aws-gt-nvanatest-dev-devops" {
+		t.Fatalf("got %q", got)
+	}
+}
