@@ -262,6 +262,13 @@ func banner(cfg config.Config, pc profileContext, target string, stderr io.Write
 		title = picker.Paint(cfg.ColorFor(pc.Environment), title)
 	}
 	fmt.Fprintf(stderr, "▶ %s\n", title)
+	if cfg.AWS.Elevated(pc.Role) {
+		note := "▲ elevated role " + pc.Role + " — it can change and delete resources"
+		if colorOn(stderr) {
+			note = picker.Paint(elevatedColor, note)
+		}
+		fmt.Fprintln(stderr, note)
+	}
 	if pc.Production {
 		fmt.Fprintln(stderr, "⚠  PRODUCTION — this session is recorded.")
 	}

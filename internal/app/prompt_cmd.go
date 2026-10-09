@@ -49,6 +49,9 @@ func cmdPrompt(ctx context.Context, cfgPath string, args []string, stdout, stder
 				if m, err := awssso.LoadManaged(path); err == nil {
 					if p, ok := m.Profiles[name]; ok {
 						label, env = "aws:"+firstNonBlank(p.Squad, p.AccountID), p.Environment
+						if cfg.AWS.Elevated(p.Role) {
+							label += "▲"
+						}
 					}
 				}
 			}

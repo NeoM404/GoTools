@@ -53,6 +53,17 @@ func TestQuitAndEOFCancel(t *testing.T) {
 	}
 }
 
+func lineWith(t *testing.T, out, sub string) string {
+	t.Helper()
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, sub) {
+			return l
+		}
+	}
+	t.Fatalf("no line contains %q:\n%s", sub, out)
+	return ""
+}
+
 func TestColourOnlyWhenEnabledAndAligned(t *testing.T) {
 	_, plain, _ := pick(t, "q\n", false)
 	if strings.Contains(plain, "\x1b[") {
@@ -62,11 +73,49 @@ func TestColourOnlyWhenEnabledAndAligned(t *testing.T) {
 	if !strings.Contains(coloured, "\x1b[38;2;239;68;68mprod") {
 		t.Fatalf("prod not painted red:\n%q", coloured)
 	}
-	// Columns line up in plain mode: ACCOUNT starts at the same offset.
-	lines := strings.Split(plain, "\n")
-	col := strings.Index(lines[0], "ACCOUNT")
-	if strings.Index(lines[1], "pay-dev") != col || strings.Index(lines[3], "lend-ete") != col {
-		t.Fatalf("misaligned:\n%s", plain)
+	// Columns line up in plain mode: ACCOUNT starts at the same offset on
+	// the header and on every row.
+	col := strings.Index(lineWith(t, plain, "ACCOUNT"), "ACCOUNT")
+	for _, v := range []string{"pay-dev", "pay-prod", "lend-ete"} {
+		if got := strings.Index(lineWith(t, plain, v), v); col < 0 || got != col {
+			t.Fatalf("%s at %d, ACCOUNT at %d:\n%s", v, got, col, plain)
+		}
+	}
+}
+
+func TestBadgesLegendAndCellColour(t *testing.T) {
+	rs := rows()
+	rs[1].CellColor = map[int]string{3: "#f08a24"}
+	var out bytes.Buffer
+	_, _ = Picker{Title: "Pick", Header: []string{"SQUAD", "ENV", "ACCOUNT", "ROLE"}, Rows: rs, In: strings.NewReader("q\n"),
+		Out: &out, Color: true, Badge: true, Legend: "▲ elevated"}.Pick()
+	s := out.String()
+	// Text colour is whichever contrasts more: dark on the default palette.
+	if !strings.Contains(s, "\x1b[1;48;2;239;68;68;38;2;15;27;45m PROD \x1b[0m") {
+		t.Fatalf("prod badge:\n%q", s)
+	}
+	if !strings.Contains(s, "\x1b[1;48;2;34;197;94;38;2;15;27;45m DEV \x1b[0m") {
+		t.Fatalf("dev badge:\n%q", s)
+	}
+	if !strings.Contains(s, "\x1b[38;2;240;138;36mPlatform-ReadOnly") || !strings.Contains(s, "▲ elevated") {
+		t.Fatalf("cell colour or legend missing:\n%q", s)
+	}
+	// Plain mode keeps badges readable and aligned without escapes.
+	var plain bytes.Buffer
+	_, _ = Picker{Header: []string{"SQUAD", "ENV", "ACCOUNT", "ROLE"}, Rows: rows(), In: strings.NewReader("q\n"), Out: &plain, Badge: true}.Pick()
+	if strings.Contains(plain.String(), "\x1b[") || !strings.Contains(plain.String(), " PROD") {
+		t.Fatalf("plain badges:\n%s", plain.String())
+	}
+	col := strings.Index(lineWith(t, plain.String(), "ACCOUNT"), "ACCOUNT")
+	if got := strings.Index(lineWith(t, plain.String(), "lend-ete"), "lend-ete"); got != col {
+		t.Fatalf("badge column misaligned: %d vs %d\n%s", got, col, plain.String())
+	}
+}
+
+func TestBadgeTextContrast(t *testing.T) {
+	// A dark background must get white text, a light one dark text.
+	if !strings.Contains(Badge("#0f1b2d", "x"), "38;2;255;255;255m") || !strings.Contains(Badge("#fde68a", "x"), "38;2;15;27;45m") {
+		t.Fatalf("%q %q", Badge("#0f1b2d", "x"), Badge("#fde68a", "x"))
 	}
 }
 

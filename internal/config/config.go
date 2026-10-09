@@ -169,6 +169,10 @@ type AWS struct {
 	// LegacyTool is the existing SSM tool `shell --via legacy` launches
 	// already signed in (default "sm"; e.g. "AWS-EC2-SSMshell.exe").
 	LegacyTool string `json:"legacyTool"`
+	// ElevatedRolePattern marks roles (permission sets) that can change
+	// resources, so engineers see when they hold one. Default:
+	// DefaultElevatedRolePattern.
+	ElevatedRolePattern string `json:"elevatedRolePattern"`
 	// DevopsInstance is matched against instance names to find the hop for
 	// `nedctl connect` (default "devops").
 	DevopsInstance string `json:"devopsInstance"`
@@ -307,6 +311,19 @@ func inferFromName(name string, envs []string) (squad, env string) {
 	return "", ""
 }
 
+// DefaultElevatedRolePattern matches role names that grant change rights.
+const DefaultElevatedRolePattern = `(?i)(devops|admin|poweruser|power-user|break-?glass|fullaccess|full-access|owner|deploy)`
+
+// Elevated reports whether a role can change resources, by its name.
+func (a AWS) Elevated(role string) bool {
+	p := a.ElevatedRolePattern
+	if p == "" {
+		p = DefaultElevatedRolePattern
+	}
+	re, err := regexp.Compile(p)
+	return err == nil && re.MatchString(role)
+}
+
 // IsBreakGlassRole reports whether role may be used by `aws login --all`.
 func (a AWS) IsBreakGlassRole(role string) bool {
 	for _, r := range a.BreakGlassRoles {
@@ -362,6 +379,11 @@ func (c Config) validateAWS() error {
 		}
 		if len(allowed) > 0 && !allowed[strings.ToLower(acct.Environment)] {
 			errs = append(errs, fmt.Errorf("aws.accounts[%d]: environment %q is not in environments %v", i, acct.Environment, c.Environments))
+		}
+	}
+	if a.ElevatedRolePattern != "" {
+		if _, err := regexp.Compile(a.ElevatedRolePattern); err != nil {
+			errs = append(errs, fmt.Errorf("aws.elevatedRolePattern: %w", err))
 		}
 	}
 	for _, r := range a.BreakGlassRoles {

@@ -15,12 +15,12 @@ func TestPromptShowsKubeAndAWSInEnvironmentColour(t *testing.T) {
 	os.WriteFile(w.cfg, []byte(strings.Replace(string(cfgBody), `"audit"`, `"inventoryPath": `+quote(fleet)+`, "audit"`, 1)), 0o600)
 
 	code, out, _ := run("--config", w.cfg, "prompt")
-	if code != ExitOK || out != "k8s:payments-k8s-prod-cluster[PROD] aws:payments[dev]" {
+	if code != ExitOK || out != "k8s:payments-k8s-prod-cluster[PROD] aws:payments▲[dev]" {
 		t.Fatalf("plain: code=%d out=%q", code, out)
 	}
 	_, out, _ = run("--config", w.cfg, "prompt", "--shell", "bash")
 	if !strings.Contains(out, `\[`+"\x1b[1;38;2;239;68;68m"+`\]k8s:payments-k8s-prod-cluster[PROD]`) ||
-		!strings.Contains(out, "\x1b[22;38;2;34;197;94m"+`\]aws:payments[dev]`) {
+		!strings.Contains(out, "\x1b[22;38;2;34;197;94m"+`\]aws:payments▲[dev]`) {
 		t.Fatalf("bash: %q", out)
 	}
 	_, out, _ = run("--config", w.cfg, "prompt", "--shell", "zsh", "--no-aws")

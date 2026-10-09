@@ -38,6 +38,7 @@ example is [`configs/nedctl.aws.example.json`](../configs/nedctl.aws.example.jso
 | `accountNamePattern` | Optional. By default nedctl reads the account name itself: a leading `[TAG]` is dropped, and the environment is the last part of the name that is one of your `environments` (dev, ete, qa, prod). The squad is what comes before it, less `aws-`, so `[NONPROD] aws-mov-lms-dev` → squad `mov-lms`, env `dev`. Set a regex with named groups `env` and optionally `squad` only for names that don't follow that shape. |
 | `accounts` | Explicit `{id, squad, environment}` per account. Overrides the pattern. |
 | `breakGlassRoles` | The only roles `aws login --all` may use. |
+| `elevatedRolePattern` | Which roles count as elevated (able to change resources). Default: names containing devops, admin, poweruser, breakglass, fullaccess, owner or deploy. |
 | `accessLevelTag` | EC2 tag shown as the instance's access level (default `AccessLevel`). |
 | `devopsInstance` | Name match for the devops instance `connect` tunnels through (default `devops`). |
 | `legacyTool` | What `shell --via legacy` launches (default `sm`; e.g. `AWS-EC2-SSMshell.exe`). |
@@ -108,6 +109,18 @@ nedctl aws login --device-code                   # on a host with no browser (de
 No AWS keys pass through nedctl. The AWS CLI fetches short-term credentials
 for that one account and role when the profile is used. The picker and
 messages go to stderr, so stdout carries only `export AWS_PROFILE=…`.
+
+### Elevated roles are marked
+
+A role whose name matches `elevatedRolePattern` can change and delete
+resources. Today that includes every `<account>-devops` role. nedctl shows
+this wherever it matters:
+
+- **Picker:** the role has an orange ▲, explained in the legend.
+- **Sign-in:** a warning, naming a read-only role in the same account if you
+  have one, and flagging production accounts.
+- **Other places:** `aws whoami` (`"elevated": true` in JSON), the shell banner,
+  the prompt (`aws:mov-lms▲[dev]`) and the audit record.
 
 ### Break-glass: every account at once
 

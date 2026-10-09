@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -67,8 +68,15 @@ esac`)
 		}
 		switch r.URL.Path {
 		case "/assignment/accounts":
+			var ids []string
+			for id := range w.names {
+				if len(w.assignments[id]) > 0 {
+					ids = append(ids, id)
+				}
+			}
+			sort.Strings(ids)
 			var parts []string
-			for _, id := range []string{"111111111111", "222222222222", "333333333333"} {
+			for _, id := range ids {
 				parts = append(parts, fmt.Sprintf(`{"accountId":%q,"accountName":%q}`, id, w.names[id]))
 			}
 			fmt.Fprintf(rw, `{"accountList":[%s]}`, strings.Join(parts, ","))
@@ -349,5 +357,51 @@ func TestAWSLoginTimeoutExplainsTheProxy(t *testing.T) {
 	code, _, errb := run("--config", w.cfg, "aws", "login", "--account", "payments-dev")
 	if code != ExitFailure || !strings.Contains(errb, "HTTPS_PROXY is not set") || !strings.Contains(errb, "NEDCTL_DEBUG=1") {
 		t.Fatalf("code=%d err=%q", code, errb)
+	}
+}
+
+// Every role the bank assigns today is <account>-devops, which can change
+// resources: the engineer must be told, and pointed at a read-only role
+// when one exists.
+func TestAWSLoginWarnsAboutElevatedRoles(t *testing.T) {
+	w := newAWSWorld(t, "")
+	w.names["444444444444"] = "[NONPROD] aws-mov-lms-dev"
+	w.assignments = map[string][]string{
+		"444444444444": {"aws-mov-lms-dev-devops"},
+		"111111111111": {"Platform-ReadOnly", "Platform-Admin"},
+	}
+	code, _, errb := run("--config", w.cfg, "aws", "login", "--account", "aws-mov-lms-dev", "--format", "none")
+	if code != ExitOK {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	for _, want := range []string{"Signed in: mov-lms · DEV · aws-mov-lms-dev-devops (profile nedctl.aws-mov-lms-dev.aws-mov-lms-dev-devops)",
+		"▲ aws-mov-lms-dev-devops has ELEVATED access", "No read-only role is assigned to you in this account"} {
+		if !strings.Contains(errb, want) {
+			t.Fatalf("lacks %q:\n%s", want, errb)
+		}
+	}
+	code, _, errb = run("--config", w.cfg, "aws", "login", "--account", "payments-prod", "--role", "Platform-Admin", "--format", "none")
+	if code != ExitOK || !strings.Contains(errb, "For looking around, prefer: Platform-ReadOnly") || !strings.Contains(errb, "This is a PRODUCTION account") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	if ev := readAudit(t, w.logPath); !strings.Contains(ev[len(ev)-1].Detail, "elevated role") {
+		t.Fatalf("the audit record must say the role is elevated: %+v", ev[len(ev)-1])
+	}
+	_, out, _ := run("--config", w.cfg, "aws", "whoami", "-o", "json")
+	if !strings.Contains(out, `"elevated": true`) {
+		t.Fatalf("whoami: %s", out)
+	}
+}
+
+func TestAWSPickerSortsByEnvironmentAndMarksElevated(t *testing.T) {
+	w := newAWSWorld(t, "")
+	answer(t, "q\n")
+	_, _, errb := run("--config", w.cfg, "aws", "login")
+	dev, ete, prod := strings.Index(errb, " DEV "), strings.Index(errb, " ETE "), strings.Index(errb, " PROD ")
+	if dev < 0 || ete < 0 || prod < 0 || !(dev < ete && ete < prod) {
+		t.Fatalf("rows must run dev, ete, prod (%d %d %d):\n%s", dev, ete, prod, errb)
+	}
+	if !strings.Contains(errb, "Platform-Admin ▲") || strings.Contains(errb, "Platform-ReadOnly ▲") || !strings.Contains(errb, "▲ elevated: can change and delete resources") {
+		t.Fatalf("elevated marking:\n%s", errb)
 	}
 }

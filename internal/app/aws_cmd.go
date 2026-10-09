@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -132,6 +133,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	if code != ExitOK {
 		return code
 	}
+	warnElevated(cfg, chosen, choices, stderr)
 	if err := saveCurrentProfile(cfg, profile); err != nil {
 		fmt.Fprintf(stderr, "warning: could not remember %s as your current profile: %v\n", profile, err)
 	}
@@ -287,7 +289,8 @@ func ensureSignIn(ctx context.Context, cfg config.Config, deviceCode, force bool
 func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, stderr io.Writer) (awsChoice, int) {
 	var cands []awsChoice
 	for _, c := range all {
-		if account != "" && c.AccountID != account && !strings.EqualFold(c.AccountName, account) {
+		if account != "" && c.AccountID != account && !strings.EqualFold(c.AccountName, account) &&
+			!strings.EqualFold(config.StripAccountTag(c.AccountName), account) {
 			continue
 		}
 		if role != "" && !strings.EqualFold(c.Role, role) {
@@ -308,13 +311,22 @@ func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, 
 		fmt.Fprintf(stderr, "%d assignments match — pass --account and --role to choose one without a terminal\n", len(cands))
 		return awsChoice{}, ExitUsage
 	}
+	sortChoices(cfg, cands)
 	rows := make([]picker.Row, len(cands))
 	for i, c := range cands {
-		rows[i] = picker.Row{Cells: []string{c.Squad, c.Environment, config.StripAccountTag(c.AccountName), c.AccountID, c.Role},
-			Color: cfg.ColorFor(c.Environment), ColorCol: 1}
+		role := c.Role
+		var cellColor map[int]string
+		if cfg.AWS.Elevated(c.Role) {
+			role += " ▲"
+			cellColor = map[int]string{4: elevatedColor}
+		}
+		rows[i] = picker.Row{Cells: []string{firstNonBlank(c.Environment, "?"), c.Squad, config.StripAccountTag(c.AccountName), c.AccountID, role},
+			Color: cfg.ColorFor(c.Environment), ColorCol: 0, CellColor: cellColor}
 	}
-	idx, err := picker.Picker{Title: "Pick an account and role", Header: []string{"SQUAD", "ENV", "ACCOUNT", "ID", "ROLE"},
-		Rows: rows, In: stdin, Out: stderr, Color: colorOn(stderr)}.Pick()
+	color := colorOn(stderr)
+	idx, err := picker.Picker{Title: fmt.Sprintf("Pick an account and role · %d available", len(cands)),
+		Header: []string{"ENV", "SQUAD", "ACCOUNT", "ID", "ROLE"}, Rows: rows, In: stdin, Out: stderr,
+		Color: color, Badge: true, Legend: envLegend(cfg, color)}.Pick()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return awsChoice{}, ExitFailure
@@ -342,6 +354,9 @@ func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsCho
 	base.Action, base.Cloud, base.Account, base.Environment = "aws-login", "aws", c.AccountID, c.Environment
 	base.Production = cfg.IsProdEnvironment(c.Environment)
 	base.Detail = fmt.Sprintf("account %s, role %s, profile %s", c.AccountName, c.Role, name)
+	if a.Elevated(c.Role) {
+		base.Detail += ", elevated role"
+	}
 	tr, err := beginAuditEvent(ctx, cfg, base, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "%v — refusing to sign in: every sign-in must be recorded\n", err)
@@ -362,12 +377,97 @@ func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsCho
 	}
 	tr.end(ctx, audit.OutcomeSuccess, id.Arn, base.Detail, stderr)
 
-	label := fmt.Sprintf("%s · %s · %s", firstNonBlank(c.Squad, c.AccountName), strings.ToUpper(firstNonBlank(c.Environment, "unknown env")), c.Role)
+	label := fmt.Sprintf("%s · %s · %s", firstNonBlank(c.Squad, config.StripAccountTag(c.AccountName)), strings.ToUpper(firstNonBlank(c.Environment, "unknown env")), c.Role)
 	if colorOn(stderr) {
 		label = picker.Paint(cfg.ColorFor(c.Environment), label)
 	}
 	fmt.Fprintf(stderr, "Signed in: %s (profile %s)\n", label, name)
 	return name, ExitOK
+}
+
+// elevatedColor marks roles that can change resources.
+const elevatedColor = "#f08a24"
+
+// envOrder ranks environments for sorting: the configured order, else
+// dev, ete, qa, prod; unknown last.
+func envOrder(cfg config.Config, env string) int {
+	order := cfg.Environments
+	if len(order) == 0 {
+		order = config.DefaultEnvironmentWords
+	}
+	for i, e := range order {
+		if strings.EqualFold(e, env) {
+			return i
+		}
+	}
+	return len(order)
+}
+
+func sortChoices(cfg config.Config, cs []awsChoice) {
+	sort.SliceStable(cs, func(i, j int) bool {
+		a, b := cs[i], cs[j]
+		if oa, ob := envOrder(cfg, a.Environment), envOrder(cfg, b.Environment); oa != ob {
+			return oa < ob
+		}
+		if a.Squad != b.Squad {
+			return a.Squad < b.Squad
+		}
+		if a.AccountName != b.AccountName {
+			return a.AccountName < b.AccountName
+		}
+		return a.Role < b.Role
+	})
+}
+
+// envLegend explains the badges and the elevated mark.
+func envLegend(cfg config.Config, color bool) string {
+	order := cfg.Environments
+	if len(order) == 0 {
+		order = []string{"dev", "ete", "qa", "prod"}
+	}
+	var parts []string
+	for _, e := range order {
+		tag := " " + strings.ToUpper(e) + " "
+		if color {
+			tag = picker.Badge(cfg.ColorFor(e), tag)
+		}
+		if cfg.IsProdEnvironment(e) {
+			tag += " production"
+		}
+		parts = append(parts, tag)
+	}
+	mark := "▲ elevated: can change and delete resources"
+	if color {
+		mark = picker.Paint(elevatedColor, mark)
+	}
+	return strings.Join(parts, "  ") + "    " + mark
+}
+
+// warnElevated tells the engineer they hold an elevated role and whether a
+// read-only alternative is assigned to them in the same account.
+func warnElevated(cfg config.Config, c awsChoice, all []awsChoice, stderr io.Writer) {
+	if !cfg.AWS.Elevated(c.Role) {
+		return
+	}
+	head := fmt.Sprintf("▲ %s has ELEVATED access: it can change and delete resources in %s.", c.Role, firstNonBlank(c.Squad, config.StripAccountTag(c.AccountName)))
+	if colorOn(stderr) {
+		head = picker.Paint(elevatedColor, head)
+	}
+	fmt.Fprintln(stderr, head)
+	var alts []string
+	for _, o := range all {
+		if o.AccountID == c.AccountID && o.Role != c.Role && !cfg.AWS.Elevated(o.Role) {
+			alts = append(alts, o.Role)
+		}
+	}
+	if len(alts) > 0 {
+		fmt.Fprintf(stderr, "  For looking around, prefer: %s  (nedctl aws login --account %s --role %s)\n", strings.Join(alts, ", "), c.AccountID, alts[0])
+	} else {
+		fmt.Fprintln(stderr, "  No read-only role is assigned to you in this account; use this one for changes only.")
+	}
+	if cfg.IsProdEnvironment(c.Environment) {
+		fmt.Fprintln(stderr, "  This is a PRODUCTION account.")
+	}
 }
 
 func firstNonBlank(s ...string) string {
@@ -426,6 +526,7 @@ type awsIdentity struct {
 	Environment string `json:"environment,omitempty"`
 	Production  bool   `json:"production"`
 	Role        string `json:"role,omitempty"`
+	Elevated    bool   `json:"elevated"`
 	Arn         string `json:"arn"`
 	// SignInExpires is when the Identity Center sign-in lapses (managed
 	// profiles only).
@@ -469,6 +570,7 @@ func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stder
 		if m, err := awssso.LoadManaged(path); err == nil {
 			if p, ok := m.Profiles[profile]; ok {
 				id.Role, id.Squad, id.Environment = p.Role, p.Squad, p.Environment
+				id.Elevated = cfg.AWS.Elevated(p.Role)
 				id.Production = cfg.IsProdEnvironment(p.Environment)
 				if dir, err := awssso.CacheDir(); err == nil {
 					if tok, err := awssso.ReadToken(dir, m.Session.Name, now(), 0); err == nil {
@@ -491,7 +593,14 @@ func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stder
 	}
 	fmt.Fprintln(stdout)
 	if id.Role != "" {
-		fmt.Fprintf(stdout, "role:       %s\n", id.Role)
+		role := id.Role
+		if id.Elevated {
+			role += "  ▲ ELEVATED — can change and delete resources"
+			if colorOn(stdout) {
+				role = id.Role + "  " + picker.Paint(elevatedColor, "▲ ELEVATED — can change and delete resources")
+			}
+		}
+		fmt.Fprintf(stdout, "role:       %s\n", role)
 	}
 	fmt.Fprintf(stdout, "acting as:  %s\n", id.Arn)
 	if id.SignInExpires != "" {
