@@ -163,3 +163,38 @@ esac`)
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 }
+
+// EKS returned an endpoint with an upper-case prefix on the bank's first
+// real connect; it was refused as "unexpected". It must be accepted,
+// lower-cased, and still verified by kubectl against the cluster CA.
+func TestConnectAcceptsUpperCaseEndpoint(t *testing.T) {
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("kubectl not installed")
+	}
+	w := newEC2World(t, "dev", "")
+	port, _ := freePort()
+	ca := fakeEKSAPI(t, port)
+	installConnectFake(t, w, ca)
+	upper := strings.ToUpper(strings.TrimSuffix(eksHost, ".gr7.af-south-1.eks.amazonaws.com")) + ".gr7.af-south-1.eks.amazonaws.com"
+	desc := `{"cluster":{"name":"payments-eks-prod","arn":"arn:aws:eks:af-south-1:111111111111:cluster/payments-eks-prod","endpoint":"https://` + upper +
+		`","version":"1.30","certificateAuthority":{"data":"` + ca + `"}}}`
+	fakeCLI(t, "aws", `echo "$*" >> `+sq(w.calls)+`
+case "$*" in
+"ec2 describe-regions"*) echo '["af-south-1"]';;
+"eks list-clusters"*) echo '{"clusters":["payments-eks-prod"]}';;
+"eks describe-cluster"*) printf '%s' `+sq(desc)+`;;
+"ec2 describe-instances"*) printf '%s' `+sq(instancesJSON)+`;;
+"ssm start-session"*) echo "Waiting for connections...";;
+"eks get-token"*) echo '{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1beta1","status":{"token":"k8s-aws-v1.fake","expirationTimestamp":"2099-01-01T00:00:00Z"}}';;
+esac`)
+	if code, _, errb := run("--config", w.cfg, "connect", "payments-eks-prod", "--port", strconv.Itoa(port)); code != ExitOK {
+		t.Fatalf("err=%q", errb)
+	}
+	if !strings.Contains(w.awsCalls(t), "host="+eksHost+",") {
+		t.Fatalf("the tunnel host must be lower-cased:\n%s", w.awsCalls(t))
+	}
+	kc := filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json")
+	if out, err := exec.Command("kubectl", "--kubeconfig", kc, "get", "--raw", "/version").CombinedOutput(); err != nil {
+		t.Fatalf("kubectl: %v\n%s", err, out)
+	}
+}

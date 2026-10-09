@@ -23,8 +23,11 @@ import (
 )
 
 var (
-	eksNameRe     = regexp.MustCompile(`^[0-9A-Za-z][A-Za-z0-9_-]{0,99}$`)
-	eksEndpointRe = regexp.MustCompile(`^[a-z0-9.-]+\.eks\.amazonaws\.com(\.cn)?$`)
+	eksNameRe = regexp.MustCompile(`^[0-9A-Za-z][A-Za-z0-9_-]{0,99}$`)
+	// EKS hands out endpoints with an upper-case hex prefix
+	// (51AD….yl4.af-south-1.eks.amazonaws.com); DNS names are
+	// case-insensitive, so the check is too, and the host is lower-cased.
+	eksEndpointRe = regexp.MustCompile(`(?i)^[a-z0-9.-]+\.eks\.amazonaws\.com(\.cn)?$`)
 )
 
 // eksTarget is what connect needs from describe-cluster.
@@ -58,7 +61,7 @@ func describeEKS(ctx context.Context, cfg config.Config, profile, name, region s
 	if m == nil {
 		return eksTarget{}, fmt.Errorf("eks returned an unexpected ARN %q", d.Cluster.Arn)
 	}
-	return eksTarget{Name: name, Region: m[1], Host: u.Hostname(), CAData: d.Cluster.CertificateAuthority.Data, Version: d.Cluster.Version}, nil
+	return eksTarget{Name: name, Region: m[1], Host: strings.ToLower(u.Hostname()), CAData: d.Cluster.CertificateAuthority.Data, Version: d.Cluster.Version}, nil
 }
 
 // eksARN matches an EKS cluster ARN; group 1 is the region.
