@@ -888,6 +888,12 @@ func Load(explicitPath string) (Config, string, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, path, fmt.Errorf("parsing config %s: %w", path, err)
 	}
+	// A setting nedctl does not know is a mistake, usually one in the wrong
+	// block: silently ignoring it hides the real problem behind a confusing
+	// error elsewhere (startUrl under discovery read as an empty account).
+	if err := strictCheck(data); err != nil {
+		return cfg, path, fmt.Errorf("config %s: %w", path, err)
+	}
 	if err := cfg.validate(); err != nil {
 		return cfg, path, fmt.Errorf("config %s: %w", path, err)
 	}
@@ -897,6 +903,37 @@ func Load(explicitPath string) (Config, string, error) {
 		cfg.InventoryPath = filepath.Join(filepath.Dir(path), cfg.InventoryPath)
 	}
 	return cfg, path, nil
+}
+
+// settingHome says where commonly misplaced settings belong.
+var settingHome = map[string]string{
+	"startUrl": "aws", "ssoRegion": "aws", "ssoSession": "aws", "region": "aws", "regions": "aws",
+	"accountNamePattern": "aws", "accounts": "aws", "breakGlassRoles": "aws", "elevatedRolePattern": "aws",
+	"accessLevelTag": "aws", "legacyTool": "aws", "devopsInstance": "aws", "profilePrefix": "aws", "sessionTimeout": "aws",
+	"requireFor": "changeControl", "enabled": "changeControl", "instanceUrl": "changeControl.serviceNow",
+	"tokenEnv": "changeControl.serviceNow or audit.forward", "logPath": "audit", "forward": "audit",
+	"profile": "discovery.aws[]", "account": "discovery.aws[]", "subscription": "discovery.azure[]",
+	"tagKeys": "discovery", "nameEnvironmentPattern": "discovery",
+}
+
+var unknownFieldRe = regexp.MustCompile(`unknown field "([^"]+)"`)
+
+func strictCheck(data []byte) error {
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec.DisallowUnknownFields()
+	var probe Config
+	err := dec.Decode(&probe)
+	if err == nil {
+		return nil
+	}
+	m := unknownFieldRe.FindStringSubmatch(err.Error())
+	if m == nil {
+		return err
+	}
+	if home, ok := settingHome[m[1]]; ok {
+		return fmt.Errorf("unknown setting %q here — it belongs in the %q block; check where it sits in the file", m[1], home)
+	}
+	return fmt.Errorf("unknown setting %q — check its spelling and which block it is in (docs/nedctl.md, Configuration)", m[1])
 }
 
 func resolvePath(explicit string) string {

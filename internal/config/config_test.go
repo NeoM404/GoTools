@@ -135,3 +135,25 @@ func TestClassifyInfersSquadAndEnvironmentFromBankNames(t *testing.T) {
 		t.Fatalf("fallback: %q %q", s, e)
 	}
 }
+
+// The first real configuration error: startUrl and ssoRegion placed inside
+// discovery.aws, which used to surface as "account must be a 12 digit ID".
+func TestMisplacedSettingIsExplained(t *testing.T) {
+	_, _, err := Load(writeCfg(t, `{"discovery": {"aws": [{"startUrl": "https://d-1.awsapps.com/start", "ssoRegion": "eu-west-1"}]}}`))
+	if err == nil || !strings.Contains(err.Error(), `unknown setting "startUrl" here — it belongs in the "aws" block`) {
+		t.Fatalf("got %v", err)
+	}
+	_, _, err = Load(writeCfg(t, `{"aws": {"startUrl": "https://d-1.awsapps.com/start", "ssoRegion": "eu-west-1", "regoin": "x"}}`))
+	if err == nil || !strings.Contains(err.Error(), `unknown setting "regoin" — check its spelling`) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestShippedConfigsAreStrictlyValid(t *testing.T) {
+	for _, p := range []string{"../../configs/nedctl.example.json", "../../configs/nedctl.bastion.example.json",
+		"../../configs/nedctl.aws.example.json", "../../inventory/nedctl.json"} {
+		if _, _, err := Load(p); err != nil {
+			t.Errorf("%s: %v", p, err)
+		}
+	}
+}
