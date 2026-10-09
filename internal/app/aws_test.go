@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -450,3 +451,53 @@ func TestAWSLoginReusesTheAccountListForTheSameSignIn(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestNoLocalBrowserDetection(t *testing.T) {
+	old := lookupEnv
+	t.Cleanup(func() { lookupEnv = old })
+	env := map[string]string{}
+	lookupEnv = func(k string) string { return env[k] }
+	if runtime.GOOS != "linux" {
+		if noLocalBrowser() {
+			t.Fatal("only Linux hosts default to device code")
+		}
+		return
+	}
+	for _, c := range []struct {
+		env  map[string]string
+		want bool
+	}{
+		{map[string]string{"WSL_DISTRO_NAME": "Ubuntu-22.04", "DISPLAY": ":0"}, true},
+		{map[string]string{"SSH_CONNECTION": "1 2 3 4", "DISPLAY": ":0"}, true},
+		{map[string]string{}, true},
+		{map[string]string{"DISPLAY": ":0"}, false},
+		{map[string]string{"WAYLAND_DISPLAY": "wayland-0"}, false},
+	} {
+		env = c.env
+		if got := noLocalBrowser(); got != c.want {
+			t.Fatalf("%v: got %v", c.env, got)
+		}
+	}
+}
+
+func TestAWSLoginUsesDeviceCodeWhereNoBrowser(t *testing.T) {
+	w := newAWSWorld(t, "")
+	old := lookupEnv
+	t.Cleanup(func() { lookupEnv = old })
+	lookupEnv = func(k string) string {
+		if k == "WSL_DISTRO_NAME" {
+			return "Ubuntu-22.04"
+		}
+		return ""
+	}
+	if code, _, errb := run("--config", w.cfg, "aws", "login", "--account", "lending-ete", "--format", "none"); code != ExitOK {
+		t.Fatalf("err=%q", errb)
+	}
+	marker, _ := os.ReadFile(w.loginMarker)
+	if want := runtime.GOOS == "linux"; strings.Contains(string(marker), "--use-device-code") != want {
+		t.Fatalf("on %s in WSL, device code = %v expected; aws was called with %q", runtime.GOOS, want, marker)
+	}
+	if code, _, _ := run("--config", w.cfg, "aws", "login", "--device-code", "--browser"); code != ExitUsage {
+		t.Fatal("--device-code with --browser must be a usage error")
+	}
+}

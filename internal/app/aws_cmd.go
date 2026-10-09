@@ -86,7 +86,8 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	fs.SetOutput(stderr)
 	account := fs.String("account", "", "account ID or name (skips the picker when it and --role match one assignment)")
 	role := fs.String("role", "", "role (permission set) name")
-	deviceCode := fs.Bool("device-code", false, "sign in with a device code — for a host with no browser, such as a devops box")
+	deviceFlag := fs.Bool("device-code", false, "sign in with a device code (default where no browser can open: WSL, SSH, Linux without a desktop)")
+	browserFlag := fs.Bool("browser", false, "sign in through a browser on this machine, even where device code is the default")
 	force := fs.Bool("force", false, "sign in again even if a valid sign-in is cached")
 	refresh := fs.Bool("refresh", false, "fetch your accounts and roles again instead of reusing the list from this sign-in")
 	format := fs.String("format", defaultEnvFormat(), "what to print on stdout: sh (export AWS_PROFILE=…), powershell, or none")
@@ -106,6 +107,12 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		fmt.Fprintf(stderr, "--break-glass needs a real reason (at least %d characters): it is recorded and reviewed\n", config.MinBreakGlassReason)
 		return ExitUsage
 	}
+	if *deviceFlag && *browserFlag {
+		fmt.Fprintln(stderr, "--device-code and --browser are alternatives; pass one")
+		return ExitUsage
+	}
+	deviceCode := new(bool)
+	*deviceCode = *deviceFlag || (!*browserFlag && noLocalBrowser())
 	if fs.NArg() > 0 {
 		fmt.Fprintln(stderr, "usage: nedctl aws login [--account ID|NAME] [--role ROLE] [--device-code] [--force] [--format sh|powershell|none]")
 		return ExitUsage
@@ -275,6 +282,26 @@ func breakGlassAll(ctx context.Context, cfg config.Config, m awssso.Managed, cho
 	return ExitOK
 }
 
+// lookupEnv is a seam for tests.
+var lookupEnv = os.Getenv
+
+// noLocalBrowser reports whether this machine cannot open a browser for
+// the AWS CLI's sign-in: WSL (no Linux browser; the Windows one cannot
+// receive the localhost callback reliably), an SSH session, or Linux with
+// no desktop, such as a devops box. Device-code sign-in works everywhere:
+// the link opens in any browser, on any device.
+func noLocalBrowser() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	for _, v := range []string{"WSL_DISTRO_NAME", "WSL_INTEROP", "SSH_CONNECTION", "SSH_TTY"} {
+		if lookupEnv(v) != "" {
+			return true
+		}
+	}
+	return lookupEnv("DISPLAY") == "" && lookupEnv("WAYLAND_DISPLAY") == ""
+}
+
 func defaultEnvFormat() string {
 	if runtime.GOOS == "windows" {
 		return "powershell"
@@ -326,8 +353,10 @@ func ensureSignIn(ctx context.Context, cfg config.Config, deviceCode, force bool
 	args := []string{"sso", "login", "--sso-session", a.Session()}
 	if deviceCode {
 		args = append(args, "--use-device-code")
+		fmt.Fprintln(stderr, "Signing in to IAM Identity Center — open the link below in any browser (e.g. on Windows) and confirm the code.")
+	} else {
+		fmt.Fprintln(stderr, "Signing in to IAM Identity Center — approve the request in your browser.")
 	}
-	fmt.Fprintln(stderr, "Signing in to IAM Identity Center — approve the request in your browser.")
 	// stdout stays clean for `eval "$(nedctl aws login)"`; the CLI's
 	// instructions go to the terminal on stderr.
 	if err := execx.Interactive(ctx, execx.Spec{Name: "aws", Args: args, Stdout: stderr, Stderr: stderr, Timeout: 15 * time.Minute}); err != nil {

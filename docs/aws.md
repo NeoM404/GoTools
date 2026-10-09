@@ -88,14 +88,16 @@ silent. What was found where is remembered per account for 24 hours.
 ## Sign in: `nedctl aws login`
 
 ```bash
-eval "$(nedctl aws login)"                       # bash/zsh: picker, then sets AWS_PROFILE
+eval "$(nedctl aws login)"                       # bash/zsh: sign in if needed, picker, then sets AWS_PROFILE
 nedctl aws login --format powershell | iex       # PowerShell
 nedctl aws login --account payments-prod --role Platform-ReadOnly   # no picker
-nedctl aws login --device-code                   # on a host with no browser (devops box)
+nedctl aws login --browser                       # force browser sign-in (default where a browser can open)
 ```
 
 1. If no valid sign-in is cached, nedctl runs `aws sso login`, the AWS CLI's
-   own flow. You approve it in the browser.
+   own flow. Where no browser can open here (WSL, SSH, Linux without a
+   desktop, such as a devops box), it uses a device code automatically. Open
+   the link in any browser, for example on Windows, and confirm the code.
 2. It lists **only the accounts and roles Identity Center assigns you**, in a
    picker coloured by environment. Type to filter, enter a number to choose.
    `--account`/`--role` choose without the picker. With no terminal and more
