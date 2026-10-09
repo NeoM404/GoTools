@@ -78,7 +78,7 @@ make checksums           # cross-compile macOS/Linux arm64+amd64 into dist/ + SH
 make repro               # prove the build is byte-for-byte reproducible
 ```
 
-Requires Go 1.25.13 or later (earlier 1.25 patches carry standard-library CVEs that `make vuln` reports). `GOTOOLCHAIN=local` is set in the Makefile so Go never tries to download a toolchain. See **[docs/nedctl.md](docs/nedctl.md)** for full command
+Requires Go 1.26.9 or later (Go 1.25 is out of support; `make vuln` reports its unfixed standard-library CVEs). `GOTOOLCHAIN=local` is set in the Makefile so Go never tries to download a toolchain. See **[docs/nedctl.md](docs/nedctl.md)** for full command
 reference, recipes (shell-prompt prod guard, nightly drift gate), and the
 extension guide, and **[docs/ecosystem-tools.md](docs/ecosystem-tools.md)** for
 the curated list of upstream tools to install rather than rebuild.

@@ -20,7 +20,7 @@ schedules:
 variables:
   GOTOOLCHAIN: local # never download a toolchain on internal agents
   # GOPROXY: https://<artifactory>/api/go/go-remote   # needed only by `make tools`
-  goVersion: "1.25.13" # first 1.25 patch with no known reachable stdlib CVEs; bump deliberately
+  goVersion: "1.26.9" # a Go release the Go team still patches; bump deliberately
 
 pool:
   vmImage: ubuntu-latest # or the bank's self-hosted pool: `name: <pool-name>`

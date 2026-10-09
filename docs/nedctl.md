@@ -22,7 +22,7 @@ make install
 make cross           # outputs to dist/
 ```
 
-Requires Go 1.25.13 or later to build. Go 1.25.5 builds it, but `govulncheck` finds 15 standard-library vulnerabilities in it (TLS, X.509, net/http) that nedctl reaches; all are fixed in 1.25.13. The built binary needs `kubectl`, `aws`, and `az`
+Requires Go 1.26.9 or later (or 1.27.2+). Go 1.25 still compiles it, but the Go team no longer patches 1.25, and `govulncheck` reports net/http and TLS vulnerabilities in every 1.25 release that are fixed only in 1.26.9 and 1.27.2. The built binary needs `kubectl`, `aws`, and `az`
 on PATH for the subcommands that use them — run `nedctl doctor` to check. On a
 bastion (`"mode": "bastion"`) it needs only `kubectl`.
 

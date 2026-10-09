@@ -32,7 +32,7 @@ parameters:
 variables:
   GOTOOLCHAIN: local
   NEDCTL_CONFIG: $(Build.SourcesDirectory)/inventory/nedctl.json
-  goVersion: "1.25.13" # first 1.25 patch with no known reachable stdlib CVEs; bump deliberately
+  goVersion: "1.26.9" # a Go release the Go team still patches; bump deliberately
   # Agents without internet: point Go at the internal module proxy, e.g.
   # GOPROXY: https://<artifactory>/api/go/go-remote
   # (nedctl has no dependencies; the proxy is only needed for `make tools` in CI.)
