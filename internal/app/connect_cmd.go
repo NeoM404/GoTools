@@ -33,8 +33,8 @@ type eksTarget struct {
 	Version                    string
 }
 
-func describeEKS(ctx context.Context, cfg config.Config, profile, name string) (eksTarget, error) {
-	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "describe-cluster", "--name", name, "--profile", profile, "--output", "json")
+func describeEKS(ctx context.Context, cfg config.Config, profile, name, region string) (eksTarget, error) {
+	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "describe-cluster", "--name", name, "--profile", profile, "--region", region, "--output", "json")
 	if err != nil {
 		return eksTarget{}, err
 	}
@@ -104,6 +104,8 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	tab := fs.Bool("tab", false, "hold the tunnel in a new Windows Terminal tab coloured by environment")
 	crFlag := fs.String("change-record", "", "change record for this access, when change control requires one")
 	glassFlag := fs.String("break-glass", "", "emergency access without a change record; recorded and flagged")
+	var rs regionSearch
+	addRegionFlags(fs, &rs)
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return ExitUsage
@@ -125,12 +127,18 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	if !ok {
 		return ExitFailure
 	}
-	cluster, err := describeEKS(ctx, cfg, pc.Name, pos[0])
+	region, err := findCluster(ctx, cfg, pc, rs, pos[0], stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitFailure
+	}
+	cluster, err := describeEKS(ctx, cfg, pc.Name, pos[0], region)
 	if err != nil {
 		fmt.Fprintf(stderr, "looking up %s with %s: %v\n", pos[0], pc.Name, err)
 		return ExitFailure
 	}
-	list, err := listInstances(ctx, cfg, pc.Name)
+	// The hop must be in the cluster's region (and VPC) to reach its endpoint.
+	list, err := instancesIn(ctx, cfg, pc.Name, cluster.Region)
 	if err != nil {
 		fmt.Fprintf(stderr, "listing instances with %s: %v\n", pc.Name, err)
 		return ExitFailure
@@ -178,7 +186,7 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	err = execx.Interactive(ctx, execx.Spec{Name: "aws", Args: []string{"ssm", "start-session", "--target", hop.ID,
 		"--document-name", "AWS-StartPortForwardingSessionToRemoteHost",
 		"--parameters", fmt.Sprintf("host=%s,portNumber=443,localPortNumber=%d", cluster.Host, *port),
-		"--profile", pc.Name}, Stdout: stderr, Timeout: cfg.AWS.Timeout()})
+		"--region", cluster.Region, "--profile", pc.Name}, Stdout: stderr, Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "tunnel failed: %v\n", err)
@@ -235,7 +243,7 @@ func openTunnelTab(cfg config.Config, pc profileContext, c eksTarget, hop ec2Ins
 	if distro := os.Getenv("WSL_DISTRO_NAME"); distro != "" {
 		args = append(args, "wsl.exe", "-d", distro, "--")
 	}
-	args = append(args, self, "connect", c.Name, "--profile", pc.Name, "--via-instance", hop.ID, "--port", strconv.Itoa(port))
+	args = append(args, self, "connect", c.Name, "--profile", pc.Name, "--region", c.Region, "--via-instance", hop.ID, "--port", strconv.Itoa(port))
 	if cr != "" {
 		args = append(args, "--change-record", cr)
 	}

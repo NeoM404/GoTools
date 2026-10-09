@@ -88,7 +88,7 @@ esac`)
 	w.cfg = filepath.Join(w.home, "nedctl.json")
 	body := `{"environments": ["dev","ete","qa","prod"], "prodEnvironments": ["qa","prod"],
 	  "audit": {"logPath": ` + quote(w.logPath) + `},
-	  "aws": {"startUrl": "https://d-1234567890.awsapps.com/start", "ssoRegion": "af-south-1",
+	  "aws": {"startUrl": "https://d-1234567890.awsapps.com/start", "ssoRegion": "eu-west-1",
 	          "accountNamePattern": "^(?P<squad>[a-z]+)-(?P<env>dev|ete|qa|prod)$",
 	          "breakGlassRoles": ["BreakGlass-Admin"]` + extra + `}}`
 	if err := os.WriteFile(w.cfg, []byte(body), 0o600); err != nil {

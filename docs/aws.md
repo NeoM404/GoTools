@@ -32,7 +32,8 @@ example is [`configs/nedctl.aws.example.json`](../configs/nedctl.aws.example.jso
 |---|---|
 | `startUrl`, `ssoRegion` | The Identity Center access portal and its region. Required. |
 | `ssoSession` | Name of the `[sso-session]` nedctl writes (default `nedctl`). |
-| `region` | Default region of generated profiles (default `ssoRegion`). |
+| `region` | Default region of generated profiles (default `ssoRegion`). Rarely needed: commands find regions themselves (below). |
+| `regions` | The exact regions to search, overriding automatic discovery. |
 | `profilePrefix` | Generated profiles are named `<prefix>.<account>.<role>` (default `nedctl`). |
 | `accountNamePattern` | Gets squad and environment from an account's name: named groups `env` and, optionally, `squad`. |
 | `accounts` | Explicit `{id, squad, environment}` per account. Overrides the pattern. |
@@ -66,6 +67,22 @@ NEDCTL_DEBUG=1 nedctl aws login --device-code
 # nedctl debug: GET https://portal.sso.eu-west-1.amazonaws.com/assignment/accounts via proxy http://proxy:8080
 # nedctl debug: GET https://portal.sso.eu-west-1.amazonaws.com/assignment/accounts -> 200 OK in 412ms
 ```
+
+## Regions are found for you
+
+Accounts keep clusters and instances in whatever region the squad chose, not
+the Identity Center region. So `shell`, `ec2`, `connect` and `eks` don't rely
+on the profile's region. They search:
+
+1. **First run in an account:** every region enabled for it (`ec2 describe-regions`).
+   Regions an SCP denies are skipped.
+2. **After that:** only the regions where something was found, so it's fast. If
+   those turn up nothing, every region is searched again.
+3. **Overrides:** `--region R` searches one region, and `--all-regions` forces a
+   full search. `aws.regions` in config fixes the list.
+
+Results always say which regions were searched, so an empty answer is never
+silent. What was found where is remembered per account for 24 hours.
 
 ## Sign in: `nedctl aws login`
 

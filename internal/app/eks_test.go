@@ -10,7 +10,9 @@ func installEKSFake(t *testing.T, w *ec2World) {
 	t.Helper()
 	fakeCLI(t, "aws", `echo "$*" >> `+sq(w.calls)+`
 case "$*" in
-"eks list-clusters"*) echo '{"clusters":["payments-eks-prod","payments-eks-tools"]}';;
+"ec2 describe-regions"*) echo '["af-south-1","eu-west-1"]';;
+"eks list-clusters"*"--region af-south-1"*) echo '{"clusters":["payments-eks-prod","payments-eks-tools"]}';;
+"eks list-clusters"*) echo '{"clusters":[]}';;
 "eks describe-cluster --name payments-eks-prod"*) echo '{"cluster":{"arn":"arn:aws:eks:af-south-1:111111111111:cluster/payments-eks-prod","version":"1.30","accessConfig":{"authenticationMode":"CONFIG_MAP"},"resourcesVpcConfig":{"endpointPublicAccess":false,"endpointPrivateAccess":true}}}';;
 "eks describe-cluster --name payments-eks-tools"*) echo '{"cluster":{"arn":"arn:aws:eks:af-south-1:111111111111:cluster/payments-eks-tools","version":"1.31","accessConfig":{"authenticationMode":"API_AND_CONFIG_MAP"},"resourcesVpcConfig":{"endpointPublicAccess":true,"endpointPrivateAccess":true}}}';;
 "eks list-access-entries"*) echo '{"accessEntries":["arn:aws:iam::111111111111:role/AWSReservedSSO_Platform-Admin_abc","arn:aws:iam::111111111111:role/devops-pipeline"]}';;
@@ -38,7 +40,7 @@ func TestEKSAuthReportsConfigMapClustersFirst(t *testing.T) {
 		t.Fatalf("report: %+v", rep)
 	}
 	code, out, _ = run("--config", w.cfg, "eks", "auth")
-	if code != ExitOK || !strings.Contains(out, "2 cluster(s) · 1 on CONFIG_MAP only") {
+	if code != ExitOK || !strings.Contains(out, "2 cluster(s) · 1 on CONFIG_MAP only") || !strings.Contains(out, "searched af-south-1") || !strings.Contains(out, "REGION") {
 		t.Fatalf("table: code=%d\n%s", code, out)
 	}
 }

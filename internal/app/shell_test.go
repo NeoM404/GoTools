@@ -39,7 +39,9 @@ func newEC2World(t *testing.T, env, extra string) *ec2World {
 	t.Setenv("AWS_PROFILE", profile)
 	fakeCLI(t, "aws", `echo "$*" >> `+sq(w.calls)+`
 case "$*" in
-"ec2 describe-instances"*) printf '%s' `+sq(instancesJSON)+`;;
+"ec2 describe-regions"*) echo '["af-south-1","eu-west-1"]';;
+"ec2 describe-instances"*"--region af-south-1"*) printf '%s' `+sq(instancesJSON)+`;;
+"ec2 describe-instances"*) echo '{"Reservations":[]}';;
 "ssm start-session"*) echo "Starting session with SessionId: neo@bank.example-0123abcd";;
 "ec2 start-instances"*|"ec2 stop-instances"*) echo '{}';;
 "configure export-credentials"*) printf 'AWS_ACCESS_KEY_ID=ASIAEXAMPLE\nAWS_SECRET_ACCESS_KEY=c2VjcmV0\nAWS_SESSION_TOKEN=dG9rZW4=\n';;
@@ -60,7 +62,7 @@ func TestShellFilterToOneInstanceStartsAuditedSession(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
-	if !strings.Contains(w.awsCalls(t), "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --profile nedctl.payments-dev.Platform-Admin") {
+	if !strings.Contains(w.awsCalls(t), "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --region af-south-1 --profile nedctl.payments-dev.Platform-Admin") {
 		t.Fatalf("calls:\n%s", w.awsCalls(t))
 	}
 	if !strings.Contains(errb, "▶ payments · DEV · payments-devops") {
@@ -68,7 +70,7 @@ func TestShellFilterToOneInstanceStartsAuditedSession(t *testing.T) {
 	}
 	ev := readAudit(t, w.logPath)
 	if len(ev) != 2 || ev[1].Action != "ssm-session" || ev[1].Outcome != audit.OutcomeSuccess || ev[1].Account != "222222222222" ||
-		!strings.Contains(ev[1].Detail, "i-0aaaaaaaaaaaaaaa1 (payments-devops), level 3") {
+		!strings.Contains(ev[1].Detail, "i-0aaaaaaaaaaaaaaa1 (payments-devops) in af-south-1, level 3") {
 		t.Fatalf("audit: %+v", ev)
 	}
 }
@@ -160,7 +162,7 @@ func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 			sleepBriefly()
 		}
 	}
-	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--", "shell\n--profile\nnedctl.payments-prod.Platform-Admin\n--instance\ni-0aaaaaaaaaaaaaaa1"} {
+	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--", "shell\n--profile\nnedctl.payments-prod.Platform-Admin\n--region\naf-south-1\n--instance\ni-0aaaaaaaaaaaaaaa1"} {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf("wt.exe args lack %q:\n%s", want, got)
 		}
@@ -186,7 +188,7 @@ func TestEC2StartStop(t *testing.T) {
 	if code != ExitOK || !strings.Contains(out, "start requested for payments-batch") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
 	}
-	if !strings.Contains(w.awsCalls(t), "ec2 start-instances --instance-ids i-0bbbbbbbbbbbbbbb2") {
+	if !strings.Contains(w.awsCalls(t), "ec2 start-instances --instance-ids i-0bbbbbbbbbbbbbbb2 --region af-south-1") {
 		t.Fatalf("calls:\n%s", w.awsCalls(t))
 	}
 	if ev := readAudit(t, w.logPath); ev[len(ev)-1].Action != "ec2-start" || !ev[len(ev)-1].Production {
@@ -195,3 +197,42 @@ func TestEC2StartStop(t *testing.T) {
 }
 
 func sleepBriefly() { time.Sleep(20 * time.Millisecond) }
+
+// The profile defaults to the Identity Center region (eu-west-1) but the
+// account's instances are in af-south-1 — the situation on the bank's first
+// real test. shell must find them without any region setting.
+func TestShellFindsInstancesInAnotherRegionAndRemembers(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	if code, _, errb := run("--config", w.cfg, "shell", "devops"); code != ExitOK {
+		t.Fatalf("first run: %q", errb)
+	}
+	first := w.awsCalls(t)
+	if !strings.Contains(first, "describe-regions") || !strings.Contains(first, "describe-instances --profile nedctl.payments-dev.Platform-Admin --region eu-west-1") {
+		t.Fatalf("first run must search every enabled region:\n%s", first)
+	}
+	os.Remove(w.calls)
+	if code, _, errb := run("--config", w.cfg, "shell", "devops"); code != ExitOK {
+		t.Fatalf("second run: %q", errb)
+	}
+	second := w.awsCalls(t)
+	if strings.Contains(second, "--region eu-west-1") || strings.Contains(second, "describe-regions") {
+		t.Fatalf("second run must search only where instances were found:\n%s", second)
+	}
+	os.Remove(w.calls)
+	run("--config", w.cfg, "shell", "devops", "--all-regions")
+	if !strings.Contains(w.awsCalls(t), "--region eu-west-1") {
+		t.Fatalf("--all-regions must search everywhere again:\n%s", w.awsCalls(t))
+	}
+}
+
+func TestShellNothingFoundNamesTheRegionsSearched(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	code, _, errb := run("--config", w.cfg, "shell", "--region", "eu-west-1")
+	if code != ExitFailure || !strings.Contains(errb, "no instances in payments · DEV, searched eu-west-1") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	code, _, errb = run("--config", w.cfg, "shell", "--region", "nowhere")
+	if code != ExitFailure || !strings.Contains(errb, "is not an AWS region") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+}

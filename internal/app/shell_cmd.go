@@ -24,7 +24,10 @@ import (
 // ec2Instance is one row of the instance picker.
 type ec2Instance struct {
 	ID, Name, PrivateIP, State, Type, Zone, AccessLevel string
+	Region                                              string
 }
+
+func (e ec2Instance) regionOf() string { return e.Region }
 
 var instanceIDRe = regexp.MustCompile(`^i-[0-9a-f]{8,17}$`)
 
@@ -58,9 +61,23 @@ func (pc profileContext) label() string {
 	return strings.Trim(firstNonBlank(pc.Squad, pc.Name)+" · "+strings.ToUpper(pc.Environment), " ·")
 }
 
-// listInstances returns the account's instances that are not terminated.
-func listInstances(ctx context.Context, cfg config.Config, profile string) ([]ec2Instance, error) {
-	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "ec2", "describe-instances", "--profile", profile, "--output", "json",
+// listInstances returns the account's instances that are not terminated,
+// across the regions the search covers.
+func listInstances(ctx context.Context, cfg config.Config, pc profileContext, rs regionSearch, stderr io.Writer) ([]ec2Instance, []string, error) {
+	list, searched, err := searchRegions(ctx, cfg, pc, rs, "ec2", stderr, func(region string) ([]ec2Instance, error) {
+		return instancesIn(ctx, cfg, pc.Name, region)
+	})
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Name != list[j].Name {
+			return list[i].Name < list[j].Name
+		}
+		return list[i].ID < list[j].ID
+	})
+	return list, searched, err
+}
+
+func instancesIn(ctx context.Context, cfg config.Config, profile, region string) ([]ec2Instance, error) {
+	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "ec2", "describe-instances", "--profile", profile, "--region", region, "--output", "json",
 		"--filters", "Name=instance-state-name,Values=pending,running,stopping,stopped")
 	if err != nil {
 		return nil, err
@@ -88,7 +105,7 @@ func listInstances(ctx context.Context, cfg config.Config, profile string) ([]ec
 				return nil, fmt.Errorf("ec2 returned an invalid instance ID %q", in.InstanceID)
 			}
 			e := ec2Instance{ID: in.InstanceID, PrivateIP: in.PrivateIPAddress, State: in.State.Name,
-				Type: in.InstanceType, Zone: in.Placement.AvailabilityZone}
+				Type: in.InstanceType, Zone: in.Placement.AvailabilityZone, Region: region}
 			for _, tg := range in.Tags {
 				switch {
 				case tg.Key == "Name":
@@ -100,13 +117,13 @@ func listInstances(ctx context.Context, cfg config.Config, profile string) ([]ec
 			list = append(list, e)
 		}
 	}
-	sort.Slice(list, func(i, j int) bool {
-		if list[i].Name != list[j].Name {
-			return list[i].Name < list[j].Name
-		}
-		return list[i].ID < list[j].ID
-	})
 	return list, nil
+}
+
+// noInstances explains an empty search instead of an empty picker.
+func noInstances(pc profileContext, searched []string, stderr io.Writer) {
+	fmt.Fprintf(stderr, "no instances in %s, searched %s — wrong account? Try --all-regions, or --region R\n",
+		pc.label(), strings.Join(searched, ", "))
 }
 
 // chooseInstance resolves --instance or the filter terms to one instance,
@@ -167,6 +184,8 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	tab := fs.Bool("tab", false, "open the session in a new Windows Terminal tab coloured by environment")
 	crFlag := fs.String("change-record", "", "change record for this session, when change control requires one")
 	glassFlag := fs.String("break-glass", "", "emergency access without a change record; recorded and flagged")
+	var rs regionSearch
+	addRegionFlags(fs, &rs)
 	terms, err := parseInterspersed(fs, args)
 	if err != nil {
 		return ExitUsage
@@ -188,9 +207,13 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return launchLegacy(ctx, cfg, pc, stderr)
 	}
 
-	list, err := listInstances(ctx, cfg, pc.Name)
+	list, searched, err := listInstances(ctx, cfg, pc, rs, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "listing instances with %s: %v\n", pc.Name, err)
+		return ExitFailure
+	}
+	if len(list) == 0 {
+		noInstances(pc, searched, stderr)
 		return ExitFailure
 	}
 	in, code := chooseInstance(cfg, pc, list, *instance, terms, stderr)
@@ -208,7 +231,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	cr, glass := strings.TrimSpace(*crFlag), strings.TrimSpace(*glassFlag)
 	base := audit.Event{Action: "ssm-session", Cloud: "aws", Account: pc.AccountID, Environment: pc.Environment,
 		Production: pc.Production, ChangeRecord: cr, BreakGlass: glass != "", BreakGlassReason: glass,
-		Detail: fmt.Sprintf("instance %s (%s), level %s, profile %s", in.ID, firstNonBlank(in.Name, "unnamed"), firstNonBlank(in.AccessLevel, "untagged"), pc.Name)}
+		Detail: fmt.Sprintf("instance %s (%s) in %s, level %s, profile %s", in.ID, firstNonBlank(in.Name, "unnamed"), in.Region, firstNonBlank(in.AccessLevel, "untagged"), pc.Name)}
 	tr, err := beginAuditEvent(ctx, cfg, base, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "%v — refusing to start the session: every session must be recorded\n", err)
@@ -219,7 +242,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return code
 	}
 	banner(cfg, pc, firstNonBlank(in.Name, in.ID), stderr)
-	err = execx.Interactive(ctx, execx.Spec{Name: "aws", Args: []string{"ssm", "start-session", "--target", in.ID, "--profile", pc.Name},
+	err = execx.Interactive(ctx, execx.Spec{Name: "aws", Args: []string{"ssm", "start-session", "--target", in.ID, "--region", in.Region, "--profile", pc.Name},
 		Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
@@ -299,7 +322,7 @@ func openTab(cfg config.Config, pc profileContext, in ec2Instance, cr, glass str
 	if distro := os.Getenv("WSL_DISTRO_NAME"); distro != "" {
 		args = append(args, "wsl.exe", "-d", distro, "--")
 	}
-	args = append(args, self, "shell", "--profile", pc.Name, "--instance", in.ID)
+	args = append(args, self, "shell", "--profile", pc.Name, "--region", in.Region, "--instance", in.ID)
 	if cr != "" {
 		args = append(args, "--change-record", cr)
 	}
@@ -326,6 +349,8 @@ func cmdEC2(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 	fs.SetOutput(stderr)
 	profileFlag := fs.String("profile", "", "profile to act with")
 	yes := fs.Bool("yes", false, "do not ask for confirmation (required without a terminal in production)")
+	var rs regionSearch
+	addRegionFlags(fs, &rs)
 	pos, err := parseInterspersed(fs, args[1:])
 	if err != nil || len(pos) != 1 {
 		fmt.Fprintln(stderr, "usage: nedctl ec2 <start|stop> <instance-id|name> [--profile P] [--yes]")
@@ -340,7 +365,7 @@ func cmdEC2(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 	if !ok {
 		return ExitFailure
 	}
-	list, err := listInstances(ctx, cfg, pc.Name)
+	list, _, err := listInstances(ctx, cfg, pc, rs, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "listing instances with %s: %v\n", pc.Name, err)
 		return ExitFailure
@@ -362,13 +387,13 @@ func cmdEC2(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 		}
 	}
 	base := audit.Event{Action: "ec2-" + action, Cloud: "aws", Account: pc.AccountID, Environment: pc.Environment,
-		Production: pc.Production, Detail: fmt.Sprintf("instance %s (%s), profile %s", in.ID, firstNonBlank(in.Name, "unnamed"), pc.Name)}
+		Production: pc.Production, Detail: fmt.Sprintf("instance %s (%s) in %s, profile %s", in.ID, firstNonBlank(in.Name, "unnamed"), in.Region, pc.Name)}
 	tr, err := beginAuditEvent(ctx, cfg, base, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "%v — refusing to %s: every change must be recorded\n", err, action)
 		return ExitFailure
 	}
-	if _, err := execx.Output(ctx, cfg.Timeout(), "aws", "ec2", action+"-instances", "--instance-ids", in.ID, "--profile", pc.Name, "--output", "json"); err != nil {
+	if _, err := execx.Output(ctx, cfg.Timeout(), "aws", "ec2", action+"-instances", "--instance-ids", in.ID, "--region", in.Region, "--profile", pc.Name, "--output", "json"); err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "%s failed: %v\n", action, err)
 		return ExitFailure

@@ -52,6 +52,56 @@ type eksAuthReport struct {
 	ConfigMapOnly int `json:"configMapOnly"`
 }
 
+func (r eksAuthRow) regionOf() string { return r.Region }
+
+// clusterHit is one EKS cluster in one region.
+type clusterHit struct{ Name, Region string }
+
+func (c clusterHit) regionOf() string { return c.Region }
+
+func clustersIn(ctx context.Context, cfg config.Config, profile, region string) ([]clusterHit, error) {
+	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "list-clusters", "--profile", profile, "--region", region, "--output", "json")
+	if err != nil {
+		return nil, err
+	}
+	var list struct{ Clusters []string }
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("parsing eks list-clusters: %w", err)
+	}
+	hits := make([]clusterHit, 0, len(list.Clusters))
+	for _, n := range list.Clusters {
+		if !eksNameRe.MatchString(n) {
+			return nil, fmt.Errorf("eks returned an invalid cluster name %q", n)
+		}
+		hits = append(hits, clusterHit{Name: n, Region: region})
+	}
+	return hits, nil
+}
+
+// findCluster returns the region a cluster lives in, searching like every
+// other command. A name found in two regions must be disambiguated.
+func findCluster(ctx context.Context, cfg config.Config, pc profileContext, rs regionSearch, name string, stderr io.Writer) (string, error) {
+	all, searched, err := searchRegions(ctx, cfg, pc, rs, "eks", stderr, func(region string) ([]clusterHit, error) {
+		return clustersIn(ctx, cfg, pc.Name, region)
+	})
+	if err != nil {
+		return "", err
+	}
+	var regions []string
+	for _, h := range all {
+		if h.Name == name {
+			regions = append(regions, h.Region)
+		}
+	}
+	switch len(regions) {
+	case 0:
+		return "", fmt.Errorf("no cluster %q in %s (searched %s) — check the account, or try --all-regions", name, pc.label(), strings.Join(searched, ", "))
+	case 1:
+		return regions[0], nil
+	}
+	return "", fmt.Errorf("cluster %q exists in %s — pass --region", name, strings.Join(regions, " and "))
+}
+
 // authAction is the recommended next step for a mode.
 func authAction(mode string) string {
 	switch mode {
@@ -70,6 +120,8 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	fs.Var(&profiles, "profile", "profile to report on (repeatable; default: the current profile)")
 	allProfiles := fs.Bool("all-profiles", false, "every profile `nedctl aws login` has written")
 	failOnConfigMap := fs.Bool("fail-on-configmap", false, "exit 1 if any cluster still uses CONFIG_MAP only")
+	var rs regionSearch
+	addRegionFlags(fs, &rs)
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
@@ -105,6 +157,7 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	}
 
 	rep := eksAuthReport{Clusters: []eksAuthRow{}, Errors: []string{}}
+	searchedAll := map[string]bool{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
@@ -114,8 +167,14 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			rows, err := authRows(ctx, cfg, p)
+			pc := profileContext{Name: p, AccountID: meta[p].AccountID, Squad: meta[p].Squad, Environment: meta[p].Environment}
+			rows, searched, err := searchRegions(ctx, cfg, pc, rs, "eks", stderr, func(region string) ([]eksAuthRow, error) {
+				return authRows(ctx, cfg, p, region)
+			})
 			mu.Lock()
+			for _, r := range searched {
+				searchedAll[r] = true
+			}
 			defer mu.Unlock()
 			if err != nil {
 				rep.Errors = append(rep.Errors, fmt.Sprintf("%s: %v", p, err))
@@ -152,34 +211,34 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		return code
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "CLUSTER\tENV\tACCOUNT\tAUTH MODE\tENDPOINT\tVERSION\tNEXT STEP")
+	fmt.Fprintln(tw, "CLUSTER\tENV\tACCOUNT\tREGION\tAUTH MODE\tENDPOINT\tVERSION\tNEXT STEP")
 	for _, r := range rep.Clusters {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Cluster, dash(r.Environment), dash(r.Account), r.AuthMode, r.Endpoint, r.Version, dash(r.Action))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Cluster, dash(r.Environment), dash(r.Account), r.Region, r.AuthMode, r.Endpoint, r.Version, dash(r.Action))
 	}
 	tw.Flush()
-	fmt.Fprintf(stdout, "\n%d cluster(s) · %d on CONFIG_MAP only (no access entries possible yet)\n", len(rep.Clusters), rep.ConfigMapOnly)
+	regions := make([]string, 0, len(searchedAll))
+	for r := range searchedAll {
+		regions = append(regions, r)
+	}
+	sort.Strings(regions)
+	fmt.Fprintf(stdout, "\n%d cluster(s) · %d on CONFIG_MAP only (no access entries possible yet) · searched %s\n",
+		len(rep.Clusters), rep.ConfigMapOnly, dash(strings.Join(regions, ", ")))
 	for _, e := range rep.Errors {
 		fmt.Fprintf(stderr, "could not read: %s\n", e)
 	}
 	return code
 }
 
-// authRows describes every EKS cluster the profile can see.
-func authRows(ctx context.Context, cfg config.Config, profile string) ([]eksAuthRow, error) {
-	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "list-clusters", "--profile", profile, "--output", "json")
+// authRows describes every EKS cluster the profile can see in one region.
+func authRows(ctx context.Context, cfg config.Config, profile, region string) ([]eksAuthRow, error) {
+	hits, err := clustersIn(ctx, cfg, profile, region)
 	if err != nil {
 		return nil, err
 	}
-	var list struct{ Clusters []string }
-	if err := json.Unmarshal(out, &list); err != nil {
-		return nil, fmt.Errorf("parsing eks list-clusters: %w", err)
-	}
 	var rows []eksAuthRow
-	for _, name := range list.Clusters {
-		if !eksNameRe.MatchString(name) {
-			return nil, fmt.Errorf("eks returned an invalid cluster name %q", name)
-		}
-		out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "describe-cluster", "--name", name, "--profile", profile, "--output", "json")
+	for _, h := range hits {
+		name := h.Name
+		out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "describe-cluster", "--name", name, "--profile", profile, "--region", region, "--output", "json")
 		if err != nil {
 			return nil, err
 		}
@@ -207,10 +266,6 @@ func authRows(ctx context.Context, cfg config.Config, profile string) ([]eksAuth
 		if d.Cluster.ResourcesVpcConfig.EndpointPrivateAccess {
 			ep = append(ep, "private")
 		}
-		region := ""
-		if m := eksARN.FindStringSubmatch(d.Cluster.Arn); m != nil {
-			region = m[1]
-		}
 		rows = append(rows, eksAuthRow{Cluster: name, Profile: profile, Region: region, Version: d.Cluster.Version,
 			AuthMode: mode, Endpoint: strings.Join(ep, "+"), Action: authAction(mode)})
 	}
@@ -230,6 +285,8 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 	fs := flag.NewFlagSet("eks access", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	profileFlag := fs.String("profile", "", "profile to act with")
+	var rs regionSearch
+	addRegionFlags(fs, &rs)
 	output := addOutputFlag(fs)
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -247,13 +304,17 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 		fmt.Fprintf(stderr, "config error: %v\n", err)
 		return ExitFailure
 	}
-	profile := resolveProfile(cfg, *profileFlag)
-	if profile == "" {
-		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile")
+	pc, ok := loadProfileContext(cfg, *profileFlag, stderr)
+	if !ok {
 		return ExitFailure
 	}
-	name := pos[0]
-	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "list-access-entries", "--cluster-name", name, "--profile", profile, "--output", "json")
+	profile, name := pc.Name, pos[0]
+	region, err := findCluster(ctx, cfg, pc, rs, name, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitFailure
+	}
+	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "list-access-entries", "--cluster-name", name, "--profile", profile, "--region", region, "--output", "json")
 	if err != nil {
 		fmt.Fprintf(stderr, "listing access entries for %s: %v\n→ a cluster on CONFIG_MAP has none: see `nedctl eks auth`\n", name, err)
 		return ExitFailure
@@ -268,7 +329,7 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 	entries := []accessEntry{}
 	for _, arn := range list.AccessEntries {
 		e := accessEntry{Principal: arn, Policies: []string{}}
-		if out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "describe-access-entry", "--cluster-name", name, "--principal-arn", arn, "--profile", profile, "--output", "json"); err == nil {
+		if out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "describe-access-entry", "--cluster-name", name, "--principal-arn", arn, "--profile", profile, "--region", region, "--output", "json"); err == nil {
 			var d struct {
 				AccessEntry struct {
 					Type, Username   string
@@ -279,7 +340,7 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 				e.Type, e.Username, e.Groups = d.AccessEntry.Type, d.AccessEntry.Username, d.AccessEntry.KubernetesGroups
 			}
 		}
-		out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "list-associated-access-policies", "--cluster-name", name, "--principal-arn", arn, "--profile", profile, "--output", "json")
+		out, err := execx.Output(ctx, cfg.Timeout(), "aws", "eks", "list-associated-access-policies", "--cluster-name", name, "--principal-arn", arn, "--profile", profile, "--region", region, "--output", "json")
 		if err != nil {
 			fmt.Fprintf(stderr, "listing policies for %s: %v\n", arn, err)
 			return ExitFailure

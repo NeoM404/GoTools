@@ -61,8 +61,12 @@ func installConnectFake(t *testing.T, w *ec2World, caData string) {
 	desc := `{"cluster":{"name":"payments-eks-prod","arn":"arn:aws:eks:af-south-1:111111111111:cluster/payments-eks-prod","endpoint":"https://` + eksHost + `","version":"1.30","certificateAuthority":{"data":"` + caData + `"}}}`
 	fakeCLI(t, "aws", `echo "$*" >> `+sq(w.calls)+`
 case "$*" in
-"eks describe-cluster"*) printf '%s' `+sq(desc)+`;;
-"ec2 describe-instances"*) printf '%s' `+sq(instancesJSON)+`;;
+"eks describe-cluster"*"--region af-south-1"*) printf '%s' `+sq(desc)+`;;
+"eks list-clusters"*"--region af-south-1"*) echo '{"clusters":["payments-eks-prod"]}';;
+"eks list-clusters"*) echo '{"clusters":[]}';;
+"ec2 describe-regions"*) echo '["af-south-1","eu-west-1"]';;
+"ec2 describe-instances"*"--region af-south-1"*) printf '%s' `+sq(instancesJSON)+`;;
+"ec2 describe-instances"*) echo '{"Reservations":[]}';;
 "ssm start-session"*) echo "Waiting for connections...";;
 "eks get-token"*) echo '{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1beta1","status":{"token":"k8s-aws-v1.fake","expirationTimestamp":"2099-01-01T00:00:00Z"}}';;
 *) echo "fake aws: unexpected: $*" >&2; exit 254;;
@@ -86,7 +90,7 @@ func TestConnectTunnelsThroughDevopsBoxAndKubectlWorks(t *testing.T) {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 	calls := w.awsCalls(t)
-	want := "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters host=" + eksHost + ",portNumber=443,localPortNumber=" + strconv.Itoa(port)
+	want := "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters host=" + eksHost + ",portNumber=443,localPortNumber=" + strconv.Itoa(port) + " --region af-south-1"
 	if !strings.Contains(calls, want) {
 		t.Fatalf("tunnel must go through the devops instance to the private endpoint:\n%s", calls)
 	}
@@ -150,6 +154,8 @@ func TestConnectRefusesBadInput(t *testing.T) {
 	}
 	// An endpoint that is not EKS is refused before anything is written.
 	fakeCLI(t, "aws", `case "$*" in
+"ec2 describe-regions"*) echo '["af-south-1"]';;
+"eks list-clusters"*) echo '{"clusters":["x"]}';;
 "eks describe-cluster"*) echo '{"cluster":{"arn":"arn:aws:eks:af-south-1:1:cluster/x","endpoint":"https://evil.example.com","certificateAuthority":{"data":"eA=="}}}';;
 esac`)
 	code, _, errb := run("--config", w.cfg, "connect", "x")

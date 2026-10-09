@@ -143,7 +143,13 @@ type AWS struct {
 	// SSOSession names the [sso-session] nedctl writes (default "nedctl").
 	SSOSession string `json:"ssoSession"`
 	// Region is the default region of generated profiles (default SSORegion).
+	// Commands that look for clusters or instances search regions themselves
+	// (see Regions), so most users never set it.
 	Region string `json:"region"`
+	// Regions, when set, is the exact list of regions commands search.
+	// Empty: each account's enabled regions, narrowed by what was found
+	// before.
+	Regions []string `json:"regions"`
 	// ProfilePrefix starts every generated profile name (default "nedctl").
 	ProfilePrefix string `json:"profilePrefix"`
 	// AccountNamePattern derives squad and environment from an account's
@@ -290,6 +296,11 @@ func (c Config) validateAWS() error {
 	}
 	if a.Region != "" && !regionRe.MatchString(a.Region) {
 		errs = append(errs, fmt.Errorf("aws.region %q is not an AWS region", a.Region))
+	}
+	for _, r := range a.Regions {
+		if !regionRe.MatchString(r) {
+			errs = append(errs, fmt.Errorf("aws.regions: %q is not an AWS region such as af-south-1", r))
+		}
 	}
 	if !sessionNameRe.MatchString(a.Session()) || !sessionNameRe.MatchString(a.Prefix()) {
 		errs = append(errs, fmt.Errorf("aws.ssoSession and aws.profilePrefix may hold only letters, digits, - and _"))

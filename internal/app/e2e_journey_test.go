@@ -47,10 +47,13 @@ case "$*" in
   p=$(echo "$*" | sed -n 's/.*--profile \([^ ]*\).*/\1/p')
   acct=$(awk -v h="[profile $p]" '$0==h{f=1;next} /^\[/{f=0} f&&$1=="sso_account_id"{print $3}' "$AWS_CONFIG_FILE")
   echo "{\"Account\":\"$acct\",\"Arn\":\"arn:aws:sts::$acct:assumed-role/AWSReservedSSO_r_1/neo@bank.example\"}";;
-"ec2 describe-instances"*) printf '%s' `+sq(instancesJSON)+`;;
+"ec2 describe-instances"*"--region af-south-1"*) printf '%s' `+sq(instancesJSON)+`;;
+"ec2 describe-instances"*) echo '{"Reservations":[]}';;
 "ssm start-session"*) echo "Starting session with SessionId: neo@bank.example-0123abcd";;
-"eks list-clusters"*) echo '{"clusters":["payments-eks-prod"]}';;
-"eks describe-cluster"*) printf '%s' `+sq(desc)+`;;
+"eks describe-cluster"*"--region af-south-1"*) printf '%s' `+sq(desc)+`;;
+"eks list-clusters"*"--region af-south-1"*) echo '{"clusters":["payments-eks-prod"]}';;
+"eks list-clusters"*) echo '{"clusters":[]}';;
+"ec2 describe-regions"*) echo '["af-south-1","eu-west-1"]';;
 "eks get-token"*) echo '{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1beta1","status":{"token":"k8s-aws-v1.fake","expirationTimestamp":"2099-01-01T00:00:00Z"}}';;
 "configure export-credentials"*) printf 'AWS_ACCESS_KEY_ID=ASIAEXAMPLE\nAWS_SECRET_ACCESS_KEY=c2VjcmV0\nAWS_SESSION_TOKEN=dG9rZW4=\n';;
 *) echo "fake aws: unexpected: $*" >&2; exit 254;;
