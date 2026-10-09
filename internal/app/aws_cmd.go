@@ -88,6 +88,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	role := fs.String("role", "", "role (permission set) name")
 	deviceCode := fs.Bool("device-code", false, "sign in with a device code — for a host with no browser, such as a devops box")
 	force := fs.Bool("force", false, "sign in again even if a valid sign-in is cached")
+	refresh := fs.Bool("refresh", false, "fetch your accounts and roles again instead of reusing the list from this sign-in")
 	format := fs.String("format", defaultEnvFormat(), "what to print on stdout: sh (export AWS_PROFILE=…), powershell, or none")
 	all := fs.Bool("all", false, "break-glass: sign in to every account where you hold a break-glass role (needs --break-glass)")
 	glass := fs.String("break-glass", "", "the incident or reason for signing in to every account; recorded and flagged for review")
@@ -118,7 +119,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return ExitFailure
 	}
 
-	choices, managed, code := listChoices(ctx, cfg, *deviceCode, *force, stderr)
+	choices, managed, code := listChoices(ctx, cfg, *deviceCode, *force, *refresh, stderr)
 	if code != ExitOK {
 		return code
 	}
@@ -143,11 +144,16 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 
 // listChoices signs in when needed and lists the caller's assignments with
 // the squad and environment nedctl derives for each.
-func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool, stderr io.Writer) ([]awsChoice, awssso.Managed, int) {
+func listChoices(ctx context.Context, cfg config.Config, deviceCode, force, refresh bool, stderr io.Writer) ([]awsChoice, awssso.Managed, int) {
 	a := cfg.AWS
 	tok, managed, code := ensureSignIn(ctx, cfg, deviceCode, force, stderr)
 	if code != ExitOK {
 		return nil, managed, code
+	}
+	if !refresh {
+		if cached, ok := loadAssignments(cfg, tok); ok {
+			return classifyAll(cfg, cached), managed, ExitOK
+		}
 	}
 	assignments, err := newPortal(a).Assignments(ctx, tok)
 	if errors.Is(err, awssso.ErrUnauthorized) && !force {
@@ -162,12 +168,64 @@ func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool,
 		fmt.Fprint(stderr, networkHint(err))
 		return nil, managed, ExitFailure
 	}
+	saveAssignments(cfg, tok, assignments)
+	return classifyAll(cfg, assignments), managed, ExitOK
+}
+
+func classifyAll(cfg config.Config, assignments []awssso.Assignment) []awsChoice {
 	choices := make([]awsChoice, len(assignments))
 	for i, as := range assignments {
-		squad, env := a.Classify(as.AccountID, as.AccountName, cfg.Environments)
+		squad, env := cfg.AWS.Classify(as.AccountID, as.AccountName, cfg.Environments)
 		choices[i] = awsChoice{as, squad, env}
 	}
-	return choices, managed, ExitOK
+	return choices
+}
+
+// The account list is fetched once per sign-in: one call per account
+// through the proxy adds up. It is reused while the sign-in that produced
+// it is current (same token expiry) and holds no secret, only account
+// names, IDs and role names; the token itself is never stored by nedctl.
+type assignmentCache struct {
+	StartURL      string              `json:"startUrl"`
+	SignInExpires time.Time           `json:"signInExpires"`
+	Assignments   []awssso.Assignment `json:"assignments"`
+}
+
+func assignmentCachePath(cfg config.Config) (string, error) {
+	log, err := cfg.AuditLogPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(log), "assignments-"+cfg.AWS.Session()+".json"), nil
+}
+
+func loadAssignments(cfg config.Config, tok awssso.Token) ([]awssso.Assignment, bool) {
+	p, err := assignmentCachePath(cfg)
+	if err != nil {
+		return nil, false
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return nil, false
+	}
+	var c assignmentCache
+	if json.Unmarshal(data, &c) != nil || c.StartURL != cfg.AWS.StartURL || !c.SignInExpires.Equal(tok.ExpiresAt) || len(c.Assignments) == 0 {
+		return nil, false
+	}
+	return c.Assignments, true
+}
+
+func saveAssignments(cfg config.Config, tok awssso.Token, as []awssso.Assignment) {
+	p, err := assignmentCachePath(cfg)
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return
+	}
+	if data, err := json.Marshal(assignmentCache{StartURL: cfg.AWS.StartURL, SignInExpires: tok.ExpiresAt, Assignments: as}); err == nil {
+		_ = writeFileAtomic(p, data, 0o600) // best effort: a cache must never fail a sign-in
+	}
 }
 
 // breakGlassAll signs in to every account where the caller holds one of the

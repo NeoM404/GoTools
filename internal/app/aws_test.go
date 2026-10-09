@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -405,3 +406,47 @@ func TestAWSPickerSortsByEnvironmentAndMarksElevated(t *testing.T) {
 		t.Fatalf("elevated marking:\n%s", errb)
 	}
 }
+
+// One call per account through the proxy is slow: the list is fetched once
+// per sign-in and reused until the sign-in changes or --refresh.
+func TestAWSLoginReusesTheAccountListForTheSameSignIn(t *testing.T) {
+	w := newAWSWorld(t, "")
+	var calls atomic.Int32
+	inner := newPortal
+	newPortal = func(a config.AWS) awssso.Portal {
+		p := inner(a)
+		base := p.Client.Transport
+		p.Client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return base.RoundTrip(r)
+		})}
+		return p
+	}
+	login := func(extra ...string) {
+		t.Helper()
+		if code, _, errb := run(append([]string{"--config", w.cfg, "aws", "login", "--account", "lending-ete", "--format", "none"}, extra...)...); code != ExitOK {
+			t.Fatalf("login: %q", errb)
+		}
+	}
+	login()
+	first := calls.Load()
+	if first == 0 {
+		t.Fatal("the first login must ask the portal")
+	}
+	login()
+	if calls.Load() != first {
+		t.Fatalf("second login asked the portal again (%d calls, want %d)", calls.Load(), first)
+	}
+	login("--refresh")
+	if calls.Load() == first {
+		t.Fatal("--refresh must ask the portal again")
+	}
+	data, _ := os.ReadFile(filepath.Join(filepath.Dir(w.logPath), "assignments-nedctl.json"))
+	if len(data) == 0 || strings.Contains(string(data), "tok-secret") {
+		t.Fatalf("cache missing or holding the token: %s", data)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

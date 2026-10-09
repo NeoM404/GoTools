@@ -106,6 +106,11 @@ nedctl aws login --device-code                   # on a host with no browser (de
 4. It checks that the profile really acts in the chosen account
    (`sts get-caller-identity`), and records the sign-in.
 
+The account list is fetched once per sign-in and reused until you sign in
+again, so later logins open the picker straight away. Use `--refresh` after
+you've been given a new account. The saved list holds names and IDs only,
+never the token.
+
 No AWS keys pass through nedctl. The AWS CLI fetches short-term credentials
 for that one account and role when the profile is used. The picker and
 messages go to stderr, so stdout carries only `export AWS_PROFILE=…`.
