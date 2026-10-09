@@ -49,6 +49,24 @@ prod `#ef4444`.
 You need: AWS CLI v2, the Session Manager plugin, and `kubectl` for `connect`.
 Run `nedctl doctor` to check.
 
+## Behind a corporate proxy
+
+nedctl's own HTTPS calls (the Identity Center portal, plus ServiceNow, the
+SIEM and an inventory URL when configured) use the same proxy settings as the
+AWS CLI: `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`. If the proxy re-signs
+TLS with a corporate CA, trust that CA with `SSL_CERT_FILE=<bundle>`, the same
+file `AWS_CA_BUNDLE` points at, or add it to the system store.
+
+To see every request nedctl makes, set `NEDCTL_DEBUG=1`. It logs the method,
+URL (without its query), the route taken (proxy or direct), the status and the
+time taken. Headers are never logged, so tokens stay out of the output:
+
+```bash
+NEDCTL_DEBUG=1 nedctl aws login --device-code
+# nedctl debug: GET https://portal.sso.eu-west-1.amazonaws.com/assignment/accounts via proxy http://proxy:8080
+# nedctl debug: GET https://portal.sso.eu-west-1.amazonaws.com/assignment/accounts -> 200 OK in 412ms
+```
+
 ## Sign in: `nedctl aws login`
 
 ```bash

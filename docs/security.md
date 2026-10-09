@@ -58,6 +58,9 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
 
 ## Network and processes
 
+- All of nedctl's own HTTPS calls share one client: environment proxy
+  (`HTTPS_PROXY`/`NO_PROXY`), TLS 1.2+, the system trust store. `NEDCTL_DEBUG=1`
+  logs each request's route and status, but never its headers or query.
 - nedctl itself connects only to: the Identity Center portal, plus ServiceNow,
   the SIEM collector and an inventory URL when configured. All are HTTPS,
   TLS 1.2+, and redirects to plain HTTP are refused. Everything else goes

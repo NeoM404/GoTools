@@ -332,3 +332,22 @@ func TestAWSEnvRefusesSuspiciousOutput(t *testing.T) {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
 	}
 }
+
+// A portal call that hangs (no proxy behind a corporate firewall) must end
+// with an explanation, not just "Client.Timeout exceeded".
+func TestAWSLoginTimeoutExplainsTheProxy(t *testing.T) {
+	w := newAWSWorld(t, "")
+	hang := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) { time.Sleep(2 * time.Second) }))
+	t.Cleanup(hang.Close)
+	newPortal = func(config.AWS) awssso.Portal {
+		c := hang.Client()
+		c.Timeout = 200 * time.Millisecond
+		return awssso.Portal{BaseURL: hang.URL, Client: c}
+	}
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("https_proxy", "")
+	code, _, errb := run("--config", w.cfg, "aws", "login", "--account", "payments-dev")
+	if code != ExitFailure || !strings.Contains(errb, "HTTPS_PROXY is not set") || !strings.Contains(errb, "NEDCTL_DEBUG=1") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+}

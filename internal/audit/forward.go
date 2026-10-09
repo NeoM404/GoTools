@@ -3,12 +3,13 @@ package audit
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"nedctl/internal/httpx"
 )
 
 // Forwarder sends each event to a SIEM collector over HTTPS as it is written,
@@ -27,16 +28,12 @@ func (f *Forwarder) httpClient() *http.Client {
 	if f.client != nil {
 		return f.client
 	}
-	return &http.Client{
-		Timeout:   f.Timeout,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-			if req.URL.Scheme != "https" {
-				return fmt.Errorf("refusing redirect to non-https URL %q", req.URL.String())
-			}
-			return nil
-		},
-	}
+	return httpx.Client(f.Timeout, func(req *http.Request, _ []*http.Request) error {
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing redirect to non-https URL %q", req.URL.String())
+		}
+		return nil
+	})
 }
 
 // Send delivers one event.

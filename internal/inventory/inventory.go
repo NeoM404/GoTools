@@ -5,7 +5,6 @@
 package inventory
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"nedctl/internal/httpx"
 )
 
 // Cloud identifies the platform hosting a cluster.
@@ -123,18 +124,14 @@ func LoadURL(raw string) (Fleet, error) {
 	if u.Scheme != "https" {
 		return Fleet{}, fmt.Errorf("inventory URL must be https, got %q", u.Scheme)
 	}
-	client := &http.Client{
-		Timeout:   15 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
-		// Refuse any redirect that downgrades to plain HTTP — a redirect must
-		// not defeat the https-only guarantee.
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-			if req.URL.Scheme != "https" {
-				return fmt.Errorf("refusing redirect to non-https URL %q", req.URL.String())
-			}
-			return nil
-		},
-	}
+	// Refuse any redirect that downgrades to plain HTTP — a redirect must
+	// not defeat the https-only guarantee.
+	client := httpx.Client(15*time.Second, func(req *http.Request, _ []*http.Request) error {
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing redirect to non-https URL %q", req.URL.String())
+		}
+		return nil
+	})
 	return loadURLWithClient(raw, client)
 }
 

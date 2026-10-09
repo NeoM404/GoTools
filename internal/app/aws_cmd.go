@@ -157,6 +157,7 @@ func listChoices(ctx context.Context, cfg config.Config, deviceCode, force bool,
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "listing your Identity Center assignments: %v\n", err)
+		fmt.Fprint(stderr, networkHint(err))
 		return nil, managed, ExitFailure
 	}
 	choices := make([]awsChoice, len(assignments))
@@ -581,4 +582,25 @@ func awsEnv(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 		}
 	}
 	return ExitOK
+}
+
+// networkHint explains the two failures a corporate network usually causes —
+// a call that hangs because it is not going through the proxy, and a TLS
+// error because a proxy re-signs traffic with a corporate CA — and what to
+// set. It returns "" for any other error.
+func networkHint(err error) string {
+	msg := err.Error()
+	proxy := firstNonBlank(os.Getenv("HTTPS_PROXY"), os.Getenv("https_proxy"))
+	switch {
+	case strings.Contains(msg, "Client.Timeout") || strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "i/o timeout"):
+		if proxy == "" {
+			return "→ the call timed out and HTTPS_PROXY is not set: if the AWS CLI works here through a proxy, export the same HTTPS_PROXY (and NO_PROXY) for nedctl\n" +
+				"→ run with NEDCTL_DEBUG=1 to see each request and the route it takes\n"
+		}
+		return "→ the call timed out going through HTTPS_PROXY; check the proxy allows the Identity Center portal (portal.sso.<region>.amazonaws.com)\n" +
+			"→ run with NEDCTL_DEBUG=1 to see each request and the route it takes\n"
+	case strings.Contains(msg, "x509:") || strings.Contains(msg, "certificate"):
+		return "→ TLS could not be verified: behind a TLS-inspecting proxy, trust the corporate root CA — export SSL_CERT_FILE=<the bundle AWS_CA_BUNDLE points at>, or add it to the system store (update-ca-certificates)\n"
+	}
+	return ""
 }

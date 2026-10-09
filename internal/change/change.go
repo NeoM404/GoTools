@@ -5,7 +5,6 @@ package change
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +14,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"nedctl/internal/httpx"
 )
 
 // DefaultPattern matches ServiceNow change numbers (CHG + 7 digits).
@@ -73,16 +74,12 @@ func (s *ServiceNow) client() *http.Client {
 	if s.Client != nil {
 		return s.Client
 	}
-	return &http.Client{
-		Timeout:   s.Timeout,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-			if req.URL.Scheme != "https" {
-				return fmt.Errorf("refusing redirect to non-https URL %q", req.URL.String())
-			}
-			return nil
-		},
-	}
+	return httpx.Client(s.Timeout, func(req *http.Request, _ []*http.Request) error {
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing redirect to non-https URL %q", req.URL.String())
+		}
+		return nil
+	})
 }
 
 // field is a Table API value under sysparm_display_value=all.

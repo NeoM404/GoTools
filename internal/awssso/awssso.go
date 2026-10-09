@@ -17,7 +17,6 @@ package awssso
 import (
 	"context"
 	"crypto/sha1" //nolint:gosec // the AWS CLI names its cache files by SHA-1; not a security use
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -32,6 +31,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"nedctl/internal/httpx"
 )
 
 // Token is a cached Identity Center access token. AccessToken is a bearer
@@ -127,12 +128,8 @@ func (p Portal) client() *http.Client {
 	if timeout <= 0 {
 		timeout = 20 * time.Second
 	}
-	return &http.Client{
-		Timeout:   timeout,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
-		// The bearer token must never follow a redirect off the portal.
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	// The bearer token must never follow a redirect off the portal.
+	return httpx.Client(timeout, func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse })
 }
 
 func (p Portal) get(ctx context.Context, tok Token, path string, q url.Values, into any) error {
