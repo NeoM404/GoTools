@@ -52,6 +52,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return ExitOK
 	case "init":
 		return cmdInit(cmdArgs, stdout, stderr)
+	case "setup":
+		return cmdSetup(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "doctor":
 		return cmdDoctor(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "clusters":
@@ -126,6 +128,8 @@ Usage:
   nedctl [--config PATH] <command> [args]
 
 Commands:
+  setup [--yes]               First run: sign-in settings, install to
+                              ~/.local/bin, prompt + tab colour, health check
   init                        Write a starter config to ~/.config/nedctl
                               [--path PATH] [--force]
                               [--mode workstation|bastion]
@@ -222,7 +226,7 @@ Commands:
 Exit codes: 0 ok · 1 failed/check found a problem · 2 usage error
             3 production context (guard --block) · 130 interrupted
 Config: --config, $NEDCTL_CONFIG, ~/.config/nedctl/config.json, ./nedctl.json
-First run:  nedctl init  then edit the config's inventory source.
+First run:  nedctl setup   (sign-in settings, PATH, prompt, health check)
 See docs/nedctl.md for full documentation.
 `)
 }

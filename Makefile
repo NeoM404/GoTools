@@ -1,7 +1,11 @@
 BINARY   := nedctl
 PKG      := ./cmd/nedctl
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS  := -s -w -X nedctl/internal/app.Version=$(VERSION)
+# ORG_DEFAULTS: base64 of a config fragment built into the binary (start URL,
+# region, environments…) so squads need no config file. Set by the release
+# pipeline from a secure file; empty for local builds.
+ORG_DEFAULTS ?=
+LDFLAGS  := -s -w -X nedctl/internal/app.Version=$(VERSION) -X nedctl/internal/config.OrgDefaults=$(ORG_DEFAULTS)
 
 # Release builds are static (no cgo), carry no local filesystem paths
 # (-trimpath) and are reproducible: the same commit and toolchain produce

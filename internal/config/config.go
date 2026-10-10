@@ -11,6 +11,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -868,11 +869,58 @@ func (c Config) validateEnvironments() error {
 	return errors.Join(errs...)
 }
 
-// Default returns config used when no file is present.
-func Default() Config {
-	return Config{
-		ProdPatterns: []string{`(?i)prod`, `(?i)-prd-`},
+// OrgDefaults is a config fragment built into release binaries, base64
+// JSON set with -ldflags "-X nedctl/internal/config.OrgDefaults=…" (see the
+// Makefile's ORG_DEFAULTS). It holds what every engineer in the organisation
+// shares — the Identity Center start URL and region, environments, prod
+// patterns — so nedctl works with no config file at all. A user's own config
+// file is applied on top. Empty in source, so nothing organisation-specific
+// lives in the repository.
+var OrgDefaults string
+
+// OrgDefaultsErr reports built-in defaults that do not decode; doctor shows
+// it. Such defaults are ignored.
+func OrgDefaultsErr() error {
+	_, err := orgDefaults()
+	return err
+}
+
+func orgDefaults() (Config, error) {
+	cfg := genericDefaults()
+	if OrgDefaults == "" {
+		return cfg, nil
 	}
+	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(OrgDefaults))
+	if err != nil {
+		return cfg, fmt.Errorf("built-in defaults: not base64: %w", err)
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return genericDefaults(), fmt.Errorf("built-in defaults: %w", err)
+	}
+	if err := strictCheck(data); err != nil {
+		return genericDefaults(), fmt.Errorf("built-in defaults: %w", err)
+	}
+	if err := cfg.validate(); err != nil {
+		return genericDefaults(), fmt.Errorf("built-in defaults: %w", err)
+	}
+	return cfg, nil
+}
+
+// HasOrgDefaults reports valid built-in defaults.
+func HasOrgDefaults() bool { return OrgDefaults != "" && OrgDefaultsErr() == nil }
+
+// Default returns config used when no file is present: the built-in
+// organisation defaults, if any, else the generic ones.
+func Default() Config {
+	cfg, err := orgDefaults()
+	if err != nil {
+		return genericDefaults()
+	}
+	return cfg
+}
+
+func genericDefaults() Config {
+	return Config{ProdPatterns: []string{`(?i)prod`, `(?i)-prd-`}}
 }
 
 // Load resolves and reads the config file. An empty explicitPath triggers the

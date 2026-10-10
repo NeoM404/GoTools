@@ -22,12 +22,23 @@ New tools are added as separate `cmd/<tool>` binaries in this one module.
 
 ## Quick start
 
+Engineers: download the release binary for your machine, then
+
+```bash
+chmod +x nedctl-linux-amd64 && ./nedctl-linux-amd64 setup
+```
+
+`setup` installs nedctl to `~/.local/bin`, adds the prompt and tab colours
+to your shell, checks your tools and network, and tells you what to run
+next (`nedctl aws login`). Release builds carry the organisation's sign-in
+settings, so there is no config to write.
+
+From source:
+
 ```bash
 git clone https://dev.azure.com/Nedbank-Limited/Enteprise-IAC-AWS/_git/k8s-nedctl
 cd k8s-nedctl
-make build                     # -> bin/nedctl
-./bin/nedctl doctor           # check your ecosystem tools
-./bin/nedctl --config configs/nedctl.example.json clusters list
+make build && ./bin/nedctl setup
 ```
 
 ### Bastions and Azure DevOps

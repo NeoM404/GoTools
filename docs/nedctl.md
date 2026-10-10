@@ -29,6 +29,33 @@ bastion (`"mode": "bastion"`) it needs only `kubectl`.
 ## First run
 
 ```bash
+nedctl setup
+```
+
+One command from a downloaded binary to a working tool. Each step asks
+first (`--yes` accepts all), is safe to repeat, and never overwrites
+anything:
+
+1. **config**: uses the organisation settings built into release binaries;
+   otherwise asks for the IAM Identity Center start URL and region (or take
+   `--start-url`/`--sso-region`) and writes `~/.config/nedctl/config.json`.
+2. **install**: copies nedctl to `~/.local/bin` (skip with `--no-install`).
+   Running a newer download's `setup` is also how you update.
+3. **shell**: adds a marked `# >>> nedctl >>>` block to `~/.bashrc` or
+   `~/.zshrc` that puts `~/.local/bin` on PATH and runs `nedctl prompt init`
+   (skip with `--no-shell`). Re-running refreshes the block; nothing outside
+   it is touched.
+4. **doctor**: the full health check.
+
+Release builds get the organisation settings at build time: `make build
+ORG_DEFAULTS=$(base64 -w0 org.json)`, where `org.json` is a config fragment
+(start URL, region, environments, prod patterns). A user's own config file
+still applies on top. The fragment is kept out of the repository; the
+release pipeline reads it from a secure file.
+
+To write a config by hand instead:
+
+```bash
 nedctl init                 # writes ~/.config/nedctl/config.json
 # edit it: set "inventoryPath" or "inventoryUrl"
 nedctl doctor               # check the CLIs nedctl needs

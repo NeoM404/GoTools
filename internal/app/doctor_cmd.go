@@ -59,8 +59,12 @@ func environmentChecks(ctx context.Context, cfg config.Config, used string, cfgE
 	case cfgErr != nil:
 		add("config", "fail", cfgErr.Error())
 		return cs
+	case config.OrgDefaultsErr() != nil:
+		add("config", "fail", config.OrgDefaultsErr().Error()+" — this build is broken; get a fresh release")
+	case used == "" && config.HasOrgDefaults():
+		add("config", "ok", "built-in organisation settings (no file needed)")
 	case used == "":
-		add("config", "info", "no config file — run `nedctl init`")
+		add("config", "info", "no config file — run `nedctl setup`")
 	default:
 		add("config", "ok", used)
 	}
@@ -144,9 +148,13 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	// doctor always runs (its job is to diagnose a broken setup).
 	cfg, used, cfgErr := config.Load(cfgPath)
 	var notRequired []string
-	if cfg.Bastion() {
+	switch {
+	case cfg.Bastion():
 		// Credentials are provisioned on a bastion; nedctl needs only kubectl.
 		notRequired = []string{"aws", "az"}
+	case cfg.AWS.Configured() && len(cfg.Discovery.Azure) == 0:
+		// An AWS squad: nothing it runs needs the Azure CLI.
+		notRequired = []string{"az"}
 	}
 	results := tools.Inspect(ctx, cfg.MinVersions, notRequired...)
 	if cfg.AWS.Configured() {
