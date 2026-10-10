@@ -136,19 +136,19 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 // closes the tunnel (when there is one) and the audit record.
 func runKubeChild(ctx context.Context, cfg config.Config, pc profileContext, plan tunnelPlan, command []string,
 	tr *trail, base audit.Event, tunnel *execx.Process, logPath string, stderr io.Writer) int {
-	env := []string{"KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBE=" + plan.cluster.Name}
+	env := []string{"KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBE=" + plan.cluster.Name}
 	var childErr error
 	if command != nil {
 		childErr = execx.Interactive(ctx, execx.Spec{Name: command[0], Args: command[1:], Env: env, Timeout: cfg.AWS.Timeout()})
 	} else {
-		name, shellArgs, cleanup := kubeShell(cfg, pc, plan.cluster.Name)
+		name, shellArgs, shellEnv, cleanup := kubeShell(cfg, pc, plan.cluster.Name)
 		defer cleanup()
 		closing := "Type exit to close the tunnel."
 		if tunnel == nil {
 			closing = "Type exit when done."
 		}
-		fmt.Fprintf(stderr, "⎈ %s ready — kubectl works in this shell. %s\n", plan.cluster.Name, closing)
-		childErr = execx.Interactive(ctx, execx.Spec{Name: name, Args: shellArgs, Env: env, Timeout: cfg.AWS.Timeout()})
+		fmt.Fprintf(stderr, "⎈ %s ready — kubectl works in this shell. %s\n  other terminals: export KUBECONFIG=%s\n", plan.cluster.Name, closing, plan.kubeconfig)
+		childErr = execx.Interactive(ctx, execx.Spec{Name: name, Args: shellArgs, Env: append(env, shellEnv...), Timeout: cfg.AWS.Timeout()})
 	}
 
 	if tunnel != nil {
@@ -234,33 +234,63 @@ func logTail(path string, n int) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// kubeShell returns the shell to start. For bash it adds an rcfile that
-// loads the user's ~/.bashrc and then prefixes the prompt with the cluster
-// in its environment's colour, so it is always clear where kubectl points.
-func kubeShell(cfg config.Config, pc profileContext, cluster string) (string, []string, func()) {
+// kubeShell returns the shell to start, its arguments and extra
+// environment. The user's own startup files load first; afterwards
+// KUBECONFIG is set back to this cluster's (a ~/.bashrc or ~/.zshrc that
+// exports KUBECONFIG would otherwise silently point kubectl elsewhere),
+// with a note when that happened, and the prompt is prefixed with the
+// cluster in its environment's colour. bash and zsh get this; other shells
+// start as they are with KUBECONFIG in their environment.
+func kubeShell(cfg config.Config, pc profileContext, cluster string) (string, []string, []string, func()) {
+	none := func() {}
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		if runtime.GOOS == "windows" {
-			return "powershell.exe", []string{"-NoLogo"}, func() {}
+			return "powershell.exe", []string{"-NoLogo"}, nil, none
 		}
 		shell = "/bin/sh"
 	}
-	if filepath.Base(shell) != "bash" {
-		return shell, nil, func() {}
-	}
 	label := "⎈ " + strings.TrimSpace(cluster+" "+strings.ToUpper(pc.Environment))
-	prefix := label
-	if r, g, b, ok := picker.RGB(cfg.ColorFor(pc.Environment)); ok && os.Getenv("NO_COLOR") == "" {
-		prefix = fmt.Sprintf(`\[\e[1;38;2;%d;%d;%dm\]%s\[\e[0m\]`, r, g, b, label)
+	r, g, b, colored := picker.RGB(cfg.ColorFor(pc.Environment))
+	colored = colored && os.Getenv("NO_COLOR") == ""
+	// The cluster name is restricted to [A-Za-z0-9_-] and the environment to
+	// letters, so nothing below can break out of its quotes.
+	restore := `if [ -n "$NEDCTL_KUBECONFIG" ] && [ "$KUBECONFIG" != "$NEDCTL_KUBECONFIG" ]; then
+  echo "nedctl: your shell startup changed KUBECONFIG; set back to $NEDCTL_KUBECONFIG for this shell" >&2
+fi
+export KUBECONFIG="$NEDCTL_KUBECONFIG"
+`
+	switch filepath.Base(shell) {
+	case "bash":
+		prefix := label
+		if colored {
+			prefix = fmt.Sprintf(`\[\e[1;38;2;%d;%d;%dm\]%s\[\e[0m\]`, r, g, b, label)
+		}
+		rc, err := os.CreateTemp("", "nedctl-kube-*.bashrc")
+		if err != nil {
+			return shell, nil, nil, none
+		}
+		fmt.Fprintf(rc, "[ -f ~/.bashrc ] && . ~/.bashrc\n%sPS1='%s '\"$PS1\"\n", restore, prefix)
+		rc.Close()
+		_ = os.Chmod(rc.Name(), 0o600)
+		return shell, []string{"--rcfile", rc.Name(), "-i"}, nil, func() { os.Remove(rc.Name()) }
+	case "zsh":
+		prefix := label
+		if colored {
+			prefix = fmt.Sprintf("%%B%%F{#%02x%02x%02x}%s%%f%%b", r, g, b, label)
+		}
+		dir, err := os.MkdirTemp("", "nedctl-kube-zsh-")
+		if err != nil {
+			return shell, nil, nil, none
+		}
+		// zsh reads .zshenv and .zshrc from $ZDOTDIR: these load the user's
+		// own files from $HOME, then restore KUBECONFIG and set the prompt.
+		_ = os.WriteFile(filepath.Join(dir, ".zshenv"), []byte(`[ -f "$HOME/.zshenv" ] && . "$HOME/.zshenv"`+"\n"), 0o600)
+		_ = os.WriteFile(filepath.Join(dir, ".zshrc"), []byte(`export ZDOTDIR="$HOME"
+[ -f "$HOME/.zshrc" ] && . "$HOME/.zshrc"
+`+restore+`PROMPT='`+prefix+` '"$PROMPT"
+`), 0o600)
+		return shell, []string{"-i"}, []string{"ZDOTDIR=" + dir}, func() { os.RemoveAll(dir) }
 	}
-	rc, err := os.CreateTemp("", "nedctl-kube-*.bashrc")
-	if err != nil {
-		return shell, nil, func() {}
-	}
-	// The cluster name is restricted to [A-Za-z0-9_-] and the environment
-	// to letters, so nothing here can break out of the single quotes.
-	fmt.Fprintf(rc, "[ -f ~/.bashrc ] && . ~/.bashrc\nPS1='%s '\"$PS1\"\n", prefix)
-	rc.Close()
-	_ = os.Chmod(rc.Name(), 0o600)
-	return shell, []string{"--rcfile", rc.Name(), "-i"}, func() { os.Remove(rc.Name()) }
+	return shell, nil, nil, none
 }

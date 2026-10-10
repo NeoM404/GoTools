@@ -241,9 +241,12 @@ Direct connections verify TLS against the cluster's CA and use the same
 If neither route works, nedctl says why for both: the endpoint's exposure,
 and the missing instance.
 
-In bash, the prompt starts with `⎈ <cluster> <ENV>` in the environment's
-colour, after your own `~/.bashrc` has loaded. Other shells start unchanged,
-with `KUBECONFIG` and `NEDCTL_KUBE` set.
+In bash and zsh, your own startup files load first (`~/.bashrc`, or
+`~/.zshenv` and `~/.zshrc`). Then nedctl sets `KUBECONFIG` back to the
+cluster's kubeconfig, and says so if a startup file had changed it. It also
+prefixes the prompt with `⎈ <cluster> <ENV>` in the environment's colour.
+Other shells start unchanged, with `KUBECONFIG` and `NEDCTL_KUBE` set. The
+ready message prints the `export KUBECONFIG=…` line for other terminals.
 
 ## Moving clusters to access entries: `nedctl eks`
 

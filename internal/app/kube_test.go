@@ -135,7 +135,7 @@ func TestKubeBashPromptShowsClusterInEnvironmentColour(t *testing.T) {
 	t.Setenv("SHELL", "/bin/bash")
 	t.Setenv("NO_COLOR", "")
 	cfg := mustLoad(t, newEC2World(t, "prod", "").cfg)
-	name, args, cleanup := kubeShell(cfg, profileContext{Environment: "prod"}, "payments-eks-prod")
+	name, args, _, cleanup := kubeShell(cfg, profileContext{Environment: "prod"}, "payments-eks-prod")
 	if name != "/bin/bash" || len(args) != 3 || args[0] != "--rcfile" || args[2] != "-i" {
 		t.Fatalf("got %s %v", name, args)
 	}
@@ -152,9 +152,9 @@ func TestKubeBashPromptShowsClusterInEnvironmentColour(t *testing.T) {
 	if _, err := os.Stat(args[1]); !os.IsNotExist(err) {
 		t.Fatal("the rcfile must be removed afterwards")
 	}
-	t.Setenv("SHELL", "/bin/zsh")
-	if name, args, _ := kubeShell(cfg, profileContext{}, "c"); name != "/bin/zsh" || args != nil {
-		t.Fatalf("other shells start as they are: %s %v", name, args)
+	t.Setenv("SHELL", "/bin/fish")
+	if name, args, env, _ := kubeShell(cfg, profileContext{}, "c"); name != "/bin/fish" || args != nil || env != nil {
+		t.Fatalf("other shells start as they are: %s %v %v", name, args, env)
 	}
 }
 
@@ -239,5 +239,38 @@ func TestAutoWithoutDevopsInstanceOrDirectRouteExplainsBoth(t *testing.T) {
 		if code != ExitFailure || !strings.Contains(errb, want) {
 			t.Fatalf("code=%d, lacks %q:\n%s", code, want, errb)
 		}
+	}
+}
+
+// The bug from the first real run: a ~/.bashrc (or ~/.zshrc) that exports
+// KUBECONFIG silently pointed kubectl away from the cluster. The shell must
+// end up with nedctl's kubeconfig, and say it corrected it.
+func TestKubeShellRestoresKubeconfigAfterStartupFiles(t *testing.T) {
+	for _, sh := range []string{"bash", "zsh"} {
+		t.Run(sh, func(t *testing.T) {
+			path, err := exec.LookPath(sh)
+			if err != nil {
+				t.Skip(sh + " not installed")
+			}
+			w := newEC2World(t, "dev", "")
+			port, _ := freePort()
+			ca := fakeEKSAPI(t, port)
+			installKubeFake(t, w, ca, "")
+			seen := filepath.Join(w.home, "seen")
+			rcName := map[string]string{"bash": ".bashrc", "zsh": ".zshrc"}[sh]
+			os.WriteFile(filepath.Join(w.home, rcName), []byte("export KUBECONFIG=/somewhere/else\ntrap 'printf %s \"$KUBECONFIG\" > "+seen+"' EXIT\n"), 0o600)
+			t.Setenv("SHELL", path)
+			code, _, errb := run("--config", w.cfg, "kube", "payments-eks-prod", "--port", strconv.Itoa(port))
+			if code != ExitOK {
+				t.Fatalf("code=%d err=%q", code, errb)
+			}
+			want := filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json")
+			if got, _ := os.ReadFile(seen); string(got) != want {
+				t.Fatalf("%s ended with KUBECONFIG=%q, want %q", sh, got, want)
+			}
+			if !strings.Contains(errb, "other terminals: export KUBECONFIG="+want) {
+				t.Fatalf("ready message must show the export line: %q", errb)
+			}
+		})
 	}
 }
