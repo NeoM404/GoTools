@@ -111,6 +111,13 @@ func openWTTab(cfg config.Config, env, title, hint string, args []string, stderr
 // so the tab would lack what is set there (proxy, CA trust, PATH). Running
 // it as `<shell> -l -i script` loads them as a new Windows Terminal Ubuntu
 // tab does. The script deletes itself first.
+//
+// The network settings this terminal has are then set again on top
+// (tabNetworkVars), whatever provided them: a new tab does not always get
+// them (WSL's proxy mirroring, Windows-side variables), and without the
+// proxy the AWS CLI meets the bank's TLS interception and fails with
+// "self-signed certificate in certificate chain". The script is 0600 and
+// removed as soon as the tab starts, since a proxy URL may hold a password.
 func tabScript(self string, args []string) (shell, path string, err error) {
 	shell = os.Getenv("SHELL")
 	if b := filepath.Base(shell); !filepath.IsAbs(shell) || (b != "bash" && b != "zsh") {
@@ -121,15 +128,29 @@ func tabScript(self string, args []string) (shell, path string, err error) {
 		return "", "", fmt.Errorf("writing the tab's start script: %w", err)
 	}
 	defer f.Close()
+	var script strings.Builder
+	script.WriteString("rm -f -- \"$0\"\n")
+	for _, k := range tabNetworkVars {
+		if v := os.Getenv(k); v != "" && !strings.ContainsAny(v, "\r\n") {
+			fmt.Fprintf(&script, "export %s=%s\n", k, shellQuote(v))
+		}
+	}
 	line := []string{"exec", shellQuote(self)}
 	for _, a := range args {
 		line = append(line, shellQuote(a))
 	}
-	if _, err := fmt.Fprintf(f, "rm -f -- \"$0\"\n%s\n", strings.Join(line, " ")); err != nil {
+	script.WriteString(strings.Join(line, " ") + "\n")
+	if _, err := f.WriteString(script.String()); err != nil {
 		os.Remove(f.Name())
 		return "", "", fmt.Errorf("writing the tab's start script: %w", err)
 	}
 	return shell, f.Name(), nil
+}
+
+// tabNetworkVars are carried into a new tab from this terminal.
+var tabNetworkVars = []string{
+	"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy",
+	"AWS_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
 }
 
 // shareWithWindows adds the variables in env to WSLENV, so a Windows

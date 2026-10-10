@@ -152,6 +152,8 @@ func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 	t.Setenv("WT_SESSION", "x")
 	t.Setenv("WSL_DISTRO_NAME", "Ubuntu")
 	t.Setenv("SHELL", "/bin/sh") // not bash or zsh: falls back to bash
+	t.Setenv("https_proxy", "http://proxy.bank.example:8080")
+	t.Setenv("NO_PROXY", "localhost,169.254.169.254")
 	code, _, errb := run("--config", w.cfg, "shell", "devops", "--tab")
 	if code != ExitOK {
 		t.Fatalf("code=%d err=%q", code, errb)
@@ -178,6 +180,14 @@ func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 	if !strings.Contains(string(script), `rm -f -- "$0"`) ||
 		!strings.Contains(string(script), `'shell' '--profile' 'nedctl.payments-prod.Platform-Admin' '--region' 'af-south-1' '--instance' 'i-0aaaaaaaaaaaaaaa1'`) {
 		t.Fatalf("tab script:\n%s", script)
+	}
+	// This terminal's proxy settings are carried into the tab.
+	if !strings.Contains(string(script), "export https_proxy='http://proxy.bank.example:8080'\n") ||
+		!strings.Contains(string(script), "export NO_PROXY='localhost,169.254.169.254'\n") {
+		t.Fatalf("tab script lacks the proxy settings:\n%s", script)
+	}
+	if fi, err := os.Stat(lines[len(lines)-1]); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("tab script must be private: %v %v", fi.Mode(), err)
 	}
 	os.Remove(lines[len(lines)-1])
 	t.Setenv("WT_SESSION", "")
