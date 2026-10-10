@@ -78,6 +78,16 @@ func environmentChecks(ctx context.Context, cfg config.Config, used string, cfgE
 	} else {
 		add("proxy", "info", "HTTPS_PROXY not set: connecting directly")
 	}
+	switch bundle := os.Getenv("AWS_CA_BUNDLE"); {
+	case bundle == "":
+		add("aws ca bundle", "info", "AWS_CA_BUNDLE not set: the AWS CLI trusts only its own CA list — behind a TLS-inspecting proxy, export it (in ~/.bashrc) as the corporate root CA bundle")
+	default:
+		if _, err := os.Stat(bundle); err != nil {
+			add("aws ca bundle", "fail", "AWS_CA_BUNDLE="+bundle+": "+err.Error())
+		} else {
+			add("aws ca bundle", "ok", bundle)
+		}
+	}
 	if !offline {
 		client, target := portalProbe(cfg.AWS.SSORegion)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)

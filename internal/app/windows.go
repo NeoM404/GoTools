@@ -87,9 +87,15 @@ func openWTTab(cfg config.Config, env, title, hint string, args []string, stderr
 		wtArgs = append(wtArgs, "--tabColor", c)
 	}
 	if distro := os.Getenv("WSL_DISTRO_NAME"); distro != "" {
-		wtArgs = append(wtArgs, "wsl.exe", "-d", distro, "--")
+		shell, script, err := tabScript(self, args)
+		if err != nil {
+			fmt.Fprintf(stderr, "--tab: %v\n", err)
+			return ExitFailure
+		}
+		wtArgs = append(wtArgs, "wsl.exe", "-d", distro, "--", shell, "-i", script)
+	} else {
+		wtArgs = append(append(wtArgs, self), args...)
 	}
-	wtArgs = append(append(wtArgs, self), args...)
 	cmd := exec.Command(wt, wtArgs...) //nolint:gosec // configured or fixed binary, validated arguments
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(stderr, "--tab: %v\n", err)
@@ -97,6 +103,34 @@ func openWTTab(cfg config.Config, env, title, hint string, args []string, stderr
 	}
 	_ = cmd.Process.Release()
 	return ExitOK
+}
+
+// tabScript writes a one-shot script that runs nedctl with args, for an
+// interactive shell to run in the new tab. `wsl.exe -- cmd` alone starts cmd
+// without the user's ~/.bashrc or ~/.zshrc, so the tab would lack what they
+// set there — the corporate CA bundle (AWS_CA_BUNDLE), the proxy, PATH —
+// and the AWS CLI fails TLS behind the bank's inspecting proxy. Running it
+// as `<shell> -i script` loads them exactly as a new terminal does. The
+// script deletes itself first.
+func tabScript(self string, args []string) (shell, path string, err error) {
+	shell = os.Getenv("SHELL")
+	if b := filepath.Base(shell); !filepath.IsAbs(shell) || (b != "bash" && b != "zsh") {
+		shell = "/bin/bash"
+	}
+	f, err := os.CreateTemp("", "nedctl-tab-*.sh")
+	if err != nil {
+		return "", "", fmt.Errorf("writing the tab's start script: %w", err)
+	}
+	defer f.Close()
+	line := []string{"exec", shellQuote(self)}
+	for _, a := range args {
+		line = append(line, shellQuote(a))
+	}
+	if _, err := fmt.Fprintf(f, "rm -f -- \"$0\"\n%s\n", strings.Join(line, " ")); err != nil {
+		os.Remove(f.Name())
+		return "", "", fmt.Errorf("writing the tab's start script: %w", err)
+	}
+	return shell, f.Name(), nil
 }
 
 // shareWithWindows adds the variables in env to WSLENV, so a Windows

@@ -604,6 +604,7 @@ It then checks the environment, so a new workstation can be checked in one go:
 | `config` | the config file in use; a file that does not parse → `FAIL` |
 | `aws sign-in` | the Identity Center start URL and region, if configured |
 | `proxy` | `HTTPS_PROXY` (credentials redacted), or that calls go direct |
+| `aws ca bundle` | `AWS_CA_BUNDLE`, which the AWS CLI needs behind TLS inspection; set but missing → `FAIL` |
 | `identity center portal` | whether `portal.sso.<region>.amazonaws.com` answers, with the proxy/CA hint if not (skipped by `--offline`) |
 | `signed in` | time left on the sign-in, or that it expired |
 | `sign-in method` | that device-code sign-in will be used (WSL, SSH, no browser) |

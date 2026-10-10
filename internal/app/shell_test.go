@@ -151,6 +151,7 @@ func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 	fakeCLI(t, "wt.exe", `printf '%s\n' "$@" > `+sq(args+".tmp")+` && mv `+sq(args+".tmp")+" "+sq(args))
 	t.Setenv("WT_SESSION", "x")
 	t.Setenv("WSL_DISTRO_NAME", "Ubuntu")
+	t.Setenv("SHELL", "/bin/sh") // not bash or zsh: falls back to bash
 	code, _, errb := run("--config", w.cfg, "shell", "devops", "--tab")
 	if code != ExitOK {
 		t.Fatalf("code=%d err=%q", code, errb)
@@ -162,11 +163,23 @@ func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 			sleepBriefly()
 		}
 	}
-	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--", "shell\n--profile\nnedctl.payments-prod.Platform-Admin\n--region\naf-south-1\n--instance\ni-0aaaaaaaaaaaaaaa1"} {
+	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--\n/bin/bash\n-i\n"} {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf("wt.exe args lack %q:\n%s", want, got)
 		}
 	}
+	// From WSL the tab runs a one-shot script in an interactive shell, so
+	// the user's ~/.bashrc (CA bundle, proxy, PATH) applies.
+	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
+	script, err := os.ReadFile(lines[len(lines)-1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(script), `rm -f -- "$0"`) ||
+		!strings.Contains(string(script), `'shell' '--profile' 'nedctl.payments-prod.Platform-Admin' '--region' 'af-south-1' '--instance' 'i-0aaaaaaaaaaaaaaa1'`) {
+		t.Fatalf("tab script:\n%s", script)
+	}
+	os.Remove(lines[len(lines)-1])
 	t.Setenv("WT_SESSION", "")
 	if code, _, _ := run("--config", w.cfg, "shell", "devops", "--tab"); code != ExitUsage {
 		t.Fatalf("--tab outside Windows Terminal: code=%d", code)

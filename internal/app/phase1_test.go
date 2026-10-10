@@ -259,3 +259,26 @@ func TestDoctorEnvironmentChecks(t *testing.T) {
 		t.Fatal("with AWS configured, the Session Manager plugin is required")
 	}
 }
+
+func TestDoctorCABundle(t *testing.T) {
+	check := func() doctorCheck {
+		_, out, _ := run("doctor", "--offline", "-o", "json")
+		var rep doctorReport
+		json.Unmarshal([]byte(out), &rep)
+		for _, c := range rep.Checks {
+			if c.Name == "aws ca bundle" {
+				return c
+			}
+		}
+		t.Fatalf("no aws ca bundle check:\n%s", out)
+		return doctorCheck{}
+	}
+	t.Setenv("AWS_CA_BUNDLE", filepath.Join(t.TempDir(), "missing.pem"))
+	if c := check(); c.Status != "fail" {
+		t.Fatalf("a missing bundle must fail: %+v", c)
+	}
+	t.Setenv("AWS_CA_BUNDLE", "")
+	if c := check(); c.Status != "info" {
+		t.Fatalf("unset is informational: %+v", c)
+	}
+}
