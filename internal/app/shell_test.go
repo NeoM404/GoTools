@@ -163,7 +163,7 @@ func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 			sleepBriefly()
 		}
 	}
-	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--\n/bin/bash\n-i\n"} {
+	for _, want := range []string{"--tabColor\n#ef4444", "--title\npayments · PROD · payments-devops", "wsl.exe\n-d\nUbuntu\n--\n/bin/bash\n-l\n-i\n"} {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf("wt.exe args lack %q:\n%s", want, got)
 		}

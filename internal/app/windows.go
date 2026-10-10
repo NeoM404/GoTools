@@ -92,7 +92,7 @@ func openWTTab(cfg config.Config, env, title, hint string, args []string, stderr
 			fmt.Fprintf(stderr, "--tab: %v\n", err)
 			return ExitFailure
 		}
-		wtArgs = append(wtArgs, "wsl.exe", "-d", distro, "--", shell, "-i", script)
+		wtArgs = append(wtArgs, "wsl.exe", "-d", distro, "--", shell, "-l", "-i", script)
 	} else {
 		wtArgs = append(append(wtArgs, self), args...)
 	}
@@ -106,12 +106,11 @@ func openWTTab(cfg config.Config, env, title, hint string, args []string, stderr
 }
 
 // tabScript writes a one-shot script that runs nedctl with args, for an
-// interactive shell to run in the new tab. `wsl.exe -- cmd` alone starts cmd
-// without the user's ~/.bashrc or ~/.zshrc, so the tab would lack what they
-// set there — the corporate CA bundle (AWS_CA_BUNDLE), the proxy, PATH —
-// and the AWS CLI fails TLS behind the bank's inspecting proxy. Running it
-// as `<shell> -i script` loads them exactly as a new terminal does. The
-// script deletes itself first.
+// interactive login shell to run in the new tab. `wsl.exe -- cmd` alone
+// starts cmd without /etc/profile, /etc/profile.d, ~/.profile or ~/.bashrc,
+// so the tab would lack what is set there (proxy, CA trust, PATH). Running
+// it as `<shell> -l -i script` loads them as a new Windows Terminal Ubuntu
+// tab does. The script deletes itself first.
 func tabScript(self string, args []string) (shell, path string, err error) {
 	shell = os.Getenv("SHELL")
 	if b := filepath.Base(shell); !filepath.IsAbs(shell) || (b != "bash" && b != "zsh") {
