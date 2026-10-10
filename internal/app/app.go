@@ -209,9 +209,11 @@ Commands:
   guard [-o table|json]       Check the CURRENT kube-context for prod
                               [--block]  (exit 3 if prod — for prompts/CI)
   current [-o table|json]     Show current context + prod status
-  prompt [--shell bash|zsh|powershell|plain]
+  prompt [--shell bash|zsh|powershell|plain] [--tab]
                               Prompt segment: kube-context and AWS profile
-                              in their environment's colour (never fails)
+                              in their environment's colour (never fails);
+                              --tab also colours the Windows Terminal tab
+  prompt init <bash|zsh>      Shell code for ~/.bashrc: eval "$(nedctl prompt init bash)"
   doctor [-o table|json]      Check ecosystem tools are present & current
                               [--strict]  (exit 1 if any tool is below floor)
   version                     Print nedctl version

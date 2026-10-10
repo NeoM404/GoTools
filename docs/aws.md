@@ -270,16 +270,34 @@ and the pipeline their own entry.
 
 ## Your prompt
 
+Add one line to `~/.bashrc` (or `~/.zshrc` with `zsh`):
+
 ```bash
-PS1='$(nedctl prompt --shell bash) \w\$ '        # bash
-PROMPT='$(nedctl prompt --shell zsh) %~ %# '     # zsh (setopt prompt_subst)
+eval "$(nedctl prompt init bash)"
 ```
 
-Shows `k8s:<context>[env]` and `aws:<squad>[env]` in the environment's colour.
-When less than an hour of the Identity Center sign-in is left, it adds the
-time, e.g. `(42m)`, or `(expired)`. Commands that act in AWS also warn when
-the sign-in expires within 15 minutes. The prompt shows
-production in bold capitals. It reads only local files and never fails.
+Every prompt then starts with `aws:<squad>[env]` (and `k8s:<context>[env]`)
+in the environment's colour, in front of your own prompt, and in Windows
+Terminal the tab turns that environment's colour too, so the account you are
+signed in to stays in sight. `nedctl aws login` colours the tab as soon as you
+sign in. Inside `nedctl kube`, the `⎈ <cluster>` prefix stays in front.
+
+When less than an hour of the Identity Center sign-in is left, the prompt
+adds the time, e.g. `(42m)`, or `(expired)`. Commands that act in AWS also
+warn when the sign-in expires within 15 minutes. Production shows in bold
+capitals. The prompt reads only local files and never fails.
+
+The tab colour is the nearest of Windows Terminal's 256 palette colours to
+the environment's colour (Windows Terminal cannot be given an exact colour
+from inside a tab). A tab opened with `--tab` keeps the exact colour it was
+opened with.
+
+To build your own prompt instead:
+
+```bash
+PS1='$(nedctl prompt --shell bash --tab) \w\$ '        # bash
+PROMPT='$(nedctl prompt --shell zsh --tab) %~ %# '     # zsh (setopt prompt_subst)
+```
 
 ## Change records
 

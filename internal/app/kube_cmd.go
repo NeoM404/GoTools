@@ -275,7 +275,9 @@ export KUBECONFIG="$NEDCTL_KUBECONFIG"
 		if err != nil {
 			return shell, nil, nil, none
 		}
-		fmt.Fprintf(rc, "[ -f ~/.bashrc ] && . ~/.bashrc\n%sPS1='%s '\"$PS1\"\n", restore, prefix)
+		// __nedctl_kube_prefix keeps the prefix when `nedctl prompt init`
+		// rebuilds PS1 before each prompt.
+		fmt.Fprintf(rc, "[ -f ~/.bashrc ] && . ~/.bashrc\n%sPS1='%s '\"$PS1\"\n__nedctl_kube_prefix='%s'\n", restore, prefix, prefix)
 		rc.Close()
 		_ = os.Chmod(rc.Name(), 0o600)
 		return shell, []string{"--rcfile", rc.Name(), "-i"}, nil, func() { os.Remove(rc.Name()) }
@@ -294,6 +296,7 @@ export KUBECONFIG="$NEDCTL_KUBECONFIG"
 		_ = os.WriteFile(filepath.Join(dir, ".zshrc"), []byte(`export ZDOTDIR="$HOME"
 [ -f "$HOME/.zshrc" ] && . "$HOME/.zshrc"
 `+restore+`PROMPT='`+prefix+` '"$PROMPT"
+__nedctl_kube_prefix='`+prefix+`'
 `), 0o600)
 		return shell, []string{"-i"}, []string{"ZDOTDIR=" + dir}, func() { os.RemoveAll(dir) }
 	}

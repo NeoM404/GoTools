@@ -80,3 +80,49 @@ func TestPromptAndCommandsShowSignInExpiry(t *testing.T) {
 		t.Fatalf("shell must warn before expiry: %q", errb)
 	}
 }
+
+func TestNearestXterm256(t *testing.T) {
+	for hex, want := range map[string]int{"#ef4444": 203, "#22c55e": 41, "#ffffff": 231, "#000000": 16, "#808080": 244} {
+		if got, ok := nearestXterm256(hex); !ok || got != want {
+			t.Errorf("%s: got %d, want %d", hex, got, want)
+		}
+	}
+	if _, ok := nearestXterm256("red"); ok {
+		t.Error("an invalid colour has no palette entry")
+	}
+}
+
+func TestPromptColoursTheWindowsTerminalTab(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	writeBastionKubeconfig(t, "payments-k8s-prod-cluster", aksContext("payments-k8s-prod-cluster", "rg-payments-prod"))
+	t.Setenv("WT_SESSION", "")
+	if _, out, _ := run("--config", w.cfg, "prompt", "--shell", "bash", "--tab"); strings.Contains(out, ",|") {
+		t.Fatalf("outside Windows Terminal the tab is left alone: %q", out)
+	}
+	t.Setenv("WT_SESSION", "x")
+	// The AWS profile's environment (dev, green) sets the tab colour, marked
+	// as taking no columns.
+	if _, out, _ := run("--config", w.cfg, "prompt", "--shell", "bash", "--tab"); !strings.HasSuffix(out, `\[`+"\x1b[2;15;41,|"+`\]`) {
+		t.Fatalf("bash --tab: %q", out)
+	}
+	if _, out, _ := run("--config", w.cfg, "prompt", "--shell", "zsh", "--tab", "--no-aws"); !strings.HasSuffix(out, "%{\x1b[2;15;203,|%}") {
+		t.Fatalf("zsh --tab, kube only (prod, red): %q", out)
+	}
+	if _, out, _ := run("--config", w.cfg, "prompt", "--tab"); strings.Contains(out, "\x1b") {
+		t.Fatalf("plain never carries escapes: %q", out)
+	}
+}
+
+func TestPromptInit(t *testing.T) {
+	code, out, _ := run("prompt", "init", "bash")
+	self, _ := os.Executable()
+	if code != ExitOK || !strings.Contains(out, "PROMPT_COMMAND=\"__nedctl_prompt") || !strings.Contains(out, shellQuote(self)+" prompt --shell bash --tab") {
+		t.Fatalf("bash: code=%d\n%s", code, out)
+	}
+	if code, out, _ := run("prompt", "init", "zsh"); code != ExitOK || !strings.Contains(out, "add-zsh-hook precmd __nedctl_prompt") {
+		t.Fatalf("zsh: code=%d\n%s", code, out)
+	}
+	if code, _, _ := run("prompt", "init", "fish"); code != ExitUsage {
+		t.Fatalf("unsupported shell: code=%d", code)
+	}
+}
