@@ -112,7 +112,7 @@ func cmdSetup(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		case rc == "":
 			skip("shell", note)
 		default:
-			done("shell", rc+": prompt shows account + env, tab coloured, `nedctl aws login` switches the shell")
+			done("shell", rc+": prompt shows account + env, tab coloured, tab completion, `nedctl aws login` switches the shell")
 			if note != "" {
 				fmt.Fprintln(stderr, "         "+note)
 			}
@@ -259,7 +259,7 @@ func addShellIntegration(ask func(string) bool) (rc, note string, err error) {
 	if err != nil && !os.IsNotExist(err) {
 		return "", "", err
 	}
-	block := rcBegin + "\n# Added by `nedctl setup`: prompt with account and environment, coloured tab,\n# and `nedctl aws login` switching this shell. Re-run setup to refresh.\n"
+	block := rcBegin + "\n# Added by `nedctl setup`: prompt with account and environment, coloured tab,\n# tab completion, and `nedctl aws login` switching this shell. Re-run setup to refresh.\n"
 	if dir, err := userBinDir(); err == nil {
 		if rel, err := filepath.Rel(home, dir); err == nil && !strings.HasPrefix(rel, "..") {
 			dir = "$HOME/" + filepath.ToSlash(rel)

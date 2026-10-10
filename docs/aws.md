@@ -283,6 +283,13 @@ signed in to stays in sight. `nedctl aws login` colours the tab as soon as you
 sign in. Inside `nedctl kube`, the `⎈ <cluster>` prefix stays in front and
 the prompt adds only an elevated-role marker and the sign-in time left.
 
+It adds **tab completion**: commands and flags, and the names nedctl has
+seen for the account you act in — `nedctl kube <TAB>` offers its clusters,
+`nedctl shell <TAB>` its instances, `nedctl aws login <TAB>` your squads,
+environments and roles, `--profile <TAB>` your profiles. Completion reads
+only nedctl's local caches (filled whenever a command lists those things),
+so it is instant and never calls AWS.
+
 It also makes `nedctl aws login` switch the shell you run it in: a program
 cannot change its shell's `AWS_PROFILE`, so the line defines a small `nedctl`
 shell function that applies the `export AWS_PROFILE='…'` line login prints

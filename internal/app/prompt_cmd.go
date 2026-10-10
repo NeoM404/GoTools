@@ -151,6 +151,17 @@ func promptInit(args []string, stdout, stderr io.Writer) int {
 `, bin)
 	switch args[0] {
 	case "bash":
+		// Tab completion: commands, flags, and this account's clusters,
+		// instances and sign-in words, from local caches only.
+		fmt.Fprintf(stdout, `_nedctl_complete() {
+  local w=("${COMP_WORDS[@]:1:COMP_CWORD}")
+  local IFS=$'\n' c
+  c=($(%[1]s __complete "${w[@]}" 2>/dev/null))
+  if [ "${c[0]-}" = "__files__" ]; then COMPREPLY=($(compgen -f -- "${COMP_WORDS[COMP_CWORD]}"))
+  else COMPREPLY=("${c[@]}"); fi
+}
+complete -F _nedctl_complete nedctl
+`, bin)
 		fmt.Fprintf(stdout, `__nedctl_base_ps1="${__nedctl_base_ps1-$PS1}"
 __nedctl_prompt() {
   local s
@@ -163,6 +174,14 @@ case ";${PROMPT_COMMAND-};" in
 esac
 `, bin)
 	case "zsh":
+		fmt.Fprintf(stdout, `_nedctl() {
+  local -a c
+  c=("${(@f)$(%[1]s __complete "${(@)words[2,CURRENT]}" 2>/dev/null)}")
+  c=(${c:#})
+  if [[ "${c[1]-}" == "__files__" ]]; then _files; else compadd -- "${c[@]}"; fi
+}
+(( $+functions[compdef] )) && compdef _nedctl nedctl
+`, bin)
 		fmt.Fprintf(stdout, `__nedctl_base_prompt="${__nedctl_base_prompt-$PROMPT}"
 __nedctl_prompt() {
   local s

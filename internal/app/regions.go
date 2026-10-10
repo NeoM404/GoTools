@@ -139,6 +139,15 @@ func regionDenied(err error) bool {
 // empty result (not an error) for a region with nothing in it.
 func searchRegions[T any](ctx context.Context, cfg config.Config, pc profileContext, rs regionSearch, kind string, stderr io.Writer,
 	find func(region string) ([]T, error)) ([]T, []string, error) {
+	got, searched, err := searchRegionsOnce(ctx, cfg, pc, rs, kind, stderr, find)
+	if err == nil {
+		rememberNames(cfg, pc, kind, got, rs.Flag != "")
+	}
+	return got, searched, err
+}
+
+func searchRegionsOnce[T any](ctx context.Context, cfg config.Config, pc profileContext, rs regionSearch, kind string, stderr io.Writer,
+	find func(region string) ([]T, error)) ([]T, []string, error) {
 	if rs.Flag != "" {
 		if !awsRegionRe.MatchString(rs.Flag) {
 			return nil, nil, fmt.Errorf("--region %q is not an AWS region such as af-south-1", rs.Flag)

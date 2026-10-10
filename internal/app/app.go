@@ -54,6 +54,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdInit(cmdArgs, stdout, stderr)
 	case "setup":
 		return cmdSetup(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "__complete":
+		return cmdComplete(ctx, cfgPath, cmdArgs, stdout)
 	case "doctor":
 		return cmdDoctor(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "clusters":
@@ -217,7 +219,8 @@ Commands:
                               Prompt segment: kube-context and AWS profile
                               in their environment's colour (never fails);
                               --tab also colours the Windows Terminal tab
-  prompt init <bash|zsh>      Shell code for ~/.bashrc: eval "$(nedctl prompt init bash)"
+  prompt init <bash|zsh>      Shell code for ~/.bashrc (setup adds it): prompt,
+                              tab colour, tab completion, aws login switching
   doctor [-o table|json]      Check ecosystem tools are present & current
                               [--strict]  (exit 1 if any tool is below floor)
   version                     Print nedctl version
