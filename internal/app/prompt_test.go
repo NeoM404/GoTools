@@ -119,7 +119,10 @@ func TestPromptInit(t *testing.T) {
 	if code != ExitOK || !strings.Contains(out, "PROMPT_COMMAND=\"__nedctl_prompt") || !strings.Contains(out, shellQuote(self)+" prompt --shell bash --tab") {
 		t.Fatalf("bash: code=%d\n%s", code, out)
 	}
-	if code, out, _ := run("prompt", "init", "zsh"); code != ExitOK || !strings.Contains(out, "add-zsh-hook precmd __nedctl_prompt") {
+	if !strings.Contains(out, "nedctl() {") || !strings.Contains(out, "NEDCTL_SHELL_HOOK=1 "+shellQuote(self)) || strings.Contains(out, "eval") {
+		t.Fatalf("bash: the login shell function is missing or uses eval:\n%s", out)
+	}
+	if code, out, _ := run("prompt", "init", "zsh"); code != ExitOK || !strings.Contains(out, "add-zsh-hook precmd __nedctl_prompt") || !strings.Contains(out, "nedctl() {") {
 		t.Fatalf("zsh: code=%d\n%s", code, out)
 	}
 	if code, _, _ := run("prompt", "init", "fish"); code != ExitUsage {

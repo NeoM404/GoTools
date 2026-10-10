@@ -113,7 +113,8 @@ func nonPrinting(shell, s string) string {
 }
 
 // promptInit prints shell code that puts the nedctl segment in front of
-// the user's own prompt and keeps the tab coloured, for
+// the user's own prompt, keeps the tab coloured, and makes `nedctl aws
+// login` switch this shell's AWS_PROFILE, for
 // `eval "$(nedctl prompt init bash)"` in ~/.bashrc. It refers to this
 // nedctl by full path, so it works when nedctl is not on PATH. Inside
 // `nedctl kube`, the cluster prefix that shell sets is kept in front.
@@ -128,6 +129,26 @@ func promptInit(args []string, stdout, stderr io.Writer) int {
 		return ExitFailure
 	}
 	bin := shellQuote(self)
+	// `nedctl aws login` cannot change this shell's AWS_PROFILE itself; the
+	// function applies the one line it prints — never by eval: only an
+	// exact `export AWS_PROFILE='<name>'` with a [A-Za-z0-9._-] name is
+	// taken; anything else is printed.
+	fmt.Fprintf(stdout, `nedctl() {
+  case "$1 $2" in
+    "aws login")
+      local __nedctl_out __nedctl_rc __nedctl_p
+      __nedctl_out="$(NEDCTL_SHELL_HOOK=1 %[1]s "$@")"; __nedctl_rc=$?
+      __nedctl_p="${__nedctl_out#export AWS_PROFILE=\'}"; __nedctl_p="${__nedctl_p%%\'}"
+      case "$__nedctl_p" in
+        ""|*[!A-Za-z0-9._-]*) [ -n "$__nedctl_out" ] && printf '%%s\n' "$__nedctl_out" ;;
+        *) if [ "$__nedctl_out" = "export AWS_PROFILE='$__nedctl_p'" ]; then export AWS_PROFILE="$__nedctl_p"
+           else printf '%%s\n' "$__nedctl_out"; fi ;;
+      esac
+      return $__nedctl_rc ;;
+    *) %[1]s "$@" ;;
+  esac
+}
+`, bin)
 	switch args[0] {
 	case "bash":
 		fmt.Fprintf(stdout, `__nedctl_base_ps1="${__nedctl_base_ps1-$PS1}"

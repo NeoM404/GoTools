@@ -280,7 +280,16 @@ Every prompt then starts with `aws:<squad>[env]` (and `k8s:<context>[env]`)
 in the environment's colour, in front of your own prompt, and in Windows
 Terminal the tab turns that environment's colour too, so the account you are
 signed in to stays in sight. `nedctl aws login` colours the tab as soon as you
-sign in. Inside `nedctl kube`, the `⎈ <cluster>` prefix stays in front.
+sign in. Inside `nedctl kube`, the `⎈ <cluster>` prefix stays in front and
+the prompt adds only an elevated-role marker and the sign-in time left.
+
+It also makes `nedctl aws login` switch the shell you run it in: a program
+cannot change its shell's `AWS_PROFILE`, so the line defines a small `nedctl`
+shell function that applies the `export AWS_PROFILE='…'` line login prints
+(only that exact form, never by `eval`). Without it, a shell that already has
+`AWS_PROFILE` keeps acting — nedctl, the prompt and the aws CLI alike — with
+the old profile; `aws login` and `aws whoami` then warn and show the
+`export` to run.
 
 When less than an hour of the Identity Center sign-in is left, the prompt
 adds the time, e.g. `(42m)`, or `(expired)`. Commands that act in AWS also

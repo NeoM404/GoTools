@@ -520,3 +520,25 @@ func TestAWSLoginFilterWords(t *testing.T) {
 		t.Fatalf("--all with words: code=%d", code)
 	}
 }
+
+func TestLoginWarnsWhenTheShellStillUsesAnotherProfile(t *testing.T) {
+	w := newAWSWorld(t, "")
+	t.Setenv("AWS_PROFILE", "nedctl.payments-prod.Platform-ReadOnly")
+	code, out, errb := run("--config", w.cfg, "aws", "login", "--account", "222222222222", "--role", "Platform-Admin")
+	if code != ExitOK || !strings.Contains(errb, "this shell still has AWS_PROFILE=nedctl.payments-prod.Platform-ReadOnly") ||
+		!strings.Contains(errb, "export AWS_PROFILE='nedctl.payments-dev.Platform-Admin'") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	if out != "export AWS_PROFILE='nedctl.payments-dev.Platform-Admin'\n" {
+		t.Fatalf("stdout must stay the one export line: %q", out)
+	}
+	// whoami acts with the shell's profile, and says the last sign-in differs.
+	if _, _, errb := run("--config", w.cfg, "aws", "whoami"); !strings.Contains(errb, "this shell still has AWS_PROFILE") {
+		t.Fatalf("whoami: %q", errb)
+	}
+	// The prompt init shell function applies the export itself: no warning.
+	t.Setenv("NEDCTL_SHELL_HOOK", "1")
+	if _, _, errb := run("--config", w.cfg, "aws", "login", "--account", "222222222222", "--role", "Platform-Admin"); strings.Contains(errb, "still has AWS_PROFILE") {
+		t.Fatalf("with the shell function: %q", errb)
+	}
+}

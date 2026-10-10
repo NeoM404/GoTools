@@ -146,6 +146,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	if err := saveCurrentProfile(cfg, profile); err != nil {
 		fmt.Fprintf(stderr, "warning: could not remember %s as your current profile: %v\n", profile, err)
 	}
+	warnShellProfile(profile, stderr)
 	printProfileEnv(stdout, *format, profile)
 	return ExitOK
 }
@@ -621,6 +622,36 @@ func saveCurrentProfile(cfg config.Config, profile string) error {
 	return writeFileAtomic(p, []byte(profile+"\n"), 0o600)
 }
 
+// lastSignIn is the profile of the last `nedctl aws login` ("" if none).
+func lastSignIn(cfg config.Config) string {
+	if p, err := currentProfilePath(cfg); err == nil {
+		if data, err := os.ReadFile(p); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return ""
+}
+
+// warnShellProfile says when this shell's AWS_PROFILE is not the profile
+// last signed in to. A program cannot change its shell's variables, so
+// after `nedctl aws login` the shell — nedctl, the prompt and the aws CLI
+// alike — keeps acting with the old profile until AWS_PROFILE is updated.
+// The shell function from `nedctl prompt init` does that itself
+// (NEDCTL_SHELL_HOOK=1), so no warning is needed there.
+func warnShellProfile(signedIn string, stderr io.Writer) {
+	cur := os.Getenv("AWS_PROFILE")
+	if cur == "" || cur == signedIn || os.Getenv("NEDCTL_SHELL_HOOK") == "1" {
+		return
+	}
+	note := fmt.Sprintf("⚠️  this shell still has AWS_PROFILE=%s, so commands here (and the aws CLI) act with it, not %s\n"+
+		"   switch:    export AWS_PROFILE='%s'\n"+
+		"   automatic: add  eval \"$(nedctl prompt init bash)\"  to ~/.bashrc", cur, signedIn, signedIn)
+	if colorOn(stderr) {
+		note = picker.Paint(elevatedColor, note)
+	}
+	fmt.Fprintln(stderr, note)
+}
+
 // resolveProfile picks the profile a command acts with: --profile, then
 // $AWS_PROFILE, then the last `nedctl aws login`.
 func resolveProfile(cfg config.Config, flagValue string) string {
@@ -630,12 +661,7 @@ func resolveProfile(cfg config.Config, flagValue string) string {
 	if p := os.Getenv("AWS_PROFILE"); p != "" {
 		return p
 	}
-	if p, err := currentProfilePath(cfg); err == nil {
-		if data, err := os.ReadFile(p); err == nil {
-			return strings.TrimSpace(string(data))
-		}
-	}
-	return ""
+	return lastSignIn(cfg)
 }
 
 // awsIdentity is `aws whoami`'s answer.
@@ -674,6 +700,11 @@ func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stder
 	if profile == "" {
 		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile")
 		return ExitFailure
+	}
+	if *profileFlag == "" {
+		if last := lastSignIn(cfg); last != "" {
+			warnShellProfile(last, stderr)
+		}
 	}
 	id := awsIdentity{Profile: profile}
 	out, err := execx.Output(ctx, cfg.Timeout(), "aws", "sts", "get-caller-identity", "--profile", profile, "--output", "json")
