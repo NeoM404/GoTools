@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -540,5 +541,45 @@ func TestLoginWarnsWhenTheShellStillUsesAnotherProfile(t *testing.T) {
 	t.Setenv("NEDCTL_SHELL_HOOK", "1")
 	if _, _, errb := run("--config", w.cfg, "aws", "login", "--account", "222222222222", "--role", "Platform-Admin"); strings.Contains(errb, "still has AWS_PROFILE") {
 		t.Fatalf("with the shell function: %q", errb)
+	}
+}
+
+func TestCommandsSignInWhenNeeded(t *testing.T) {
+	w := newAWSWorld(t, "")
+	cfg, _, err := config.Load(w.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	// Without a terminal: a clear refusal, nothing started.
+	var errb strings.Builder
+	if _, ok := loadProfileContext(ctx, cfg, "", &errb); ok || !strings.Contains(errb.String(), "not signed in") {
+		t.Fatalf("no terminal: ok=%v %q", ok, errb.String())
+	}
+	if _, err := os.Stat(w.loginMarker); err == nil {
+		t.Fatal("no terminal: sign-in must not start")
+	}
+
+	// In a terminal: sign in, pick, and carry on with that profile.
+	answer(t, "payments dev\n1\n")
+	errb.Reset()
+	pc, ok := loadProfileContext(ctx, cfg, "", &errb)
+	if !ok || pc.AccountID != "222222222222" || !strings.Contains(errb.String(), "Not signed in yet") {
+		t.Fatalf("terminal: ok=%v pc=%+v\n%s", ok, pc, errb.String())
+	}
+
+	// The sign-in expires: renewed in place, same account and role.
+	os.Remove(w.loginMarker)
+	cache := filepath.Join(w.home, ".aws", "sso", "cache")
+	expired := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	os.WriteFile(awssso.TokenPath(cache, "nedctl"), []byte(`{"accessToken":"old","expiresAt":"`+expired+`","region":"af-south-1"}`), 0o600)
+	errb.Reset()
+	pc2, ok := loadProfileContext(ctx, cfg, "", &errb)
+	if !ok || pc2.Name != pc.Name || !strings.Contains(errb.String(), "renewing it") || !strings.Contains(errb.String(), "Signed in again") {
+		t.Fatalf("expired: ok=%v pc=%+v\n%s", ok, pc2, errb.String())
+	}
+	if _, err := os.Stat(w.loginMarker); err != nil {
+		t.Fatal("expired: aws sso login must have run")
 	}
 }

@@ -307,7 +307,7 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 		fmt.Fprintf(stderr, "config error: %v\n", err)
 		return ExitFailure
 	}
-	pc, ok := loadProfileContext(cfg, *profileFlag, stderr)
+	pc, ok := loadProfileContext(ctx, cfg, *profileFlag, stderr)
 	if !ok {
 		return ExitFailure
 	}

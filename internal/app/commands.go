@@ -640,11 +640,11 @@ func liveClusters(_ string, cfg config.Config, cloud, env, output string, stdout
 		fmt.Fprintln(stderr, "no inventory is configured, so only the AWS account you are signed in to can be listed")
 		return ExitFailure
 	}
-	pc, ok := loadProfileContext(cfg, "", stderr)
+	ctx := context.Background()
+	pc, ok := loadProfileContext(ctx, cfg, "", stderr)
 	if !ok {
 		return ExitFailure
 	}
-	ctx := context.Background()
 	rows, searched, err := searchRegions(ctx, cfg, pc, regionSearch{}, "eks", stderr, func(region string) ([]eksAuthRow, error) {
 		return authRows(ctx, cfg, pc.Name, region)
 	})

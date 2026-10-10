@@ -39,23 +39,48 @@ type profileContext struct {
 	Production         bool
 }
 
-func loadProfileContext(cfg config.Config, flagValue string, stderr io.Writer) (profileContext, bool) {
+func loadProfileContext(ctx context.Context, cfg config.Config, flagValue string, stderr io.Writer) (profileContext, bool) {
 	name := resolveProfile(cfg, flagValue)
 	if name == "" {
-		fmt.Fprintln(stderr, "no profile selected — run `nedctl aws login`, or pass --profile")
-		return profileContext{}, false
+		// Not signed in yet: in a terminal, sign in now and carry on, so
+		// `nedctl kube` can be the first command of the day.
+		if !cfg.AWS.Configured() || !stdinIsTerminal() {
+			fmt.Fprintln(stderr, "not signed in — run `nedctl aws login`, or pass --profile")
+			return profileContext{}, false
+		}
+		fmt.Fprintln(stderr, "Not signed in yet — pick an account and role:")
+		profile, code := interactiveLogin(ctx, cfg, nil, stderr)
+		if code != ExitOK {
+			return profileContext{}, false
+		}
+		name = profile
 	}
 	pc := profileContext{Name: name}
 	if path, err := awssso.ConfigPath(); err == nil {
 		if m, err := awssso.LoadManaged(path); err == nil {
 			if p, ok := m.Profiles[name]; ok {
 				pc.AccountID, pc.Role, pc.Squad, pc.Environment = p.AccountID, p.Role, p.Squad, p.Environment
-				warnSignIn(m.Session.Name, stderr)
+				renewOrWarnSignIn(ctx, cfg, m.Session.Name, stderr)
 			}
 		}
 	}
 	pc.Production = cfg.IsProdEnvironment(pc.Environment)
 	return pc, true
+}
+
+// renewOrWarnSignIn renews an expired (or about to expire) sign-in in a
+// terminal, keeping the same account and role, so a task is not broken by
+// "Token has expired" from the AWS CLI. Without a terminal it warns.
+func renewOrWarnSignIn(ctx context.Context, cfg config.Config, session string, stderr io.Writer) {
+	left, ok := signInLeft(session)
+	if ok && left <= tokenMargin && cfg.AWS.Configured() && stdinIsTerminal() {
+		fmt.Fprintln(stderr, "Your IAM Identity Center sign-in has expired — renewing it (same account and role).")
+		if _, _, code := ensureSignIn(ctx, cfg, noLocalBrowser(), true, stderr); code == ExitOK {
+			fmt.Fprintln(stderr, "Signed in again.")
+			return
+		}
+	}
+	warnSignIn(session, stderr)
 }
 
 // signInWarnWithin is how close to expiry a command starts warning.
@@ -229,7 +254,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		fmt.Fprintf(stderr, "config error: %v\n", err)
 		return ExitFailure
 	}
-	pc, ok := loadProfileContext(cfg, *profileFlag, stderr)
+	pc, ok := loadProfileContext(ctx, cfg, *profileFlag, stderr)
 	if !ok {
 		return ExitFailure
 	}
@@ -379,7 +404,7 @@ func cmdEC2(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 		fmt.Fprintf(stderr, "config error: %v\n", err)
 		return ExitFailure
 	}
-	pc, ok := loadProfileContext(cfg, *profileFlag, stderr)
+	pc, ok := loadProfileContext(ctx, cfg, *profileFlag, stderr)
 	if !ok {
 		return ExitFailure
 	}

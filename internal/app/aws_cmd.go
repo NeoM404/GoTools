@@ -134,21 +134,41 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	if *all {
 		return breakGlassAll(ctx, cfg, managed, choices, strings.TrimSpace(*glass), stderr)
 	}
-	chosen, code := chooseAssignment(cfg, choices, *account, *role, terms, stderr)
+	profile, code := pickAndSignIn(ctx, cfg, managed, choices, *account, *role, terms, stderr)
 	if code != ExitOK {
 		return code
 	}
+	warnShellProfile(profile, stderr)
+	printProfileEnv(stdout, *format, profile)
+	return ExitOK
+}
+
+// pickAndSignIn chooses one assignment (flags, filter words, picker),
+// writes and verifies its profile, and remembers it as the current one.
+func pickAndSignIn(ctx context.Context, cfg config.Config, managed awssso.Managed, choices []awsChoice, account, role string, terms []string, stderr io.Writer) (string, int) {
+	chosen, code := chooseAssignment(cfg, choices, account, role, terms, stderr)
+	if code != ExitOK {
+		return "", code
+	}
 	profile, code := signInTo(ctx, cfg, managed, chosen, audit.Event{}, stderr)
 	if code != ExitOK {
-		return code
+		return "", code
 	}
 	warnElevated(cfg, chosen, choices, stderr)
 	if err := saveCurrentProfile(cfg, profile); err != nil {
 		fmt.Fprintf(stderr, "warning: could not remember %s as your current profile: %v\n", profile, err)
 	}
-	warnShellProfile(profile, stderr)
-	printProfileEnv(stdout, *format, profile)
-	return ExitOK
+	return profile, ExitOK
+}
+
+// interactiveLogin is `nedctl aws login [terms]` for a command that needs a
+// sign-in before it can go on.
+func interactiveLogin(ctx context.Context, cfg config.Config, terms []string, stderr io.Writer) (string, int) {
+	choices, managed, code := listChoices(ctx, cfg, noLocalBrowser(), false, false, stderr)
+	if code != ExitOK {
+		return "", code
+	}
+	return pickAndSignIn(ctx, cfg, managed, choices, "", "", terms, stderr)
 }
 
 // listChoices signs in when needed and lists the caller's assignments with
