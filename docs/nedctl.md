@@ -589,14 +589,26 @@ policy; do not present `guard` as the control in audit evidence.
 Shows the current context, whether it's production, the inventory cluster it
 resolves to, and why. `-o json` emits the same schema as `guard -o json`.
 
-### `nedctl doctor [--strict] [-o table|json]`
+### `nedctl doctor [--strict] [--offline] [-o table|json]`
 Checks required (`kubectl`, `aws`, `az`; on a bastion only `kubectl`) and optional ecosystem tools for
 **presence and version**. It probes each tool with a floor (`kubectl`, `aws`,
 `az`, `helm` by default), parses the version, and flags anything below its
 floor as `OUTDATED`. Floors are overridable per tool via `minVersions` in
-config.
+config. With `aws` configured, the Session Manager plugin is required too.
+
+It then checks the environment, so a new workstation can be checked in one go:
+
+| Check | What it reports |
+|---|---|
+| `config` | the config file in use; a file that does not parse → `FAIL` |
+| `aws sign-in` | the Identity Center start URL and region, if configured |
+| `proxy` | `HTTPS_PROXY` (credentials redacted), or that calls go direct |
+| `identity center portal` | whether `portal.sso.<region>.amazonaws.com` answers, with the proxy/CA hint if not (skipped by `--offline`) |
+| `signed in` | time left on the sign-in, or that it expired |
+| `sign-in method` | that device-code sign-in will be used (WSL, SSH, no browser) |
 
 Exit policy:
+- a **failed** environment check (broken config, unreachable portal) → exit 1
 - a **missing required** tool → exit 1
 - an **outdated required** tool → exit 1 (nedctl's own commands may misbehave)
 - `--strict` escalates **any** outdated tool (including optional ones) to exit
@@ -606,9 +618,10 @@ Exit policy:
 ```bash
 nedctl doctor            # local check with install/upgrade hints
 nedctl doctor --strict   # CI: fail if any floored tool is behind
+nedctl doctor --offline  # skip the network check
 nedctl doctor -o json | jq -r '.tools[]|select(.status!="ok").name'
 ```
-In `-o json`, `healthy` always agrees with the exit code under the same flags.
+In `-o json`, the environment checks are under `checks`, and `healthy` always agrees with the exit code under the same flags.
 Version probes run concurrently, each with its own deadline.
 
 This is how the tool answers "are our CLIs current?" — see also the

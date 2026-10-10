@@ -3,11 +3,14 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const exampleConfig = "../../configs/nedctl.example.json"
@@ -204,5 +207,55 @@ func TestCloudCLIInheritsEnvironment(t *testing.T) {
 	got, err := os.ReadFile(seen)
 	if err != nil || string(got) != "bank-sso-readonly" {
 		t.Fatalf("AWS_PROFILE not inherited: %q err=%v", got, err)
+	}
+}
+
+func TestDoctorEnvironmentChecks(t *testing.T) {
+	broken := filepath.Join(t.TempDir(), "c.json")
+	os.WriteFile(broken, []byte(`{"aws": {"startUrl": "https://x" "ssoRegion": "eu-west-1"}}`), 0o600)
+	code, out, _ := run("--config", broken, "doctor", "--offline", "-o", "json")
+	var rep doctorReport
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if code != ExitFailure || len(rep.Checks) == 0 || rep.Checks[0].Name != "config" || rep.Checks[0].Status != "fail" {
+		t.Fatalf("a broken config must fail doctor: code=%d %+v", code, rep.Checks)
+	}
+
+	w := newAWSWorld(t, "")
+	old := portalProbe
+	t.Cleanup(func() { portalProbe = old })
+	// A listener that never answers: the TLS handshake times out, as behind
+	// a proxy that is not configured.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("https_proxy", "")
+	portalProbe = func(string) (*http.Client, string) {
+		return &http.Client{Timeout: 300 * time.Millisecond}, "https://" + ln.Addr().String() + "/"
+	}
+	code, out, _ = run("--config", w.cfg, "doctor", "-o", "json")
+	rep = doctorReport{}
+	json.Unmarshal([]byte(out), &rep)
+	var portal doctorCheck
+	plugin := false
+	for _, c := range rep.Checks {
+		if c.Name == "identity center portal" {
+			portal = c
+		}
+	}
+	for _, tl := range rep.Tools {
+		if tl.Name == "session-manager-plugin" {
+			plugin = tl.Required
+		}
+	}
+	if code != ExitFailure || portal.Status != "fail" || !strings.Contains(portal.Detail, "HTTPS_PROXY") {
+		t.Fatalf("unreachable portal: code=%d %+v", code, portal)
+	}
+	if !plugin {
+		t.Fatal("with AWS configured, the Session Manager plugin is required")
 	}
 }

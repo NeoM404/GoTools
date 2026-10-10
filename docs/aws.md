@@ -49,7 +49,8 @@ defaults match the existing tools: dev `#22c55e`, ete `#f97316`, qa `#3b82f6`,
 prod `#ef4444`.
 
 You need: AWS CLI v2, the Session Manager plugin, and `kubectl` for `connect`.
-Run `nedctl doctor` to check.
+Run `nedctl doctor` to check: it also checks the config, the proxy, that the
+Identity Center portal is reachable, and how long your sign-in has left.
 
 ## Behind a corporate proxy
 
