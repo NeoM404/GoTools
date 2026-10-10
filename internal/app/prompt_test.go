@@ -126,3 +126,21 @@ func TestPromptInit(t *testing.T) {
 		t.Fatalf("unsupported shell: code=%d", code)
 	}
 }
+
+func TestPromptInsideKubeShellIsShort(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	writeBastionKubeconfig(t, "payments-k8s-prod-cluster", aksContext("payments-k8s-prod-cluster", "rg-payments-prod"))
+	t.Setenv("NEDCTL_KUBECONFIG", os.Getenv("KUBECONFIG"))
+	t.Setenv("WT_SESSION", "x")
+	// The kube shell's ⎈ prefix names cluster and environment; the prompt
+	// adds only the elevated-role marker — and still colours the tab.
+	_, out, _ := run("--config", w.cfg, "prompt", "--shell", "bash", "--tab")
+	if !strings.HasPrefix(out, "▲") || strings.Contains(out, "k8s:") || strings.Contains(out, "aws:") || !strings.Contains(out, ",|") {
+		t.Fatalf("inside nedctl kube: %q", out)
+	}
+	// Outside it (KUBECONFIG changed), the full segments return.
+	t.Setenv("NEDCTL_KUBECONFIG", "/elsewhere")
+	if _, out, _ := run("--config", w.cfg, "prompt"); !strings.Contains(out, "k8s:") || !strings.Contains(out, "aws:") {
+		t.Fatalf("outside: %q", out)
+	}
+}

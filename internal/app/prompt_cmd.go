@@ -39,6 +39,10 @@ func cmdPrompt(ctx context.Context, cfgPath string, args []string, stdout, stder
 	}
 	var parts []string
 	tabEnv := ""
+	// Inside `nedctl kube` the shell's own prefix already names the cluster
+	// and environment: add only what it lacks (an elevated role, the
+	// sign-in running out), so the prompt stays short.
+	inKube := os.Getenv("NEDCTL_KUBECONFIG") != "" && os.Getenv("KUBECONFIG") == os.Getenv("NEDCTL_KUBECONFIG")
 	if !*noKube {
 		if k, err := kube.ViewCurrent(ctx); err == nil {
 			cl := kube.ClassifyCurrent(k, guardFleet(cfg, io.Discard), cfg.ProdEnvs(), cfg.ProdPatterns)
@@ -46,18 +50,20 @@ func cmdPrompt(ctx context.Context, cfgPath string, args []string, stdout, stder
 			if env == "" && cl.Production {
 				env = "prod"
 			}
-			parts = append(parts, segment(cfg, *shell, "k8s:"+k.CurrentContext, env, cl.Production))
+			if !inKube {
+				parts = append(parts, segment(cfg, *shell, "k8s:"+k.CurrentContext, env, cl.Production))
+			}
 			tabEnv = env
 		}
 	}
 	if !*noAWS {
 		if name := resolveProfile(cfg, ""); name != "" {
-			label, env, suffix := "aws:"+name, "", ""
+			label, env, suffix, elevated := "aws:"+name, "", "", false
 			if path, err := awssso.ConfigPath(); err == nil {
 				if m, err := awssso.LoadManaged(path); err == nil {
 					if p, ok := m.Profiles[name]; ok {
 						label, env = "aws:"+firstNonBlank(p.Squad, p.AccountID), p.Environment
-						if cfg.AWS.Elevated(p.Role) {
+						if elevated = cfg.AWS.Elevated(p.Role); elevated {
 							label += "▲"
 						}
 						if left, ok := signInLeft(m.Session.Name); ok {
@@ -71,7 +77,14 @@ func cmdPrompt(ctx context.Context, cfgPath string, args []string, stdout, stder
 					}
 				}
 			}
-			parts = append(parts, segment(cfg, *shell, label, env, cfg.IsProdEnvironment(env))+suffix)
+			switch {
+			case !inKube:
+				parts = append(parts, segment(cfg, *shell, label, env, cfg.IsProdEnvironment(env))+suffix)
+			case elevated:
+				parts = append(parts, "▲"+suffix)
+			case suffix != "":
+				parts = append(parts, strings.TrimSpace(suffix))
+			}
 			if env != "" {
 				tabEnv = env
 			}
