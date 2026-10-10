@@ -216,6 +216,7 @@ version, endpoint exposure and authentication mode.
 `kube` is `connect` without the second terminal:
 
 ```bash
+nedctl kube                                        # no name: pick from the account's clusters (last used first)
 nedctl kube lms-eks-cluster-ete                    # a shell with kubectl ready; exit closes the tunnel
 nedctl kube lms-eks-cluster-ete -- kubectl get ns  # one command; its exit code is kube's exit code
 ```

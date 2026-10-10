@@ -37,8 +37,8 @@ check() { # check <name> <want-exit> <grep-pattern|-> -- <args...>
 
 check "version" 0 '^nedctl ' -- version
 check "help lists the AWS commands" 0 'aws login.*' -- help
-check "help lists shell and connect" 0 'connect <eks-cluster>' -- help
-check "help lists kube" 0 'kube <eks-cluster>' -- help
+check "help lists shell and connect" 0 'connect \[eks-cluster\]' -- help
+check "help lists kube" 0 'kube \[eks-cluster\]' -- help
 check "unknown command is a usage error" 2 'unknown command' -- frobnicate
 check "init --mode bastion" 0 'wrote starter config' -- init --path "$work/b.json" --mode bastion
 check "init refuses to overwrite" 1 'already exists' -- init --path "$work/b.json" --mode bastion

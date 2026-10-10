@@ -187,14 +187,15 @@ Commands:
                               (legacy: launch sm/SSMshell already signed in)
                               [--change-record CHG… | --break-glass REASON]
   ec2 <start|stop> <instance> Start/stop an instance, audited [--yes]
-  connect <eks-cluster>       Tunnel to a private EKS endpoint through the
+  connect [eks-cluster]       Tunnel to a private EKS endpoint through the
                               devops instance (Session Manager); kubectl
                               runs locally as YOUR SSO role, TLS verified
                               [--via auto|direct|bastion] [--via-instance I]
                               [--port N] [--tab]
-  kube <eks-cluster>          connect in one step: tunnel in the background,
+  kube [eks-cluster]          connect in one step: tunnel in the background,
                               a shell with KUBECONFIG set (prompt shows the
-                              cluster); exit closes the tunnel
+                              cluster); exit closes the tunnel. No name:
+                              pick from the account's clusters
                               [-- command args…] run one command instead
                               [--via auto|direct|bastion] (auto: direct when
                               the endpoint answers from here, e.g. on VPN)

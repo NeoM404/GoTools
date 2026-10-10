@@ -124,7 +124,7 @@ func TestKubeTunnelThatFailsNeverStartsTheShell(t *testing.T) {
 
 func TestKubeUsage(t *testing.T) {
 	w := newEC2World(t, "dev", "")
-	for _, args := range [][]string{{"kube"}, {"kube", "bad name"}, {"kube", "c", "--"}, {"kube", "c", "--port", "99999"}} {
+	for _, args := range [][]string{{"kube", "a", "b"}, {"kube", "bad name"}, {"kube", "c", "--"}, {"kube", "c", "--port", "99999"}} {
 		if code, _, _ := run(append([]string{"--config", w.cfg}, args...)...); code != ExitUsage {
 			t.Fatalf("%v: code=%d", args, code)
 		}
@@ -272,5 +272,58 @@ func TestKubeShellRestoresKubeconfigAfterStartupFiles(t *testing.T) {
 				t.Fatalf("ready message must show the export line: %q", errb)
 			}
 		})
+	}
+}
+
+// twoClusterFake is installKubeFake with a second cluster in the account.
+func twoClusterFake(t *testing.T, w *ec2World, ca string) {
+	t.Helper()
+	installKubeFake(t, w, ca, "")
+	pidFile := filepath.Join(w.home, "tunnel.pid")
+	desc := `{"cluster":{"name":"payments-eks-prod","arn":"arn:aws:eks:af-south-1:111111111111:cluster/payments-eks-prod","endpoint":"https://` + eksHost +
+		`","version":"1.30","certificateAuthority":{"data":"` + ca + `"}}}`
+	fakeCLI(t, "aws", `echo "$*" >> `+sq(w.calls)+`
+case "$*" in
+"ec2 describe-regions"*) echo '["af-south-1"]';;
+"eks list-clusters"*) echo '{"clusters":["payments-eks-prod","payments-eks-tools"]}';;
+"eks describe-cluster"*) printf '%s' `+sq(desc)+`;;
+"ec2 describe-instances"*) printf '%s' `+sq(instancesJSON)+`;;
+"ssm start-session"*) echo $$ > `+sq(pidFile)+`; exec sleep 300;;
+"eks get-token"*) echo '{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1beta1","status":{"token":"k8s-aws-v1.fake","expirationTimestamp":"2099-01-01T00:00:00Z"}}';;
+esac`)
+}
+
+func TestKubeWithoutNameUsesTheOnlyCluster(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	port, _ := freePort()
+	ca := fakeEKSAPI(t, port)
+	installKubeFake(t, w, ca, "")
+	code, _, errb := run("--config", w.cfg, "kube", "--port", strconv.Itoa(port), "--", "true")
+	if code != ExitOK || !strings.Contains(errb, "Using payments-eks-prod, the only cluster in payments · DEV (af-south-1)") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+}
+
+func TestKubeWithoutNameAsksAndRemembersTheLastCluster(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	port, _ := freePort()
+	ca := fakeEKSAPI(t, port)
+	twoClusterFake(t, w, ca)
+	// No terminal and two clusters: refuse, naming them.
+	code, _, errb := run("--config", w.cfg, "kube", "--port", strconv.Itoa(port), "--", "true")
+	if code != ExitUsage || !strings.Contains(errb, "2 clusters in payments · DEV — name one: payments-eks-prod, payments-eks-tools") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	// Pick the first (payments-eks-prod) at a terminal.
+	answer(t, "prod\n1\n")
+	if code, _, errb = run("--config", w.cfg, "kube", "--port", strconv.Itoa(port), "--", "true"); code != ExitOK {
+		t.Fatalf("pick: code=%d err=%q", code, errb)
+	}
+	// Next time it is listed first and marked.
+	answer(t, "q\n")
+	_, _, errb = run("--config", w.cfg, "kube", "--port", strconv.Itoa(port), "--", "true")
+	prod, tools := strings.Index(errb, "payments-eks-prod"), strings.Index(errb, "payments-eks-tools")
+	if prod < 0 || tools < 0 || prod > tools || !strings.Contains(errb, "last used") {
+		t.Fatalf("the last cluster must come first, marked:\n%s", errb)
 	}
 }

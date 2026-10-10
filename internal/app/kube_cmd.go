@@ -53,8 +53,8 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if err != nil {
 		return ExitUsage
 	}
-	if len(pos) != 1 || !eksNameRe.MatchString(pos[0]) || (command != nil && len(command) == 0) {
-		fmt.Fprintln(stderr, "usage: nedctl kube <eks-cluster> [--profile P] [--via-instance I] [--port N] [--region R] [-- command args…]")
+	if len(pos) > 1 || (len(pos) == 1 && !eksNameRe.MatchString(pos[0])) || (command != nil && len(command) == 0) {
+		fmt.Fprintln(stderr, "usage: nedctl kube [eks-cluster] [--profile P] [--via auto|direct|bastion] [--via-instance I] [--port N] [--region R] [-- command args…]")
 		return ExitUsage
 	}
 	if *port < 0 || *port > 65535 {
@@ -74,10 +74,15 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if !ok {
 		return ExitFailure
 	}
-	plan, code := planTunnel(ctx, cfg, pc, rs, pos[0], *via, *viaInstance, *port, stderr)
+	name, rs, code := resolveClusterArg(ctx, cfg, pc, rs, pos, stderr)
 	if code != ExitOK {
 		return code
 	}
+	plan, code := planTunnel(ctx, cfg, pc, rs, name, *via, *viaInstance, *port, stderr)
+	if code != ExitOK {
+		return code
+	}
+	saveLastCluster(cfg, pc, name)
 
 	what := "interactive shell"
 	if command != nil {

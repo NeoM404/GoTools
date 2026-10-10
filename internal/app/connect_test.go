@@ -147,7 +147,7 @@ func TestConnectKubeconfigRejectsWrongHostname(t *testing.T) {
 
 func TestConnectRefusesBadInput(t *testing.T) {
 	w := newEC2World(t, "dev", "")
-	for _, args := range [][]string{{"connect"}, {"connect", "bad name"}, {"connect", "x", "--port", "70000"}} {
+	for _, args := range [][]string{{"connect", "a", "b"}, {"connect", "bad name"}, {"connect", "x", "--port", "70000"}} {
 		if code, _, _ := run(append([]string{"--config", w.cfg}, args...)...); code != ExitUsage {
 			t.Fatalf("%v: code=%d", args, code)
 		}

@@ -135,8 +135,8 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	if err != nil {
 		return ExitUsage
 	}
-	if len(pos) != 1 || !eksNameRe.MatchString(pos[0]) {
-		fmt.Fprintln(stderr, "usage: nedctl connect <eks-cluster> [--profile P] [--via-instance ID|NAME] [--port N] [--tab] [--change-record CHG…|--break-glass REASON]")
+	if len(pos) > 1 || (len(pos) == 1 && !eksNameRe.MatchString(pos[0])) {
+		fmt.Fprintln(stderr, "usage: nedctl connect [eks-cluster] [--profile P] [--via auto|direct|bastion] [--via-instance ID|NAME] [--port N] [--tab] [--change-record CHG…|--break-glass REASON]")
 		return ExitUsage
 	}
 	if *port < 0 || *port > 65535 {
@@ -156,10 +156,15 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	if !ok {
 		return ExitFailure
 	}
-	plan, code := planTunnel(ctx, cfg, pc, rs, pos[0], *via, *viaInstance, *port, stderr)
+	name, rs, code := resolveClusterArg(ctx, cfg, pc, rs, pos, stderr)
 	if code != ExitOK {
 		return code
 	}
+	plan, code := planTunnel(ctx, cfg, pc, rs, name, *via, *viaInstance, *port, stderr)
+	if code != ExitOK {
+		return code
+	}
+	saveLastCluster(cfg, pc, name)
 	if plan.direct {
 		return connectDirect(ctx, cfg, pc, plan, *crFlag, *glassFlag, stderr)
 	}
