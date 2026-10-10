@@ -93,10 +93,14 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	format := fs.String("format", defaultEnvFormat(), "what to print on stdout: sh (export AWS_PROFILE=…), powershell, or none")
 	all := fs.Bool("all", false, "break-glass: sign in to every account where you hold a break-glass role (needs --break-glass)")
 	glass := fs.String("break-glass", "", "the incident or reason for signing in to every account; recorded and flagged for review")
-	if err := fs.Parse(args); err != nil {
+	terms, err := parseInterspersed(fs, args)
+	if err != nil {
 		return ExitUsage
 	}
 	switch {
+	case *all && len(terms) > 0:
+		fmt.Fprintln(stderr, "--all signs in to every break-glass assignment; it takes no filter words")
+		return ExitUsage
 	case *all != (*glass != ""):
 		fmt.Fprintln(stderr, "--all and --break-glass go together: signing in to every account is break-glass only")
 		return ExitUsage
@@ -113,10 +117,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	}
 	deviceCode := new(bool)
 	*deviceCode = *deviceFlag || (!*browserFlag && noLocalBrowser())
-	if fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: nedctl aws login [--account ID|NAME] [--role ROLE] [--device-code] [--force] [--format sh|powershell|none]")
-		return ExitUsage
-	}
+
 	if *format != "sh" && *format != "powershell" && *format != "none" {
 		fmt.Fprintf(stderr, "--format %q: want sh, powershell or none\n", *format)
 		return ExitUsage
@@ -133,7 +134,7 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	if *all {
 		return breakGlassAll(ctx, cfg, managed, choices, strings.TrimSpace(*glass), stderr)
 	}
-	chosen, code := chooseAssignment(cfg, choices, *account, *role, stderr)
+	chosen, code := chooseAssignment(cfg, choices, *account, *role, terms, stderr)
 	if code != ExitOK {
 		return code
 	}
@@ -373,7 +374,7 @@ func ensureSignIn(ctx context.Context, cfg config.Config, deviceCode, force bool
 
 // chooseAssignment narrows by --account/--role, then asks with the picker
 // when more than one remains. It never guesses.
-func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, stderr io.Writer) (awsChoice, int) {
+func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, terms []string, stderr io.Writer) (awsChoice, int) {
 	var cands []awsChoice
 	for _, c := range all {
 		if account != "" && c.AccountID != account && !strings.EqualFold(c.AccountName, account) &&
@@ -383,6 +384,9 @@ func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, 
 		if role != "" && !strings.EqualFold(c.Role, role) {
 			continue
 		}
+		if !matchesAll(terms, c.Environment, c.Squad, c.AccountName, c.AccountID, c.Role) {
+			continue
+		}
 		cands = append(cands, c)
 	}
 	switch {
@@ -390,12 +394,12 @@ func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, 
 		fmt.Fprintln(stderr, "Identity Center assigns you no accounts")
 		return awsChoice{}, ExitFailure
 	case len(cands) == 0:
-		fmt.Fprintf(stderr, "none of your %d assignments matches --account %q --role %q\n", len(all), account, role)
+		fmt.Fprintf(stderr, "none of your %d assignments matches%s\n", len(all), describeFilter(account, role, terms))
 		return awsChoice{}, ExitFailure
 	case len(cands) == 1:
 		return cands[0], ExitOK
 	case !stdinIsTerminal():
-		fmt.Fprintf(stderr, "%d assignments match — pass --account and --role to choose one without a terminal\n", len(cands))
+		fmt.Fprintf(stderr, "%d assignments match — add words to narrow it (e.g. nedctl aws login lms qa), or pass --account and --role\n", len(cands))
 		return awsChoice{}, ExitUsage
 	}
 	sortChoices(cfg, cands)
@@ -470,6 +474,35 @@ func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsCho
 	}
 	fmt.Fprintf(stderr, "Signed in: %s (profile %s)\n", label, name)
 	return name, ExitOK
+}
+
+// matchesAll reports whether every term appears, case-insensitively, in
+// one of the fields.
+func matchesAll(terms []string, fields ...string) bool {
+	hay := strings.ToLower(strings.Join(fields, " "))
+	for _, t := range terms {
+		if !strings.Contains(hay, strings.ToLower(t)) {
+			return false
+		}
+	}
+	return true
+}
+
+func describeFilter(account, role string, terms []string) string {
+	var parts []string
+	if account != "" {
+		parts = append(parts, fmt.Sprintf("--account %q", account))
+	}
+	if role != "" {
+		parts = append(parts, fmt.Sprintf("--role %q", role))
+	}
+	if len(terms) > 0 {
+		parts = append(parts, fmt.Sprintf("%q", strings.Join(terms, " ")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " " + strings.Join(parts, " ")
 }
 
 // elevatedColor marks roles that can change resources.

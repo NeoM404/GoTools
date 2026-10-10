@@ -46,6 +46,8 @@ type Picker struct {
 	Legend string
 	// MaxShown caps rows printed at once (default 40); filter to see more.
 	MaxShown int
+	// Filter, when set, is applied before the first render, as if typed.
+	Filter string
 }
 
 // Pick runs the dialogue until a row is chosen, the operator quits, or input
@@ -55,8 +57,11 @@ func (p Picker) Pick() (int, error) {
 		return -1, errors.New("nothing to choose from")
 	}
 	in := bufio.NewReader(p.In)
-	view := p.filter("")
-	filter := ""
+	filter := p.Filter
+	view := p.filter(filter)
+	if len(view) == 0 {
+		filter, view = "", p.filter("")
+	}
 	for {
 		p.render(view, filter)
 		fmt.Fprint(p.Out, p.style("2", "Number to select · text to filter · Enter to clear · q to quit")+" "+p.style("1", "›")+" ")

@@ -501,3 +501,22 @@ func TestAWSLoginUsesDeviceCodeWhereNoBrowser(t *testing.T) {
 		t.Fatal("--device-code with --browser must be a usage error")
 	}
 }
+
+func TestAWSLoginFilterWords(t *testing.T) {
+	w := newAWSWorld(t, "")
+	code, out, errb := run("--config", w.cfg, "aws", "login", "payments", "prod", "readonly", "--format", "sh")
+	if code != ExitOK || out != "export AWS_PROFILE='nedctl.payments-prod.Platform-ReadOnly'\n" {
+		t.Fatalf("one match must sign straight in: code=%d out=%q err=%q", code, out, errb)
+	}
+	code, _, errb = run("--config", w.cfg, "aws", "login", "payments")
+	if code != ExitUsage || !strings.Contains(errb, "assignments match — add words to narrow it") {
+		t.Fatalf("several matches, no terminal: code=%d err=%q", code, errb)
+	}
+	code, _, errb = run("--config", w.cfg, "aws", "login", "nope")
+	if code != ExitFailure || !strings.Contains(errb, `matches "nope"`) {
+		t.Fatalf("no match: code=%d err=%q", code, errb)
+	}
+	if code, _, _ := run("--config", w.cfg, "aws", "login", "--all", "--break-glass", "P1 INC0012345 payments API down", "payments"); code != ExitUsage {
+		t.Fatalf("--all with words: code=%d", code)
+	}
+}

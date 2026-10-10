@@ -90,7 +90,8 @@ silent. What was found where is remembered per account for 24 hours.
 ```bash
 eval "$(nedctl aws login)"                       # bash/zsh: sign in if needed, picker, then sets AWS_PROFILE
 nedctl aws login --format powershell | iex       # PowerShell
-nedctl aws login --account payments-prod --role Platform-ReadOnly   # no picker
+nedctl aws login lms qa                          # words narrow the picker; one match signs straight in
+nedctl aws login --account payments-prod --role Platform-ReadOnly   # exact, no picker
 nedctl aws login --browser                       # force browser sign-in (default where a browser can open)
 ```
 

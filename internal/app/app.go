@@ -170,8 +170,9 @@ Commands:
                               Evidence pack: accesses, change records and
                               exceptions to review [--log PATH]...
                               [--production] [--out FILE] [-o table|json]
-  aws login                   Sign in with IAM Identity Center and pick ONE
-                              account + role (picker, or --account/--role);
+  aws login [WORDS…]          Sign in with IAM Identity Center and pick ONE
+                              account + role (picker; words such as "lms qa"
+                              narrow it, one match goes straight in);
                               writes an AWS CLI profile, no keys handled
                               [--device-code] [--force] [--format sh|powershell|none]
                               [--all --break-glass REASON]  (break-glass roles only)
