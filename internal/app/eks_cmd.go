@@ -138,6 +138,9 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if path, err := awssso.ConfigPath(); err == nil {
 		if m, err := awssso.LoadManaged(path); err == nil {
 			meta = m.Profiles
+			if len(m.Profiles) > 0 {
+				warnSignIn(m.Session.Name, stderr)
+			}
 		}
 	}
 	if *allProfiles {

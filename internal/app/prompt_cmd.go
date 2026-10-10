@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"nedctl/internal/awssso"
 	"nedctl/internal/config"
@@ -44,7 +45,7 @@ func cmdPrompt(ctx context.Context, cfgPath string, args []string, stdout, stder
 	}
 	if !*noAWS {
 		if name := resolveProfile(cfg, ""); name != "" {
-			label, env := "aws:"+name, ""
+			label, env, suffix := "aws:"+name, "", ""
 			if path, err := awssso.ConfigPath(); err == nil {
 				if m, err := awssso.LoadManaged(path); err == nil {
 					if p, ok := m.Profiles[name]; ok {
@@ -52,10 +53,18 @@ func cmdPrompt(ctx context.Context, cfgPath string, args []string, stdout, stder
 						if cfg.AWS.Elevated(p.Role) {
 							label += "▲"
 						}
+						if left, ok := signInLeft(m.Session.Name); ok {
+							switch {
+							case left <= 0:
+								suffix = " (expired)"
+							case left < time.Hour:
+								suffix = fmt.Sprintf(" (%dm)", int(left.Minutes()))
+							}
+						}
 					}
 				}
 			}
-			parts = append(parts, segment(cfg, *shell, label, env, cfg.IsProdEnvironment(env)))
+			parts = append(parts, segment(cfg, *shell, label, env, cfg.IsProdEnvironment(env))+suffix)
 		}
 	}
 	if len(parts) > 0 {

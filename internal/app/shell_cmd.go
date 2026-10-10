@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"nedctl/internal/audit"
 	"nedctl/internal/awssso"
@@ -50,11 +51,41 @@ func loadProfileContext(cfg config.Config, flagValue string, stderr io.Writer) (
 		if m, err := awssso.LoadManaged(path); err == nil {
 			if p, ok := m.Profiles[name]; ok {
 				pc.AccountID, pc.Role, pc.Squad, pc.Environment = p.AccountID, p.Role, p.Squad, p.Environment
+				warnSignIn(m.Session.Name, stderr)
 			}
 		}
 	}
 	pc.Production = cfg.IsProdEnvironment(pc.Environment)
 	return pc, true
+}
+
+// signInWarnWithin is how close to expiry a command starts warning.
+const signInWarnWithin = 15 * time.Minute
+
+// signInLeft is how long the cached Identity Center sign-in for session
+// has left; ok is false when there is none to read.
+func signInLeft(session string) (time.Duration, bool) {
+	dir, err := awssso.CacheDir()
+	if err != nil {
+		return 0, false
+	}
+	tok, err := awssso.ReadToken(dir, session, now(), -100*365*24*time.Hour) // read even when expired
+	if err != nil {
+		return 0, false
+	}
+	return tok.ExpiresAt.Sub(now()), true
+}
+
+// warnSignIn tells the engineer before their sign-in runs out mid-task.
+func warnSignIn(session string, stderr io.Writer) {
+	left, ok := signInLeft(session)
+	switch {
+	case !ok:
+	case left <= 0:
+		fmt.Fprintln(stderr, "warning: your IAM Identity Center sign-in has expired — run `nedctl aws login` to renew it")
+	case left <= signInWarnWithin:
+		fmt.Fprintf(stderr, "warning: your IAM Identity Center sign-in expires in %s — run `nedctl aws login` to renew it\n", left.Round(time.Minute))
+	}
 }
 
 func (pc profileContext) label() string {

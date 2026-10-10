@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"nedctl/internal/awssso"
 )
 
 func TestPromptShowsKubeAndAWSInEnvironmentColour(t *testing.T) {
@@ -39,5 +42,41 @@ func TestPromptNeverFails(t *testing.T) {
 		if code, out, errb := run(args...); code != ExitOK || out != "" || errb != "" {
 			t.Fatalf("%v: code=%d out=%q err=%q", args, code, out, errb)
 		}
+	}
+}
+
+func writeSignIn(t *testing.T, home string, expires time.Time) {
+	t.Helper()
+	dir := filepath.Join(home, ".aws", "sso", "cache")
+	os.MkdirAll(dir, 0o700)
+	body := `{"accessToken":"tok-secret","expiresAt":"` + expires.UTC().Format(time.RFC3339) + `"}`
+	if err := os.WriteFile(awssso.TokenPath(dir, "nedctl"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPromptAndCommandsShowSignInExpiry(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	writeSignIn(t, w.home, time.Now().Add(30*time.Minute))
+	_, out, _ := run("--config", w.cfg, "prompt", "--no-kube")
+	if !strings.Contains(out, "(29m)") && !strings.Contains(out, "(30m)") {
+		t.Fatalf("prompt must show time left under an hour: %q", out)
+	}
+	writeSignIn(t, w.home, time.Now().Add(5*time.Hour))
+	if _, out, _ = run("--config", w.cfg, "prompt", "--no-kube"); strings.Contains(out, "(") {
+		t.Fatalf("plenty of time left: no suffix expected: %q", out)
+	}
+	writeSignIn(t, w.home, time.Now().Add(-time.Minute))
+	if _, out, _ = run("--config", w.cfg, "prompt", "--no-kube"); !strings.Contains(out, "(expired)") {
+		t.Fatalf("expired: %q", out)
+	}
+	_, _, errb := run("--config", w.cfg, "shell", "devops")
+	if !strings.Contains(errb, "sign-in has expired — run `nedctl aws login`") {
+		t.Fatalf("shell must warn: %q", errb)
+	}
+	writeSignIn(t, w.home, time.Now().Add(10*time.Minute))
+	_, _, errb = run("--config", w.cfg, "shell", "devops")
+	if !strings.Contains(errb, "sign-in expires in 10m") && !strings.Contains(errb, "sign-in expires in 9m") {
+		t.Fatalf("shell must warn before expiry: %q", errb)
 	}
 }

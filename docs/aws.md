@@ -270,8 +270,11 @@ PS1='$(nedctl prompt --shell bash) \w\$ '        # bash
 PROMPT='$(nedctl prompt --shell zsh) %~ %# '     # zsh (setopt prompt_subst)
 ```
 
-Shows `k8s:<context>[env]` and `aws:<squad>[env]` in the environment's colour,
-with production in bold capitals. It reads only local files and never fails.
+Shows `k8s:<context>[env]` and `aws:<squad>[env]` in the environment's colour.
+When less than an hour of the Identity Center sign-in is left, it adds the
+time, e.g. `(42m)`, or `(expired)`. Commands that act in AWS also warn when
+the sign-in expires within 15 minutes. The prompt shows
+production in bold capitals. It reads only local files and never fails.
 
 ## Change records
 
