@@ -145,3 +145,43 @@ and network path from the bastions exist:
 path. nedctl calls the Table API at `/api/now/table/change_request` under it.
 Until then, `--change-record CHG…` is format-checked and recorded, but not
 verified.
+
+## Releasing nedctl to the squads
+
+`.azure-pipelines/release.yml` runs when a `vX.Y.Z` tag is pushed on main:
+
+```bash
+git tag -a v1.0.0 -m "nedctl 1.0.0" && git push origin v1.0.0
+```
+
+It runs the full gate, builds macOS, Linux and Windows binaries with the
+**organisation defaults built in**, writes `SHA256SUMS` and `latest.json`,
+checks that the Linux binary reports the tag's version and sees the
+built-in settings, and publishes the files as the pipeline artifact
+`nedctl-vX.Y.Z` (plus a Universal Package if `artifactsFeed` is set).
+
+One-time setup, under Pipelines → Library:
+
+- **Secure file `nedctl-org.json`.** The config fragment every engineer
+  shares: the Identity Center start URL and region, environments, prod
+  patterns, and `releaseUrl`. It is built into the binaries and never
+  committed. Because the defaults are built in, an engineer downloads one
+  file and runs `setup`; there is no config to hand out.
+- **`releaseBaseUrl`** (optional): where engineers download releases from.
+  It goes into `latest.json`.
+- **`artifactsFeed`** (optional): an Azure Artifacts feed for a Universal
+  Package (`az artifacts universal download --feed … --name nedctl`).
+
+**Updates.** Serve `latest.json` at the `releaseUrl` in the built-in
+defaults, for example from the same storage as the binaries. `nedctl version
+--check` then tells an engineer when a newer release is out and where to
+download it, and running the new binary's `setup` replaces the installed one.
+
+**Engineer instructions** for the announcement:
+
+```bash
+# WSL / Linux (use nedctl-darwin-arm64 on an Apple-silicon Mac)
+chmod +x nedctl-linux-amd64 && ./nedctl-linux-amd64 setup
+# open a new terminal
+nedctl aws login
+```

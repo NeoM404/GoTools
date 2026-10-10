@@ -24,7 +24,7 @@ export GOTOOLCHAIN := local
 GOBIN ?= $(shell go env GOPATH)/bin
 SHA256 := $(shell command -v sha256sum 2>/dev/null || echo "shasum -a 256")
 
-.PHONY: all build install test e2e vet fmt fmt-check lint vuln deps-check ci cross checksums repro tools clean
+.PHONY: all build install test e2e vet fmt fmt-check lint vuln deps-check ci cross checksums release repro tools clean
 
 all: ci build
 
@@ -80,9 +80,21 @@ cross:
 	$(STATIC) GOOS=darwin GOARCH=amd64 go build $(BUILDFLAGS) -o dist/$(BINARY)-darwin-amd64 $(PKG)
 	$(STATIC) GOOS=linux  GOARCH=amd64 go build $(BUILDFLAGS) -o dist/$(BINARY)-linux-amd64  $(PKG)
 	$(STATIC) GOOS=linux  GOARCH=arm64 go build $(BUILDFLAGS) -o dist/$(BINARY)-linux-arm64  $(PKG)
+	$(STATIC) GOOS=windows GOARCH=amd64 go build $(BUILDFLAGS) -o dist/$(BINARY)-windows-amd64.exe $(PKG)
 
 checksums: cross
 	cd dist && $(SHA256) $(BINARY)-* > SHA256SUMS
+
+# A release: the binaries with the organisation defaults built in, their
+# checksums, and latest.json for `nedctl version --check`. The release
+# pipeline runs it on a vX.Y.Z tag; RELEASE_BASE_URL is where the files
+# will be downloadable from.
+RELEASE_BASE_URL ?=
+release: clean checksums
+	@case "$(VERSION)" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "release needs a vX.Y.Z tag, got $(VERSION)"; exit 1 ;; esac
+	@[ -n "$(ORG_DEFAULTS)" ] || { echo "release needs ORG_DEFAULTS (base64 of the organisation config fragment)"; exit 1; }
+	@printf '{"version": "%s", "download": "%s"}\n' "$(VERSION)" "$(RELEASE_BASE_URL)$(if $(RELEASE_BASE_URL),/$(VERSION)/,)" > dist/latest.json
+	@cat dist/latest.json
 
 # Build twice — the second from an empty, throwaway build cache — and require
 # byte-identical output. Leaves your own build cache untouched.

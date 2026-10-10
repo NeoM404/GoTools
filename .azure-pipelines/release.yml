@@ -1,0 +1,97 @@
+# Release: push a vX.Y.Z tag on main and this pipeline gates, builds and
+# publishes nedctl for the squads.
+#
+#   git tag -a v1.0.0 -m "nedctl 1.0.0" && git push origin v1.0.0
+#
+# One-time setup (Pipelines → Library):
+#   • Secure file  nedctl-org.json — the organisation config fragment built
+#     into every binary, so engineers need no config file, e.g.
+#       {"aws": {"startUrl": "https://<id>.awsapps.com/start", "ssoRegion": "eu-west-1"},
+#        "environments": ["dev", "ete", "qa", "prod"], "prodEnvironments": ["qa", "prod"],
+#        "prodPatterns": ["(?i)(^|[-_.])(prod|prd|qa)([-_.]|$)"],
+#        "releaseUrl": "https://<where latest.json is served>/latest.json"}
+#     It stays out of the repository. Authorise this pipeline to use it.
+#   • Variables (optional):
+#       artifactsFeed   Azure Artifacts feed to publish a Universal Package to
+#       releaseBaseUrl  where engineers download releases; goes into latest.json
+
+trigger:
+  branches:
+    exclude: ["*"]
+  tags:
+    include: ["v*"]
+pr: none
+
+variables:
+  GOTOOLCHAIN: local
+  goVersion: "1.26.9"
+
+pool:
+  vmImage: ubuntu-latest # or the bank's self-hosted pool: `name: <pool-name>`
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+    persistCredentials: false
+
+  - script: |
+      set -eu
+      tag="$(Build.SourceBranchName)"
+      case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "##vso[task.logissue type=error]not a vX.Y.Z tag: $tag"; exit 1 ;; esac
+      if git rev-parse -q --verify origin/main >/dev/null; then
+        git merge-base --is-ancestor HEAD origin/main || { echo "##vso[task.logissue type=error]$tag is not on main"; exit 1; }
+      else
+        echo "##vso[task.logissue type=warning]origin/main not fetched; could not check $tag is on main"
+      fi
+      echo "##vso[task.setvariable variable=releaseVersion]$tag"
+      echo "##vso[task.setvariable variable=packageVersion]${tag#v}"
+    displayName: Tag is vX.Y.Z on main
+
+  - task: GoTool@0
+    displayName: Go $(goVersion)
+    inputs:
+      version: $(goVersion)
+
+  - script: make tools && make ci
+    displayName: Full gate (format, vet, deps, lint, tests, e2e, govulncheck)
+
+  - task: DownloadSecureFile@1
+    name: orgDefaults
+    displayName: Organisation defaults
+    inputs:
+      secureFile: nedctl-org.json
+
+  - script: |
+      set -eu
+      ORG_DEFAULTS="$(base64 -w0 "$(orgDefaults.secureFilePath)")"
+      base='$(releaseBaseUrl)'
+      case "$base" in '$('*) base="" ;; esac # variable not defined
+      make release VERSION="$(releaseVersion)" ORG_DEFAULTS="$ORG_DEFAULTS" RELEASE_BASE_URL="$base"
+    displayName: Build release binaries + SHA256SUMS + latest.json
+
+  # Prove the built binary carries the defaults and the right version before
+  # anyone downloads it.
+  - script: |
+      set -eu
+      bin=dist/nedctl-linux-amd64
+      test "$($bin version)" = "nedctl $(releaseVersion)"
+      HOME="$(mktemp -d)" $bin doctor --offline -o json | grep -q 'built-in organisation settings'
+      cd dist && sha256sum -c SHA256SUMS
+    displayName: Verify the release
+
+  - publish: dist
+    displayName: Publish nedctl $(releaseVersion)
+    artifact: nedctl-$(releaseVersion)
+
+  - task: UniversalPackages@0
+    displayName: Publish to Azure Artifacts
+    condition: and(succeeded(), ne(variables['artifactsFeed'], ''))
+    inputs:
+      command: publish
+      publishDirectory: dist
+      feedsToUsePublish: internal
+      vstsFeedPublish: $(artifactsFeed)
+      vstsFeedPackagePublish: nedctl
+      versionOption: custom
+      versionPublish: $(packageVersion)
+      packagePublishDescription: nedctl $(releaseVersion)

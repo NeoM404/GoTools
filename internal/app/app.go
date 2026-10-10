@@ -48,8 +48,7 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		printUsage(stdout)
 		return ExitOK
 	case "version", "--version":
-		fmt.Fprintf(stdout, "nedctl %s\n", Version)
-		return ExitOK
+		return cmdVersion(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "init":
 		return cmdInit(cmdArgs, stdout, stderr)
 	case "setup":
@@ -223,7 +222,7 @@ Commands:
                               tab colour, tab completion, aws login switching
   doctor [-o table|json]      Check ecosystem tools are present & current
                               [--strict]  (exit 1 if any tool is below floor)
-  version                     Print nedctl version
+  version [--check]           Print nedctl version; --check: is a newer one out?
   help                        Show this help
 
 Exit codes: 0 ok · 1 failed/check found a problem · 2 usage error

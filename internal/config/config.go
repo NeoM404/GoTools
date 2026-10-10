@@ -119,6 +119,11 @@ type Config struct {
 	// WindowsTerminal is the path to wt.exe for --tab, when it is not on
 	// PATH (WSL without the Windows PATH). A C:\ path works from WSL.
 	WindowsTerminal string `json:"windowsTerminal"`
+
+	// ReleaseURL is the HTTPS address of latest.json, which the release
+	// pipeline publishes next to the binaries; `nedctl version --check`
+	// compares against it. Usually part of the built-in defaults.
+	ReleaseURL string `json:"releaseUrl"`
 }
 
 // DefaultEnvironmentColors matches the colours engineers already know from
@@ -395,6 +400,9 @@ func (c Config) validateAWS() error {
 		if !iamRoleRe.MatchString(r) {
 			errs = append(errs, fmt.Errorf("aws.breakGlassRoles: %q is not an IAM role name", r))
 		}
+	}
+	if c.ReleaseURL != "" && !strings.HasPrefix(c.ReleaseURL, "https://") {
+		errs = append(errs, fmt.Errorf("releaseUrl must be https://"))
 	}
 	if strings.ContainsAny(c.WindowsTerminal, "\r\n") || strings.HasPrefix(c.WindowsTerminal, "-") {
 		errs = append(errs, fmt.Errorf("windowsTerminal: invalid value"))
