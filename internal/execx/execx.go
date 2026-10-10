@@ -197,3 +197,76 @@ func summarize(b []byte) string {
 	}
 	return s
 }
+
+// Process is a command started in the background (a tunnel) that the
+// caller stops when done. It runs in its own process group, so the
+// operator's Ctrl-C in a foreground shell never reaches it, and Stop ends
+// it together with everything it started.
+type Process struct {
+	cmd  *exec.Cmd
+	done chan struct{}
+	err  error
+}
+
+// Start runs spec in the background. Output goes to spec.Stdout/Stderr
+// (typically a log file); the deadline still applies, so a forgotten
+// process ends on its own.
+func Start(ctx context.Context, spec Spec) (*Process, error) {
+	if spec.Timeout <= 0 {
+		return nil, fmt.Errorf("execx: %s started without a timeout", spec.Name)
+	}
+	path, err := exec.LookPath(spec.Name)
+	if err != nil {
+		return nil, &NotFoundError{Name: spec.Name}
+	}
+	// Not tied to the caller's context: interrupting the foreground shell
+	// must not take the tunnel down mid-command. Stop or the deadline does.
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), spec.Timeout)
+	cmd := exec.CommandContext(cctx, path, spec.Args...) //nolint:gosec // callers pass typed, validated arguments
+	cmd.WaitDelay = waitDelay
+	isolateProcessGroup(cmd)
+	cmd.Stdout, cmd.Stderr = spec.Stdout, spec.Stderr
+	if len(spec.Env) > 0 {
+		cmd.Env = append(os.Environ(), spec.Env...)
+	}
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("%s: %w", spec.Name, err)
+	}
+	p := &Process{cmd: cmd, done: make(chan struct{})}
+	go func() {
+		p.err = cmd.Wait()
+		cancel()
+		close(p.done)
+	}()
+	return p, nil
+}
+
+// Exited reports whether the process has ended, and how.
+func (p *Process) Exited() (bool, error) {
+	select {
+	case <-p.done:
+		return true, p.err
+	default:
+		return false, nil
+	}
+}
+
+// Stop asks the process group to end (SIGTERM, so a Session Manager plugin
+// can close its session cleanly), waits up to grace, then kills it.
+func (p *Process) Stop(grace time.Duration) {
+	if done, _ := p.Exited(); done {
+		return
+	}
+	terminateGroup(p.cmd)
+	select {
+	case <-p.done:
+	case <-time.After(grace):
+		if p.cmd.Cancel != nil {
+			_ = p.cmd.Cancel()
+		} else {
+			_ = p.cmd.Process.Kill()
+		}
+		<-p.done
+	}
+}

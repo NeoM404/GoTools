@@ -38,6 +38,7 @@ check() { # check <name> <want-exit> <grep-pattern|-> -- <args...>
 check "version" 0 '^nedctl ' -- version
 check "help lists the AWS commands" 0 'aws login.*' -- help
 check "help lists shell and connect" 0 'connect <eks-cluster>' -- help
+check "help lists kube" 0 'kube <eks-cluster>' -- help
 check "unknown command is a usage error" 2 'unknown command' -- frobnicate
 check "init --mode bastion" 0 'wrote starter config' -- init --path "$work/b.json" --mode bastion
 check "init refuses to overwrite" 1 'already exists' -- init --path "$work/b.json" --mode bastion
@@ -48,6 +49,7 @@ check "aws env refuses without a profile" 1 'no profile selected' -- --config "$
 check "break-glass needs a reason" 2 'go together' -- --config "$root/configs/nedctl.aws.example.json" aws login --all
 check "kubeconfig is refused on a bastion" 2 'does not fetch any' -- --config "$root/configs/nedctl.bastion.example.json" kubeconfig payments-k8s-prod-cluster
 check "connect validates its argument" 2 'usage: nedctl connect' -- --config "$root/configs/nedctl.aws.example.json" connect 'bad name'
+check "kube validates its argument" 2 'usage: nedctl kube' -- --config "$root/configs/nedctl.aws.example.json" kube 'bad name'
 check "prompt never fails" 0 - -- prompt --shell bash
 check "guard without a kubeconfig fails clearly" 1 'current kube-context' -- guard
 check "doctor -o json is machine readable" 0 '"healthy"' -- --config "$root/configs/nedctl.bastion.example.json" doctor -o json

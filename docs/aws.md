@@ -201,6 +201,26 @@ kubectl get nodes
 `--port` override the defaults. `guard` and `prompt` treat the context like
 any other, so production still shows red.
 
+## One command to a cluster: `nedctl kube`
+
+`kube` is `connect` without the second terminal:
+
+```bash
+nedctl kube lms-eks-cluster-ete                    # a shell with kubectl ready; exit closes the tunnel
+nedctl kube lms-eks-cluster-ete -- kubectl get ns  # one command; its exit code is kube's exit code
+```
+
+It works the same way as `connect`: it finds the region and the devops
+instance, and applies the same audit and change control. The tunnel runs in
+the background, so Ctrl-C in your shell interrupts your command, not the
+tunnel. Its output goes to `~/.local/state/nedctl/tunnels/<cluster>.log`.
+Nothing starts until the tunnel actually accepts connections. If it fails,
+you see why, and no shell opens.
+
+In bash, the prompt starts with `⎈ <cluster> <ENV>` in the environment's
+colour, after your own `~/.bashrc` has loaded. Other shells start unchanged,
+with `KUBECONFIG` and `NEDCTL_KUBE` set.
+
 ## Moving clusters to access entries: `nedctl eks`
 
 ```bash

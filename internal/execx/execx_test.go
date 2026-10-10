@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -119,4 +121,47 @@ func TestInteractiveStillHasADeadline(t *testing.T) {
 	if err := Interactive(context.Background(), Spec{Name: "sh"}); err == nil {
 		t.Fatal("an interactive command without a timeout must be refused")
 	}
+}
+
+func TestStartRunsInBackgroundAndStopEndsTheGroup(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := dir + "/child.pid"
+	// The child starts a grandchild, as the Session Manager plugin does.
+	p, err := Start(context.Background(), Spec{Name: "sh", Args: []string{"-c", "sleep 300 & echo $! > " + pidFile + "; wait"}, Timeout: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if done, _ := p.Exited(); done {
+		t.Fatal("the background process ended early")
+	}
+	start := time.Now()
+	p.Stop(2 * time.Second)
+	if done, _ := p.Exited(); !done {
+		t.Fatal("Stop must end the process")
+	}
+	if time.Since(start) > 4*time.Second {
+		t.Fatal("Stop took too long")
+	}
+	pid, _ := os.ReadFile(pidFile)
+	if out, _ := exec.Command("sh", "-c", "kill -0 "+strings.TrimSpace(string(pid))+" 2>/dev/null && echo alive").Output(); strings.Contains(string(out), "alive") {
+		t.Fatal("the grandchild survived Stop: the whole group must end")
+	}
+}
+
+func TestStartReportsEarlyExit(t *testing.T) {
+	p, err := Start(context.Background(), Spec{Name: "sh", Args: []string{"-c", "exit 3"}, Timeout: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 50; i++ {
+		if done, err := p.Exited(); done {
+			if err == nil {
+				t.Fatal("exit 3 must be reported as an error")
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("early exit not observed")
 }

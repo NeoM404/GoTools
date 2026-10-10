@@ -78,6 +78,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdEC2(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "connect":
 		return cmdConnect(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "kube":
+		return cmdKube(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":
 		return cmdEKS(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "prompt":
@@ -187,6 +189,10 @@ Commands:
                               devops instance (Session Manager); kubectl
                               runs locally as YOUR SSO role, TLS verified
                               [--via-instance I] [--port N] [--tab]
+  kube <eks-cluster>          connect in one step: tunnel in the background,
+                              a shell with KUBECONFIG set (prompt shows the
+                              cluster); exit closes the tunnel
+                              [-- command args…] run one command instead
   eks auth [--profile P]… [--all-profiles] [-o table|json]
                               Authentication mode + endpoint exposure of
                               every EKS cluster; who still needs to move

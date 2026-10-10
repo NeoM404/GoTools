@@ -130,44 +130,12 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	if !ok {
 		return ExitFailure
 	}
-	region, err := findCluster(ctx, cfg, pc, rs, pos[0], stderr)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return ExitFailure
-	}
-	cluster, err := describeEKS(ctx, cfg, pc.Name, pos[0], region)
-	if err != nil {
-		fmt.Fprintf(stderr, "looking up %s with %s: %v\n", pos[0], pc.Name, err)
-		return ExitFailure
-	}
-	// The hop must be in the cluster's region (and VPC) to reach its endpoint.
-	list, err := instancesIn(ctx, cfg, pc.Name, cluster.Region)
-	if err != nil {
-		fmt.Fprintf(stderr, "listing instances with %s: %v\n", pc.Name, err)
-		return ExitFailure
-	}
-	terms := []string{cfg.AWS.DevopsName()}
-	var running []ec2Instance
-	for _, in := range list {
-		if in.State == "running" {
-			running = append(running, in)
-		}
-	}
-	hop, code := chooseInstance(cfg, pc, running, *viaInstance, terms, stderr)
+	plan, code := planTunnel(ctx, cfg, pc, rs, pos[0], *viaInstance, *port, stderr)
 	if code != ExitOK {
 		return code
 	}
-	if *port == 0 {
-		if *port, err = freePort(); err != nil {
-			fmt.Fprintf(stderr, "finding a free local port: %v\n", err)
-			return ExitFailure
-		}
-	}
-	kc, err := writeTunnelKubeconfig(cfg, cluster, pc.Name, *port)
-	if err != nil {
-		fmt.Fprintf(stderr, "writing the kubeconfig: %v\n", err)
-		return ExitFailure
-	}
+	cluster, hop, kc := plan.cluster, plan.hop, plan.kubeconfig
+	*port = plan.port
 	if *tab {
 		return openTunnelTab(cfg, pc, cluster, hop, *port, kc, *crFlag, *glassFlag, stderr)
 	}
@@ -186,10 +154,7 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	}
 	banner(cfg, pc, cluster.Name, stderr)
 	fmt.Fprintf(stderr, "kubeconfig: %s\nIn another terminal:  export KUBECONFIG=%s   (PowerShell: $env:KUBECONFIG = '%s')\nTunnel open until you press Ctrl-C.\n", kc, kc, kc)
-	err = execx.Interactive(ctx, execx.Spec{Name: "aws", Args: []string{"ssm", "start-session", "--target", hop.ID,
-		"--document-name", "AWS-StartPortForwardingSessionToRemoteHost",
-		"--parameters", fmt.Sprintf("host=%s,portNumber=443,localPortNumber=%d", cluster.Host, *port),
-		"--region", cluster.Region, "--profile", pc.Name}, Stdout: stderr, Timeout: cfg.AWS.Timeout()})
+	err = execx.Interactive(ctx, execx.Spec{Name: "aws", Args: portForwardArgs(plan, pc.Name), Stdout: stderr, Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "tunnel failed: %v\n", err)
@@ -197,6 +162,68 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	}
 	tr.end(ctx, audit.OutcomeSuccess, pc.Role, base.Detail, stderr)
 	return ExitOK
+}
+
+// tunnelPlan is everything a tunnel to one cluster needs, worked out before
+// anything is started or recorded.
+type tunnelPlan struct {
+	cluster    eksTarget
+	hop        ec2Instance
+	port       int
+	kubeconfig string
+}
+
+// planTunnel finds the cluster's region, describes it, picks the devops
+// instance in that region to tunnel through, chooses a local port and writes
+// the kubeconfig. It is shared by connect and kube so both behave the same.
+func planTunnel(ctx context.Context, cfg config.Config, pc profileContext, rs regionSearch, name, via string, port int, stderr io.Writer) (tunnelPlan, int) {
+	region, err := findCluster(ctx, cfg, pc, rs, name, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return tunnelPlan{}, ExitFailure
+	}
+	cluster, err := describeEKS(ctx, cfg, pc.Name, name, region)
+	if err != nil {
+		fmt.Fprintf(stderr, "looking up %s with %s: %v\n", name, pc.Name, err)
+		return tunnelPlan{}, ExitFailure
+	}
+	// The hop must be in the cluster's region (and VPC) to reach its endpoint.
+	list, err := instancesIn(ctx, cfg, pc.Name, cluster.Region)
+	if err != nil {
+		fmt.Fprintf(stderr, "listing instances with %s: %v\n", pc.Name, err)
+		return tunnelPlan{}, ExitFailure
+	}
+	var running []ec2Instance
+	for _, in := range list {
+		if in.State == "running" {
+			running = append(running, in)
+		}
+	}
+	hop, code := chooseInstance(cfg, pc, running, via, []string{cfg.AWS.DevopsName()}, stderr)
+	if code != ExitOK {
+		return tunnelPlan{}, code
+	}
+	if port == 0 {
+		if port, err = freePort(); err != nil {
+			fmt.Fprintf(stderr, "finding a free local port: %v\n", err)
+			return tunnelPlan{}, ExitFailure
+		}
+	}
+	kc, err := writeTunnelKubeconfig(cfg, cluster, pc.Name, port)
+	if err != nil {
+		fmt.Fprintf(stderr, "writing the kubeconfig: %v\n", err)
+		return tunnelPlan{}, ExitFailure
+	}
+	return tunnelPlan{cluster: cluster, hop: hop, port: port, kubeconfig: kc}, ExitOK
+}
+
+// portForwardArgs are the aws arguments of the Session Manager
+// port-forward behind a tunnel.
+func portForwardArgs(p tunnelPlan, profile string) []string {
+	return []string{"ssm", "start-session", "--target", p.hop.ID,
+		"--document-name", "AWS-StartPortForwardingSessionToRemoteHost",
+		"--parameters", fmt.Sprintf("host=%s,portNumber=443,localPortNumber=%d", p.cluster.Host, p.port),
+		"--region", p.cluster.Region, "--profile", profile}
 }
 
 // writeTunnelKubeconfig writes the isolated kubeconfig (0600) under
