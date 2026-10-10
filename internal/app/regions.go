@@ -203,7 +203,7 @@ func activeRegions[T any](items []T) []string {
 	return out
 }
 
-// scanRegions calls find in every region, at most six at once. Regions the
+// scanRegions calls find in every region, at most ten at once. Regions the
 // account may not use are skipped; any other failure fails the search, so a
 // partial answer is never presented as complete.
 func scanRegions[T any](ctx context.Context, regions []string, find func(string) ([]T, error)) ([]T, []string, error) {
@@ -212,7 +212,7 @@ func scanRegions[T any](ctx context.Context, regions []string, find func(string)
 		err   error
 	}
 	results := make([]res, len(regions))
-	sem := make(chan struct{}, 6)
+	sem := make(chan struct{}, 10)
 	var wg sync.WaitGroup
 	for i, r := range regions {
 		wg.Add(1)

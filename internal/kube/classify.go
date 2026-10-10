@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"nedctl/internal/inventory"
+
+	"nedctl/internal/rx"
 )
 
 // eksARN matches the context name `aws eks update-kubeconfig` writes by default.
@@ -112,7 +114,7 @@ func isProdEnv(env string, prodEnvs []string) bool {
 
 func matchingPattern(name string, patterns []string) (string, bool) {
 	for _, p := range patterns {
-		re, err := regexp.Compile(p)
+		re, err := rx.Compile(p)
 		if err != nil {
 			continue // a bad pattern must never make prod look safe, nor crash
 		}

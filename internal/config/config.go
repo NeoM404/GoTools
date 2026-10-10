@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"nedctl/internal/support"
+
+	"nedctl/internal/rx"
 )
 
 // DefaultCommandTimeout bounds a cloud CLI call when the config sets none.
@@ -274,7 +276,7 @@ func (a AWS) Classify(id, name string, envs []string) (squad, env string) {
 		}
 	}
 	if a.AccountNamePattern != "" {
-		if re, err := regexp.Compile(a.AccountNamePattern); err == nil {
+		if re, err := rx.Compile(a.AccountNamePattern); err == nil {
 			if m := re.FindStringSubmatch(name); m != nil {
 				if i := re.SubexpIndex("squad"); i >= 0 {
 					squad = m[i]
@@ -330,7 +332,7 @@ func (a AWS) Elevated(role string) bool {
 	if p == "" {
 		p = DefaultElevatedRolePattern
 	}
-	re, err := regexp.Compile(p)
+	re, err := rx.Compile(p)
 	return err == nil && re.MatchString(role)
 }
 
@@ -371,7 +373,7 @@ func (c Config) validateAWS() error {
 		errs = append(errs, fmt.Errorf("aws.ssoSession and aws.profilePrefix may hold only letters, digits, - and _"))
 	}
 	if p := a.AccountNamePattern; p != "" {
-		re, err := regexp.Compile(p)
+		re, err := rx.Compile(p)
 		switch {
 		case err != nil:
 			errs = append(errs, fmt.Errorf("aws.accountNamePattern: %w", err))
@@ -672,7 +674,7 @@ func (d Discovery) EnvFromName(name string) string {
 	if d.NameEnvironmentPattern == "" {
 		return ""
 	}
-	re, err := regexp.Compile(d.NameEnvironmentPattern)
+	re, err := rx.Compile(d.NameEnvironmentPattern)
 	if err != nil {
 		return ""
 	}
@@ -784,7 +786,7 @@ func (d Discovery) validate() error {
 		seen["azure/"+strings.ToLower(s)] = true
 	}
 	if p := d.NameEnvironmentPattern; p != "" {
-		re, err := regexp.Compile(p)
+		re, err := rx.Compile(p)
 		switch {
 		case err != nil:
 			errs = append(errs, fmt.Errorf("discovery.nameEnvironmentPattern: %w", err))

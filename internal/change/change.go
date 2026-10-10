@@ -11,11 +11,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
 	"nedctl/internal/httpx"
+
+	"nedctl/internal/rx"
 )
 
 // DefaultPattern matches ServiceNow change numbers (CHG + 7 digits).
@@ -30,7 +31,7 @@ func ValidateFormat(number, pattern string) error {
 	if pattern == "" {
 		pattern = DefaultPattern
 	}
-	re, err := regexp.Compile(pattern)
+	re, err := rx.Compile(pattern)
 	if err != nil {
 		return fmt.Errorf("changeControl.pattern: %w", err)
 	}

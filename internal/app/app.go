@@ -220,7 +220,8 @@ Commands:
                               --tab also colours the Windows Terminal tab
   prompt init <bash|zsh>      Shell code for ~/.bashrc (setup adds it): prompt,
                               tab colour, tab completion, aws login switching
-  doctor [-o table|json]      Check ecosystem tools are present & current
+  doctor [-o table|json]      Check tools, config, proxy, CA bundle, portal
+                              reachability and sign-in [--offline]
                               [--strict]  (exit 1 if any tool is below floor)
   version [--check]           Print nedctl version; --check: is a newer one out?
   help                        Show this help
