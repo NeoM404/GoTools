@@ -300,7 +300,7 @@ func banner(cfg config.Config, pc profileContext, target string, stderr io.Write
 		fmt.Fprintln(stderr, note)
 	}
 	if pc.Production {
-		fmt.Fprintln(stderr, "⚠  PRODUCTION — this session is recorded.")
+		fmt.Fprintln(stderr, "⚠️ PRODUCTION — this session is recorded.")
 	}
 }
 
