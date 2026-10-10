@@ -4,11 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
 	"regexp"
 	"sort"
 	"strings"
@@ -309,7 +308,7 @@ func banner(cfg config.Config, pc profileContext, target string, stderr io.Write
 // profile's short-term credentials in its environment, so nobody pastes
 // keys into it. The credentials go to that one child process only.
 func launchLegacy(ctx context.Context, cfg config.Config, pc profileContext, stderr io.Writer) int {
-	tool := cfg.AWS.Legacy()
+	tool := wslPath(cfg.AWS.Legacy())
 	base := audit.Event{Action: "legacy-ssm-tool", Cloud: "aws", Account: pc.AccountID, Environment: pc.Environment,
 		Production: pc.Production, Detail: fmt.Sprintf("%s with profile %s", tool, pc.Name)}
 	tr, err := beginAuditEvent(ctx, cfg, base, stderr)
@@ -323,58 +322,39 @@ func launchLegacy(ctx context.Context, cfg config.Config, pc profileContext, std
 		fmt.Fprintf(stderr, "getting credentials for %s: %v\n", pc.Name, err)
 		return ExitFailure
 	}
+	if inWSL() && strings.HasSuffix(strings.ToLower(tool), ".exe") {
+		env = shareWithWindows(env)
+	}
 	banner(cfg, pc, tool, stderr)
 	err = execx.Interactive(ctx, execx.Spec{Name: tool, Env: env, Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "%s: %v\n", tool, err)
+		var nf *execx.NotFoundError
+		if errors.As(err, &nf) {
+			fmt.Fprintln(stderr, `→ set aws.legacyTool in config to the tool's path, e.g. "C:\\Tools\\AWS-EC2-SSMshell.exe" (from WSL, /mnt/c/... works too)`)
+		}
 		return ExitFailure
 	}
 	tr.end(ctx, audit.OutcomeSuccess, pc.Role, base.Detail, stderr)
 	return ExitOK
 }
 
-// openTab hands the session to a new Windows Terminal tab, titled and
-// coloured by environment. The tab runs nedctl again, which records the
-// session itself. From WSL the tab re-enters the same distribution.
+// openTab hands the session to a new Windows Terminal tab.
 func openTab(cfg config.Config, pc profileContext, in ec2Instance, cr, glass string, stderr io.Writer) int {
-	if os.Getenv("WT_SESSION") == "" {
-		fmt.Fprintln(stderr, "--tab needs Windows Terminal (WT_SESSION is not set) — run without --tab to use this terminal")
-		return ExitUsage
-	}
-	wt, err := exec.LookPath("wt.exe")
-	if err != nil {
-		fmt.Fprintln(stderr, "--tab: wt.exe not found in PATH")
-		return ExitFailure
-	}
-	self, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(stderr, "--tab: locating nedctl: %v\n", err)
-		return ExitFailure
-	}
 	title := pc.label() + " · " + firstNonBlank(in.Name, in.ID)
-	args := []string{"-w", "0", "nt", "--title", title}
-	if c := cfg.ColorFor(pc.Environment); c != "" {
-		args = append(args, "--tabColor", c)
-	}
-	if distro := os.Getenv("WSL_DISTRO_NAME"); distro != "" {
-		args = append(args, "wsl.exe", "-d", distro, "--")
-	}
-	args = append(args, self, "shell", "--profile", pc.Name, "--region", in.Region, "--instance", in.ID)
+	args := []string{"shell", "--profile", pc.Name, "--region", in.Region, "--instance", in.ID}
 	if cr != "" {
 		args = append(args, "--change-record", cr)
 	}
 	if glass != "" {
 		args = append(args, "--break-glass", glass)
 	}
-	cmd := exec.Command(wt, args...) //nolint:gosec // fixed binary, validated arguments
-	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(stderr, "--tab: %v\n", err)
-		return ExitFailure
+	code := openWTTab(cfg, pc.Environment, title, "run without --tab to use this terminal", args, stderr)
+	if code == ExitOK {
+		fmt.Fprintf(stderr, "opened a tab: %s\n", title)
 	}
-	_ = cmd.Process.Release()
-	fmt.Fprintf(stderr, "opened a tab: %s\n", title)
-	return ExitOK
+	return code
 }
 
 func cmdEC2(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {

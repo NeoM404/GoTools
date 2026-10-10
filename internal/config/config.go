@@ -114,6 +114,10 @@ type Config struct {
 	// terminal tabs and the prompt. Defaults: dev green, ete orange, qa blue,
 	// prod red.
 	EnvironmentColors map[string]string `json:"environmentColors"`
+
+	// WindowsTerminal is the path to wt.exe for --tab, when it is not on
+	// PATH (WSL without the Windows PATH). A C:\ path works from WSL.
+	WindowsTerminal string `json:"windowsTerminal"`
 }
 
 // DefaultEnvironmentColors matches the colours engineers already know from
@@ -390,6 +394,9 @@ func (c Config) validateAWS() error {
 		if !iamRoleRe.MatchString(r) {
 			errs = append(errs, fmt.Errorf("aws.breakGlassRoles: %q is not an IAM role name", r))
 		}
+	}
+	if strings.ContainsAny(c.WindowsTerminal, "\r\n") || strings.HasPrefix(c.WindowsTerminal, "-") {
+		errs = append(errs, fmt.Errorf("windowsTerminal: invalid value"))
 	}
 	if strings.ContainsAny(a.AccessLevelTag+a.LegacyTool, "\r\n") || strings.HasPrefix(a.LegacyTool, "-") {
 		errs = append(errs, fmt.Errorf("aws.accessLevelTag / aws.legacyTool: invalid value"))

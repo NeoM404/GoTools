@@ -41,8 +41,12 @@ example is [`configs/nedctl.aws.example.json`](../configs/nedctl.aws.example.jso
 | `elevatedRolePattern` | Which roles count as elevated (able to change resources). Default: names containing devops, admin, poweruser, breakglass, fullaccess, owner or deploy. |
 | `accessLevelTag` | EC2 tag shown as the instance's access level (default `AccessLevel`). |
 | `devopsInstance` | Name match for the devops instance `connect` tunnels through (default `devops`). |
-| `legacyTool` | What `shell --via legacy` launches (default `sm`; e.g. `AWS-EC2-SSMshell.exe`). |
+| `legacyTool` | What `shell --via legacy` launches (default `sm`). A name on PATH or a full path; from WSL a Windows path such as `C:\\Tools\\AWS-EC2-SSMshell.exe` works, and the credentials are passed to the Windows program through `WSLENV`. |
 | `sessionTimeout` | Longest an interactive session may run (default `12h`). |
+
+`windowsTerminal` (top level) is the path to `wt.exe` for `--tab` when it is not
+on PATH — common in WSL. Without it nedctl also looks in
+`C:\Users\*\AppData\Local\Microsoft\WindowsApps`.
 
 `environmentColors` (top level) sets tab, picker and prompt colours. The
 defaults match the existing tools: dev `#22c55e`, ete `#f97316`, qa `#3b82f6`,

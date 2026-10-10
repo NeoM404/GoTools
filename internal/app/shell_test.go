@@ -148,7 +148,7 @@ func TestShellViaLegacyLaunchesSmSignedIn(t *testing.T) {
 func TestShellTabOpensColouredWindowsTerminalTab(t *testing.T) {
 	w := newEC2World(t, "prod", "")
 	args := filepath.Join(w.home, "wt-args")
-	fakeCLI(t, "wt.exe", `printf '%s\n' "$@" > `+sq(args))
+	fakeCLI(t, "wt.exe", `printf '%s\n' "$@" > `+sq(args+".tmp")+` && mv `+sq(args+".tmp")+" "+sq(args))
 	t.Setenv("WT_SESSION", "x")
 	t.Setenv("WSL_DISTRO_NAME", "Ubuntu")
 	code, _, errb := run("--config", w.cfg, "shell", "devops", "--tab")

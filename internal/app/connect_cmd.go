@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -399,41 +398,17 @@ func writeKubeconfigFile(cfg config.Config, cluster string, data []byte) (string
 // openTunnelTab runs `nedctl connect` in a new coloured Windows Terminal
 // tab that holds the tunnel; this terminal keeps working with KUBECONFIG.
 func openTunnelTab(cfg config.Config, pc profileContext, c eksTarget, hop ec2Instance, port int, kc, cr, glass string, stderr io.Writer) int {
-	if os.Getenv("WT_SESSION") == "" {
-		fmt.Fprintln(stderr, "--tab needs Windows Terminal (WT_SESSION is not set) — run without --tab to hold the tunnel here")
-		return ExitUsage
-	}
-	wt, err := exec.LookPath("wt.exe")
-	if err != nil {
-		fmt.Fprintln(stderr, "--tab: wt.exe not found in PATH")
-		return ExitFailure
-	}
-	self, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(stderr, "--tab: locating nedctl: %v\n", err)
-		return ExitFailure
-	}
 	title := "tunnel · " + pc.label() + " · " + c.Name
-	args := []string{"-w", "0", "nt", "--title", title}
-	if col := cfg.ColorFor(pc.Environment); col != "" {
-		args = append(args, "--tabColor", col)
-	}
-	if distro := os.Getenv("WSL_DISTRO_NAME"); distro != "" {
-		args = append(args, "wsl.exe", "-d", distro, "--")
-	}
-	args = append(args, self, "connect", c.Name, "--profile", pc.Name, "--region", c.Region, "--via-instance", hop.ID, "--port", strconv.Itoa(port))
+	args := []string{"connect", c.Name, "--profile", pc.Name, "--region", c.Region, "--via-instance", hop.ID, "--port", strconv.Itoa(port)}
 	if cr != "" {
 		args = append(args, "--change-record", cr)
 	}
 	if glass != "" {
 		args = append(args, "--break-glass", glass)
 	}
-	cmd := exec.Command(wt, args...) //nolint:gosec // fixed binary, validated arguments
-	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(stderr, "--tab: %v\n", err)
-		return ExitFailure
+	code := openWTTab(cfg, pc.Environment, title, "run without --tab to hold the tunnel here", args, stderr)
+	if code == ExitOK {
+		fmt.Fprintf(stderr, "tunnel opening in a new tab: %s\nexport KUBECONFIG=%s\n", title, kc)
 	}
-	_ = cmd.Process.Release()
-	fmt.Fprintf(stderr, "tunnel opening in a new tab: %s\nexport KUBECONFIG=%s\n", title, kc)
-	return ExitOK
+	return code
 }

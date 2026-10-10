@@ -102,6 +102,7 @@ work). Example — copy [`configs/nedctl.example.json`](../configs/nedctl.exampl
 | `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","ete","qa","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
 | `discovery` | The cloud scope `inventory diff` / `inventory sync` scan — see [Discovery](#discovery). |
 | `aws` | IAM Identity Center sign-in and the EC2/EKS access commands (`aws`, `shell`, `connect`, `eks`) — see [aws.md](aws.md). |
+| `windowsTerminal` | Path to `wt.exe` for `--tab` when it is not on PATH (WSL); a `C:\` path works. |
 | `environmentColors` | `#rrggbb` per environment for pickers, terminal tabs and the prompt. Default: dev green, ete orange, qa blue, prod red. |
 
 ### The fleet inventory
