@@ -326,9 +326,10 @@ The credentials need only read access: `sts:GetCallerIdentity`,
 
 ## AWS access
 
-`aws login`, `aws whoami`, `aws env`, `shell`, `ec2`, `connect`, `eks auth`,
-`eks access` and `prompt` cover the IAM Identity Center and EC2/EKS access
-flow. They are documented in **[aws.md](aws.md)**, with the security model for
+`aws login`, `aws whoami`, `aws env`, `shell`, `ec2`, `connect`, `kube`,
+`eks auth`, `eks access`, `prompt` and `prompt init` cover the IAM Identity
+Center and EC2/EKS access flow, the prompt and tab colours, and tab
+completion. They are documented in **[aws.md](aws.md)**, with the security model for
 reviewers in **[security.md](security.md)**.
 
 ## Commands
@@ -657,7 +658,13 @@ Version probes run concurrently, each with its own deadline.
 This is how the tool answers "are our CLIs current?" — see also the
 kubeconfig drift warning under `kubeconfig` above.
 
-### `nedctl version` / `nedctl help`
+### `nedctl setup [--yes] [--start-url URL --sso-region R] [--no-install] [--no-shell]`
+First-run setup; see [First run](#first-run).
+
+### `nedctl version [--check]` / `nedctl help`
+`--check` fetches `latest.json` from `releaseUrl` (HTTPS) and says whether a
+newer release is out and where to download it. Plain `version` never touches
+the network.
 
 ## Exit codes
 

@@ -16,8 +16,31 @@ to configure, see [security.md](security.md).
 
 ## Setup
 
-Add an `aws` block to your config (`nedctl init` writes the rest). A complete
-example is [`configs/nedctl.aws.example.json`](../configs/nedctl.aws.example.json).
+```bash
+./nedctl-linux-amd64 setup      # from the release download
+nedctl aws login                # in a new terminal
+```
+
+`setup` installs nedctl to `~/.local/bin`, adds the prompt, tab colours, tab
+completion and login switching to your shell, and runs `doctor`. Release
+binaries carry the organisation's sign-in settings, so most engineers write
+no config at all ([nedctl.md, First run](nedctl.md#first-run)).
+
+### A day with nedctl
+
+```bash
+nedctl aws login lms dev        # one approval; "lms dev" narrows the picker, one match goes straight in
+nedctl kube                     # pick a cluster (last used first): tunnel + shell with kubectl ready
+nedctl shell <TAB>              # the account's instances; Enter opens a Session Manager shell
+nedctl aws login lms qa         # switch account: the prompt and the tab colour follow
+nedctl version --check          # is a newer release out?
+```
+
+### Configuration
+
+To configure by hand, or to override the built-in settings, add an `aws`
+block to your config (`nedctl init` writes the rest). A complete example is
+[`configs/nedctl.aws.example.json`](../configs/nedctl.aws.example.json).
 
 ```json
 "aws": {
@@ -183,7 +206,9 @@ The session is `aws ssm start-session` under your own profile. Before it
 starts, nedctl sets the terminal title and prints a banner in the
 environment's colour. In production it adds a warning that the session is
 recorded. `--tab` works from Windows and from WSL: the tab re-enters the same
-distribution.
+distribution through your login shell, with this terminal's proxy and CA
+settings carried over, so the AWS CLI in the tab reaches AWS the same way
+this terminal does.
 
 ## Straight to a cluster: `nedctl connect`
 
