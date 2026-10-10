@@ -58,3 +58,27 @@ func TestEKSAccessListsPrincipalsAndScopes(t *testing.T) {
 		}
 	}
 }
+
+// With no fleet inventory configured, clusters list answers from the AWS
+// account signed in to, instead of failing.
+func TestClustersListLiveWithoutInventory(t *testing.T) {
+	w := newEC2World(t, "prod", "")
+	installEKSFake(t, w)
+	code, out, errb := run("--config", w.cfg, "clusters", "list")
+	if code != ExitOK {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	for _, want := range []string{"payments-eks-prod", "payments-eks-tools", "af-south-1", "2 cluster(s) in payments · PROD, live from AWS", "nedctl kube <name>"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("lacks %q:\n%s", want, out)
+		}
+	}
+	code, out, _ = run("--config", w.cfg, "clusters", "list", "-o", "json")
+	if code != ExitOK || !strings.Contains(out, `"cluster": "payments-eks-tools"`) {
+		t.Fatalf("json: %s", out)
+	}
+	code, out, _ = run("--config", w.cfg, "clusters", "list", "--env", "dev", "-o", "json")
+	if code != ExitOK || strings.TrimSpace(out) != "[]" {
+		t.Fatalf("env filter: %s", out)
+	}
+}

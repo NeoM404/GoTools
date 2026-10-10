@@ -36,6 +36,7 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `nedctl aws login`)")
 	viaInstance := fs.String("via-instance", "", "instance to tunnel through (default: the account's devops instance)")
 	port := fs.Int("port", 0, "local port for the tunnel (default: a free one)")
+	via := fs.String("via", viaAuto, "auto (direct if the endpoint answers from here, else the devops instance), direct, or bastion")
 	crFlag := fs.String("change-record", "", "change record for this access, when change control requires one")
 	glassFlag := fs.String("break-glass", "", "emergency access without a change record; recorded and flagged")
 	var rs regionSearch
@@ -60,6 +61,10 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		fmt.Fprintln(stderr, "--port must be 1-65535")
 		return ExitUsage
 	}
+	if !validVia(*via) {
+		fmt.Fprintf(stderr, "--via %q: want auto, direct or bastion\n", *via)
+		return ExitUsage
+	}
 	cfg, _, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "config error: %v\n", err)
@@ -69,7 +74,7 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if !ok {
 		return ExitFailure
 	}
-	plan, code := planTunnel(ctx, cfg, pc, rs, pos[0], *viaInstance, *port, stderr)
+	plan, code := planTunnel(ctx, cfg, pc, rs, pos[0], *via, *viaInstance, *port, stderr)
 	if code != ExitOK {
 		return code
 	}
@@ -83,6 +88,9 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		Production: pc.Production, ChangeRecord: cr, BreakGlass: glass != "", BreakGlassReason: glass,
 		Detail: fmt.Sprintf("kube %s; tunnel 127.0.0.1:%d → %s:443 via %s (%s), profile %s", what, plan.port, plan.cluster.Host,
 			plan.hop.ID, firstNonBlank(plan.hop.Name, "unnamed"), pc.Name)}
+	if plan.direct {
+		base.Detail = fmt.Sprintf("kube %s; direct to %s:443, profile %s", what, plan.cluster.Host, pc.Name)
+	}
 	tr, err := beginAuditEvent(ctx, cfg, base, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "%v — refusing to connect: every access must be recorded\n", err)
@@ -92,6 +100,11 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		return code
 	}
 
+	if plan.direct {
+		banner(cfg, pc, plan.cluster.Name, stderr)
+		fmt.Fprintln(stderr, "Direct: the endpoint answers from here, no tunnel needed.")
+		return runKubeChild(ctx, cfg, pc, plan, command, tr, base, nil, "", stderr)
+	}
 	logPath, logFile, err := tunnelLog(cfg, plan.cluster.Name)
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
@@ -116,6 +129,13 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		return ExitFailure
 	}
 
+	return runKubeChild(ctx, cfg, pc, plan, command, tr, base, tunnel, logPath, stderr)
+}
+
+// runKubeChild runs the shell or the command with KUBECONFIG set, then
+// closes the tunnel (when there is one) and the audit record.
+func runKubeChild(ctx context.Context, cfg config.Config, pc profileContext, plan tunnelPlan, command []string,
+	tr *trail, base audit.Event, tunnel *execx.Process, logPath string, stderr io.Writer) int {
 	env := []string{"KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBE=" + plan.cluster.Name}
 	var childErr error
 	if command != nil {
@@ -123,16 +143,24 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	} else {
 		name, shellArgs, cleanup := kubeShell(cfg, pc, plan.cluster.Name)
 		defer cleanup()
-		fmt.Fprintf(stderr, "⎈ %s ready — kubectl works in this shell. Type exit to close the tunnel.\n", plan.cluster.Name)
+		closing := "Type exit to close the tunnel."
+		if tunnel == nil {
+			closing = "Type exit when done."
+		}
+		fmt.Fprintf(stderr, "⎈ %s ready — kubectl works in this shell. %s\n", plan.cluster.Name, closing)
 		childErr = execx.Interactive(ctx, execx.Spec{Name: name, Args: shellArgs, Env: env, Timeout: cfg.AWS.Timeout()})
 	}
 
-	if done, terr := tunnel.Exited(); done {
-		fmt.Fprintf(stderr, "warning: the tunnel ended while you were working (%v)\n%s", terr, logTail(logPath, 5))
+	if tunnel != nil {
+		if done, terr := tunnel.Exited(); done {
+			fmt.Fprintf(stderr, "warning: the tunnel ended while you were working (%v)\n%s", terr, logTail(logPath, 5))
+		}
+		tunnel.Stop(3 * time.Second)
 	}
-	tunnel.Stop(3 * time.Second)
 	tr.end(ctx, audit.OutcomeSuccess, pc.Role, base.Detail, stderr)
-	fmt.Fprintln(stderr, "tunnel closed")
+	if tunnel != nil {
+		fmt.Fprintln(stderr, "tunnel closed")
+	}
 
 	if childErr != nil && command != nil {
 		var exit *exec.ExitError

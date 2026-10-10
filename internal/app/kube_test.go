@@ -157,3 +157,87 @@ func TestKubeBashPromptShowsClusterInEnvironmentColour(t *testing.T) {
 		t.Fatalf("other shells start as they are: %s %v", name, args)
 	}
 }
+
+// pointDirectAt makes the fake EKS API on port the cluster's "real"
+// endpoint, as if the VPN routed to it.
+func pointDirectAt(t *testing.T, port int) {
+	t.Helper()
+	old := directServer
+	directServer = func(eksTarget) (string, string) { return "https://127.0.0.1:" + strconv.Itoa(port), eksHost }
+	t.Cleanup(func() { directServer = old })
+}
+
+func TestKubeConnectsDirectlyWhenTheEndpointAnswers(t *testing.T) {
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("kubectl not installed")
+	}
+	w := newEC2World(t, "dev", "")
+	port, _ := freePort()
+	ca := fakeEKSAPI(t, port)
+	installKubeFake(t, w, ca, "")
+	pointDirectAt(t, port)
+	out := filepath.Join(w.home, "v.txt")
+	code, _, errb := run("--config", w.cfg, "kube", "payments-eks-prod", "--", "sh", "-c", "kubectl get --raw /version > "+out)
+	if code != ExitOK || !strings.Contains(errb, "Direct: the endpoint answers from here") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	if got, _ := os.ReadFile(out); !strings.Contains(string(got), "v1.30.4-eks") {
+		t.Fatalf("kubectl: %q", got)
+	}
+	if calls := w.awsCalls(t); strings.Contains(calls, "ssm start-session") || strings.Contains(calls, "describe-instances") {
+		t.Fatalf("a direct connection needs no tunnel and no instance:\n%s", calls)
+	}
+	if ev := readAudit(t, w.logPath); !strings.Contains(ev[len(ev)-1].Detail, "direct to "+eksHost) {
+		t.Fatalf("audit: %+v", ev[len(ev)-1])
+	}
+}
+
+func TestConnectDirectWritesKubeconfigAndRecords(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	port, _ := freePort()
+	ca := fakeEKSAPI(t, port)
+	installKubeFake(t, w, ca, "")
+	pointDirectAt(t, port)
+	code, _, errb := run("--config", w.cfg, "connect", "payments-eks-prod", "--via", "direct")
+	if code != ExitOK || !strings.Contains(errb, "export KUBECONFIG=") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	kc, _ := os.ReadFile(filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json"))
+	if !strings.Contains(string(kc), `"server": "https://127.0.0.1:`) || !strings.Contains(string(kc), `"tls-server-name": "`+eksHost) {
+		t.Fatalf("kubeconfig:\n%s", kc)
+	}
+	if ev := readAudit(t, w.logPath); ev[len(ev)-1].Outcome != audit.OutcomeSuccess {
+		t.Fatalf("audit: %+v", ev[len(ev)-1])
+	}
+}
+
+func TestViaDirectExplainsAnUnreachableEndpoint(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	port, _ := freePort() // nothing listens: unreachable
+	ca := fakeEKSAPI(t, func() int { p, _ := freePort(); return p }())
+	installKubeFake(t, w, ca, "")
+	pointDirectAt(t, port)
+	code, _, errb := run("--config", w.cfg, "kube", "payments-eks-prod", "--via", "direct")
+	if code != ExitFailure || !strings.Contains(errb, "is not reachable directly from here") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	if code, _, _ := run("--config", w.cfg, "kube", "payments-eks-prod", "--via", "sideways"); code != ExitUsage {
+		t.Fatalf("bad --via: code=%d", code)
+	}
+}
+
+func TestAutoWithoutDevopsInstanceOrDirectRouteExplainsBoth(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	port, _ := freePort()
+	ca := fakeEKSAPI(t, func() int { p, _ := freePort(); return p }())
+	installKubeFake(t, w, ca, "")
+	pointDirectAt(t, port)
+	body, _ := os.ReadFile(w.cfg)
+	os.WriteFile(w.cfg, []byte(strings.Replace(string(body), `"aws": {`, `"aws": {"devopsInstance": "no-such-box", `, 1)), 0o600)
+	code, _, errb := run("--config", w.cfg, "kube", "payments-eks-prod")
+	for _, want := range []string{`no running instance named like "no-such-box"`, "not reachable directly", "--via direct", "--via-instance"} {
+		if code != ExitFailure || !strings.Contains(errb, want) {
+			t.Fatalf("code=%d, lacks %q:\n%s", code, want, errb)
+		}
+	}
+}

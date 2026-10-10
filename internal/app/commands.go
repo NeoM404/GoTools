@@ -109,6 +109,9 @@ func clustersList(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if *output != "table" && *output != "json" {
 		return badOutput(stderr, *output)
 	}
+	if cfg, _, err := config.Load(cfgPath); err == nil && cfg.InventoryURL == "" && cfg.InventoryPath == "" && cfg.AWS.Configured() {
+		return liveClusters(cfgPath, cfg, *cloudFlag, *envFlag, *output, stdout, stderr)
+	}
 	_, fleet, ok := loadFleet(cfgPath, stderr)
 	if !ok {
 		return ExitFailure
@@ -626,5 +629,51 @@ func cmdCurrent(ctx context.Context, cfgPath string, args []string, stdout, stde
 	for _, r := range st.Reasons {
 		fmt.Fprintf(stdout, "reason:  %s\n", r)
 	}
+	return ExitOK
+}
+
+// liveClusters answers `clusters list` from AWS when there is no fleet
+// inventory: the EKS clusters of the account signed in to, in every region
+// they are found in.
+func liveClusters(_ string, cfg config.Config, cloud, env, output string, stdout, stderr io.Writer) int {
+	if cloud != "" && !strings.EqualFold(cloud, "aws") {
+		fmt.Fprintln(stderr, "no inventory is configured, so only the AWS account you are signed in to can be listed")
+		return ExitFailure
+	}
+	pc, ok := loadProfileContext(cfg, "", stderr)
+	if !ok {
+		return ExitFailure
+	}
+	ctx := context.Background()
+	rows, searched, err := searchRegions(ctx, cfg, pc, regionSearch{}, "eks", stderr, func(region string) ([]eksAuthRow, error) {
+		return authRows(ctx, cfg, pc.Name, region)
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "listing clusters with %s: %v\n", pc.Name, err)
+		return ExitFailure
+	}
+	if env != "" && !strings.EqualFold(env, pc.Environment) {
+		rows = nil
+	}
+	for i := range rows {
+		rows[i].Account, rows[i].Environment = pc.AccountID, pc.Environment
+	}
+	if output == "json" {
+		if rows == nil {
+			rows = []eksAuthRow{}
+		}
+		return writeJSON(stdout, stderr, rows)
+	}
+	if len(rows) == 0 {
+		fmt.Fprintf(stdout, "no EKS clusters in %s (searched %s)\n", pc.label(), strings.Join(searched, ", "))
+		return ExitOK
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tENV\tACCOUNT\tREGION\tVERSION\tENDPOINT\tAUTH MODE")
+	for _, r := range rows {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Cluster, dash(r.Environment), dash(r.Account), r.Region, r.Version, r.Endpoint, r.AuthMode)
+	}
+	tw.Flush()
+	fmt.Fprintf(stdout, "\n%d cluster(s) in %s, live from AWS (no inventory configured) · connect with: nedctl kube <name>\n", len(rows), pc.label())
 	return ExitOK
 }

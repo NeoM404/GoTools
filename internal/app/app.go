@@ -130,7 +130,9 @@ Commands:
                               [--path PATH] [--force]
                               [--mode workstation|bastion]
   clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]
-                              List clusters in the fleet inventory
+                              List clusters in the fleet inventory; with no
+                              inventory, the signed-in AWS account's EKS
+                              clusters, live
   clusters get <name> [-o table|json]
                               Show one cluster's details
   kubeconfig <cluster>        Fetch credentials for a cluster (aws/az CLI)
@@ -188,11 +190,14 @@ Commands:
   connect <eks-cluster>       Tunnel to a private EKS endpoint through the
                               devops instance (Session Manager); kubectl
                               runs locally as YOUR SSO role, TLS verified
-                              [--via-instance I] [--port N] [--tab]
+                              [--via auto|direct|bastion] [--via-instance I]
+                              [--port N] [--tab]
   kube <eks-cluster>          connect in one step: tunnel in the background,
                               a shell with KUBECONFIG set (prompt shows the
                               cluster); exit closes the tunnel
                               [-- command args…] run one command instead
+                              [--via auto|direct|bastion] (auto: direct when
+                              the endpoint answers from here, e.g. on VPN)
   eks auth [--profile P]… [--all-profiles] [-o table|json]
                               Authentication mode + endpoint exposure of
                               every EKS cluster; who still needs to move

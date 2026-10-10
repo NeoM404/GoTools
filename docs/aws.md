@@ -201,6 +201,16 @@ kubectl get nodes
 `--port` override the defaults. `guard` and `prompt` treat the context like
 any other, so production still shows red.
 
+## Listing clusters
+
+```bash
+nedctl clusters list          # the signed-in account's EKS clusters, every region
+```
+
+With no fleet inventory configured, which is the usual case for AWS users,
+this asks AWS directly. The output shows each cluster's environment, region,
+version, endpoint exposure and authentication mode.
+
 ## One command to a cluster: `nedctl kube`
 
 `kube` is `connect` without the second terminal:
@@ -216,6 +226,20 @@ the background, so Ctrl-C in your shell interrupts your command, not the
 tunnel. Its output goes to `~/.local/state/nedctl/tunnels/<cluster>.log`.
 Nothing starts until the tunnel actually accepts connections. If it fails,
 you see why, and no shell opens.
+
+**How it reaches the cluster:** `--via auto` (the default) connects
+**directly** when the endpoint answers from your machine, for example on the
+VPN, or for a public endpoint open to your address. Otherwise it tunnels
+through the devops instance.
+
+- `--via direct` insists on a direct connection.
+- `--via bastion` always goes through the devops instance.
+- `--via-instance NAME` tunnels through a named instance.
+
+Direct connections verify TLS against the cluster's CA and use the same
+`aws eks get-token` as your SSO role. They are recorded as `direct to <endpoint>`.
+If neither route works, nedctl says why for both: the endpoint's exposure,
+and the missing instance.
 
 In bash, the prompt starts with `⎈ <cluster> <ENV>` in the environment's
 colour, after your own `~/.bashrc` has loaded. Other shells start unchanged,
