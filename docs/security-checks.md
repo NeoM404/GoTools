@@ -54,3 +54,36 @@ and its name looks like a secret. Platform namespaces are skipped (`kube-system`
 `--fail-on warn`, warnings fail too. That makes it usable as a pipeline gate.
 `-o json` adds a timestamp and the check catalogue with fixes, as an
 evidence pack.
+
+## Every image running: `nedctl images`
+
+```bash
+nedctl images --env prod
+nedctl images --env qa,prod --flagged
+nedctl images --env prod -o csv > images-prod.csv     # for trivy, Defender or Inspector
+nedctl images --env prod --fail-on-unapproved         # a pipeline gate
+```
+
+```
+IMAGE                           DIGEST           CLUSTERS  CONTAINERS  FLAGS
+docker.io/library/redis:latest  1f2e3d4c5b6a     1         3           unapproved-registry, mutable-tag
+reg.example/pay/api:1.4.2       9a8b7c6d5e4f +1  2         6           several-digests
+```
+
+This is the inventory of what actually runs, not what manifests say. For
+each image reference it shows:
+
+- the **digests** it runs as (from the container status);
+- its registry;
+- the clusters and namespaces it runs in, and how many containers.
+
+| Flag | Means |
+|---|---|
+| `unapproved-registry` | The registry isn't in `security.approvedRegistries` (only flagged when that's set) |
+| `mutable-tag` | `latest` or no tag: what runs can change without a deployment |
+| `several-digests` | The same tag runs as different images: it was re-pushed, so the tag doesn't identify the code |
+
+`-o csv` gives `image, registry, tag, digests, clusters, namespaces,
+containers, flags`, one image per row, ready for a scanner. Scanning by
+digest checks exactly what runs. `--registry` and `--flagged` narrow the
+list.

@@ -97,6 +97,9 @@ var helpGroups = []helpGroup{
 		{"posture", "", "Risky settings in what runs: privileged, host access, root, secrets in env, public LBs…",
 			"Checks every pod and service for privileged containers, host namespaces and paths, root, dangerous capabilities, missing memory limits, latest tags, unapproved registries (security.approvedRegistries), secrets written into environment variables (names only — values are never read) and public load balancers. Platform namespaces are skipped (security.ignoreNamespaces). Exits 1 on a failing cluster; -o json is the evidence.",
 			[]string{"nedctl posture --env prod", "nedctl posture --cluster acm-k8s-qa-cluster", "nedctl posture --env qa,prod -o json > posture-2026-10.json"}},
+		{"images", "", "Every image running, with digests and where — the list for a scanner",
+			"Lists each image reference running on the clusters selected, with the digests it runs as, its registry, how many clusters and containers, and flags: unapproved-registry, mutable-tag (latest), several-digests (a re-pushed tag). -o csv feeds trivy, Defender or Inspector.",
+			[]string{"nedctl images --env prod", "nedctl images --env qa,prod --flagged", "nedctl images --env prod -o csv > images.csv", "nedctl images --env prod --fail-on-unapproved"}},
 	}},
 	{"Debugging on a cluster (EKS or AKS)", []cmdHelp{
 		{"debug pod", "", "A debug pod (netshoot by default) with a shell; removed when you exit",
