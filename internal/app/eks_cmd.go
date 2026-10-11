@@ -86,14 +86,18 @@ func findCluster(ctx context.Context, cfg config.Config, pc profileContext, rs r
 	if err != nil {
 		return "", err
 	}
-	var regions []string
+	var regions, names []string
 	for _, h := range all {
+		names = append(names, h.Name)
 		if h.Name == name {
 			regions = append(regions, h.Region)
 		}
 	}
 	switch len(regions) {
 	case 0:
+		if hint := didYouMean(name, names); hint != "" {
+			return "", fmt.Errorf("no cluster %q in %s%s", name, pc.label(), hint)
+		}
 		return "", fmt.Errorf("no cluster %q in %s (searched %s) — check the account, or try --all-regions", name, pc.label(), strings.Join(searched, ", "))
 	case 1:
 		return regions[0], nil

@@ -332,6 +332,40 @@ func suggest(typed string) []string {
 	return out
 }
 
+// closestNames returns up to three names close to what was typed: within
+// a few edits (more for longer names), closest first.
+func closestNames(typed string, names []string) []string {
+	typed = strings.ToLower(strings.TrimSpace(typed))
+	limit := max(2, len(typed)/5)
+	type cand struct {
+		name string
+		d    int
+	}
+	var cs []cand
+	for _, n := range names {
+		if d := editDistance(typed, strings.ToLower(n)); d <= limit && d > 0 {
+			cs = append(cs, cand{n, d})
+		}
+	}
+	sort.SliceStable(cs, func(i, j int) bool { return cs[i].d < cs[j].d })
+	var out []string
+	for _, c := range cs {
+		if len(out) == 3 {
+			break
+		}
+		out = append(out, c.name)
+	}
+	return out
+}
+
+// didYouMean is " — did you mean a, b?" for close names, or "".
+func didYouMean(typed string, names []string) string {
+	if c := closestNames(typed, names); len(c) > 0 {
+		return " — did you mean " + strings.Join(c, ", ") + "?"
+	}
+	return ""
+}
+
 func editDistance(a, b string) int {
 	ra, rb := []rune(a), []rune(b)
 	prev := make([]int, len(rb)+1)

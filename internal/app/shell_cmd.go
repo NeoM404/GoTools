@@ -227,7 +227,11 @@ func chooseInstance(cfg config.Config, pc profileContext, list []ec2Instance, in
 	}
 	switch {
 	case len(cands) == 0:
-		fmt.Fprintf(stderr, "no instance matches %q in %s\n", strings.Join(terms, " "), pc.label())
+		var names []string
+		for _, in := range list {
+			names = append(names, in.Name)
+		}
+		fmt.Fprintf(stderr, "no instance matches %q in %s%s\n", strings.Join(terms, " "), pc.label(), didYouMean(strings.Join(terms, " "), names))
 		return ec2Instance{}, ExitFailure
 	case len(cands) == 1:
 		saveLast(cfg, pc, "instance", cands[0].ID)

@@ -493,7 +493,7 @@ func chooseAKS(ctx context.Context, cfg config.Config, t sshTarget, pc profileCo
 		fmt.Fprintf(stderr, "no kube-contexts on %s\n", t.Name)
 		return "", ExitFailure
 	case len(cands) == 0:
-		fmt.Fprintf(stderr, "no cluster on %s matches %q\n", label, strings.Join(terms, " "))
+		fmt.Fprintf(stderr, "no cluster on %s matches %q%s\n", label, strings.Join(terms, " "), didYouMean(strings.Join(terms, " "), all))
 		return "", ExitFailure
 	case len(cands) == 1:
 		return cands[0], ExitOK

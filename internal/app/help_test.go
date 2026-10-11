@@ -66,3 +66,16 @@ func TestStatusScreen(t *testing.T) {
 		}
 	}
 }
+
+func TestClosestNamesForTypos(t *testing.T) {
+	names := []string{"acm-k8s-qa-cluster", "pay-k8s-qa-cluster", "lms-eks-cluster-ete", "payments-devops"}
+	if got := closestNames("acm-k8s-qa-clustr", names); len(got) == 0 || got[0] != "acm-k8s-qa-cluster" {
+		t.Fatalf("got %v", got)
+	}
+	if got := didYouMean("paymnets-devops", names); !strings.Contains(got, "payments-devops") {
+		t.Fatalf("got %q", got)
+	}
+	if got := didYouMean("totally-different", names); got != "" {
+		t.Fatalf("nothing close: %q", got)
+	}
+}
