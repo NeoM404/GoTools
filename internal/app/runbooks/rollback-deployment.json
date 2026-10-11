@@ -1,0 +1,13 @@
+{
+  "name": "rollback-deployment",
+  "description": "Return a deployment to its previous version, then wait until it is healthy",
+  "params": [
+    {"name": "deployment", "description": "the deployment to roll back"},
+    {"name": "namespace", "description": "its namespace", "default": "default"}
+  ],
+  "steps": [
+    {"name": "Versions so far", "kubectl": ["rollout", "history", "deployment/{deployment}", "-n", "{namespace}"]},
+    {"name": "Roll back to the previous version", "kubectl": ["rollout", "undo", "deployment/{deployment}", "-n", "{namespace}"], "change": true, "dryRun": true},
+    {"name": "Wait until healthy", "kubectl": ["rollout", "status", "deployment/{deployment}", "-n", "{namespace}", "--timeout=5m"]}
+  ]
+}

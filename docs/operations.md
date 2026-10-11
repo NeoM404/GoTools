@@ -71,3 +71,73 @@ and `auth whoami`. Refused:
 - `--context`, `--kubeconfig`, `--server`, `--token` and `--as`, because
   nedctl chooses the clusters;
 - `-f` and `--watch`, because the command has to finish on every cluster.
+
+## Runbooks: `nedctl run`
+
+```bash
+nedctl run ls                                   # built-in and team runbooks
+nedctl run show restart-deployment              # its parameters and steps
+nedctl run restart-deployment deployment=payments-api namespace=payments --cluster acm-k8s-qa-cluster
+nedctl run scale-deployment deployment=api replicas=3 --dry-run
+```
+
+A runbook is a team procedure written down as data: named steps, each one a
+kubectl command with `{parameters}`. With it, second-line support can follow
+a procedure safely without knowing every command, and every run looks the
+same in the audit trail.
+
+When you run one, nedctl:
+
+1. **shows the whole runbook** filled in with your values, marking the
+   steps that change something with ✎;
+2. **runs reading steps** straight away and shows their output;
+3. for each **changing step**, runs a **server-side dry run** (when the
+   step allows it) and shows what the cluster says, then **asks** before
+   running it. `--dry-run` stops after the dry runs; `--yes` runs without
+   asking, which scripts need;
+4. **stops at the first failure**, and **records** the run with its
+   parameters and how far it got (`runbook` in the audit trail).
+
+### Built in
+
+| Runbook | Does |
+|---|---|
+| `restart-deployment` | Rolling restart, then waits until healthy |
+| `scale-deployment` | Sets the replicas, then waits until ready |
+| `rollback-deployment` | Shows the history, returns to the previous version, waits |
+
+### Writing one
+
+Team runbooks live in `runbooks/` in the nedctl repository (or the
+`runbooksDir` setting). A runbook with the same name as a built-in one
+replaces it. Changes go through a pull request like any other code.
+
+```json
+{
+  "name": "ingress-overview",
+  "description": "Ingresses, services and endpoints of a namespace",
+  "params": [
+    {"name": "namespace", "description": "the namespace"},
+    {"name": "replicas", "description": "how many", "pattern": "^[0-9]{1,3}$", "default": "2"}
+  ],
+  "steps": [
+    {"name": "Ingresses", "kubectl": ["get", "ingress", "-n", "{namespace}"]},
+    {"name": "Scale", "kubectl": ["scale", "deployment/web", "-n", "{namespace}", "--replicas={replicas}"], "change": true, "dryRun": true}
+  ]
+}
+```
+
+Rules, checked when runbooks load (a runbook that breaks one is skipped,
+with a warning that says why):
+
+- Each step is one kubectl command, written without the word `kubectl`. A
+  runbook can't run a shell.
+- `--context`, `--kubeconfig`, `--server`, `--token` and `--as` aren't
+  allowed, because nedctl chooses the cluster.
+- Every `{name}` must be a declared parameter.
+- Parameter values must match their `pattern`. Without one, they may hold
+  only letters, digits and `. _ : / = -`, and may not start with `-`.
+- Mark every step that changes the cluster with `"change": true`. Add
+  `"dryRun": true` when kubectl supports `--dry-run=server` for it (`apply`,
+  `scale`, `rollout restart` and `rollout undo`, `patch`, `delete`, `label`,
+  `annotate`).

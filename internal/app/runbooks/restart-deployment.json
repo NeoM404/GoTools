@@ -1,0 +1,13 @@
+{
+  "name": "restart-deployment",
+  "description": "Rolling restart of a deployment (new pods, one by one), then wait until it is healthy",
+  "params": [
+    {"name": "deployment", "description": "the deployment to restart"},
+    {"name": "namespace", "description": "its namespace", "default": "default"}
+  ],
+  "steps": [
+    {"name": "Current state", "kubectl": ["get", "deployment", "{deployment}", "-n", "{namespace}", "-o", "wide"]},
+    {"name": "Restart", "kubectl": ["rollout", "restart", "deployment/{deployment}", "-n", "{namespace}"], "change": true, "dryRun": true},
+    {"name": "Wait until healthy", "kubectl": ["rollout", "status", "deployment/{deployment}", "-n", "{namespace}", "--timeout=5m"]}
+  ]
+}

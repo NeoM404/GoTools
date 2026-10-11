@@ -61,6 +61,8 @@ check "logs validates --since" 2 'usage: nedctl logs' -- logs x --since 1d
 check "forward validates the port" 2 'ports are 1-65535' -- forward svc/x 70000
 check "health validates its flags" 2 'usage: nedctl health' -- health --cert-days 0
 check "fleet run is read-only" 2 'read-only' -- fleet run --env qa -- kubectl delete ns x
+check "built-in runbooks load" 0 'restart-deployment' -- run ls
+check "runbook parameters are checked" 2 'is not allowed' -- --config "$root/configs/nedctl.aws.example.json" run restart-deployment 'deployment=x;rm'
 check "prompt never fails" 0 - -- prompt --shell bash
 check "guard without a kubeconfig fails clearly" 1 'current kube-context' -- guard
 check "doctor -o json is machine readable" 0 '"healthy"' -- --config "$root/configs/nedctl.bastion.example.json" doctor -o json

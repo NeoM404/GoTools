@@ -118,6 +118,10 @@ type Config struct {
 	// reached over SSH through each environment's bastion.
 	Azure Azure `json:"azure"`
 
+	// RunbooksDir holds the team's runbooks (*.json) for `nedctl run`, in
+	// addition to the built-in ones. Default: ./runbooks.
+	RunbooksDir string `json:"runbooksDir"`
+
 	// Debug configures `nedctl debug`: debug pods, node debugging and
 	// ephemeral containers.
 	Debug Debug `json:"debug"`
@@ -1221,7 +1225,7 @@ var settingHome = map[string]string{
 	"tokenEnv": "changeControl.serviceNow or audit.forward", "logPath": "audit", "forward": "audit",
 	"profile": "discovery.aws[]", "account": "discovery.aws[]", "subscription": "discovery.azure[]",
 	"tagKeys": "discovery", "nameEnvironmentPattern": "discovery",
-	"bastions": "azure", "hosts": "azure",
+	"bastions": "azure", "hosts": "azure", "images": "debug", "ttl": "debug",
 }
 
 var unknownFieldRe = regexp.MustCompile(`unknown field "([^"]+)"`)

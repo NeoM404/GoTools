@@ -1,0 +1,12 @@
+{
+  "name": "ingress-overview",
+  "description": "Ingresses, services and endpoints of a namespace, to see why a URL does not answer",
+  "params": [
+    {"name": "namespace", "description": "the namespace"}
+  ],
+  "steps": [
+    {"name": "Ingresses", "kubectl": ["get", "ingress", "-n", "{namespace}", "-o", "wide"]},
+    {"name": "Services", "kubectl": ["get", "services", "-n", "{namespace}", "-o", "wide"]},
+    {"name": "Endpoints (empty = no ready pods behind the service)", "kubectl": ["get", "endpoints", "-n", "{namespace}"]}
+  ]
+}

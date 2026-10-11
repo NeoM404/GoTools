@@ -1,0 +1,14 @@
+{
+  "name": "scale-deployment",
+  "description": "Set a deployment's replicas, then wait until they are ready",
+  "params": [
+    {"name": "deployment", "description": "the deployment to scale"},
+    {"name": "replicas", "description": "how many replicas", "pattern": "^[0-9]{1,3}$"},
+    {"name": "namespace", "description": "its namespace", "default": "default"}
+  ],
+  "steps": [
+    {"name": "Current state", "kubectl": ["get", "deployment", "{deployment}", "-n", "{namespace}"]},
+    {"name": "Scale", "kubectl": ["scale", "deployment/{deployment}", "-n", "{namespace}", "--replicas={replicas}"], "change": true, "dryRun": true},
+    {"name": "Wait until ready", "kubectl": ["rollout", "status", "deployment/{deployment}", "-n", "{namespace}", "--timeout=5m"]}
+  ]
+}
