@@ -8,7 +8,6 @@ import (
 	"io"
 	"sort"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"nedctl/internal/config"
@@ -89,7 +88,7 @@ func fleetVersions(cfgPath string, args []string, stdout, stderr io.Writer) int 
 		}
 		return code
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "NAME\tCLOUD\tENV\tVERSION\tTARGET\tSTATUS")
 	for _, r := range rows {
 		target := r.Target
@@ -298,7 +297,7 @@ func fleetEOL(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	header := "NAME\tCLOUD\tENV\tVERSION\tSTATUS\tPHASE ENDS\tDAYS"
 	if priced {
 		header += "\tPREMIUM/MO (" + rep.Currency + ")"
@@ -341,7 +340,7 @@ func fleetEOL(cfgPath string, args []string, stdout, stderr io.Writer) int {
 
 	if *byCC {
 		fmt.Fprintln(stdout)
-		tw = tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+		tw = newTable(stdout)
 		h := "COST CENTRE\tCLUSTERS\tAT RISK"
 		if priced {
 			h += "\tPREMIUM/MO\tPROJECTED/MO"

@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"text/tabwriter"
 
 	"nedctl/internal/awssso"
 	"nedctl/internal/config"
@@ -213,7 +212,7 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		}
 		return code
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "CLUSTER\tENV\tACCOUNT\tREGION\tAUTH MODE\tENDPOINT\tVERSION\tNEXT STEP")
 	for _, r := range rep.Clusters {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Cluster, dash(r.Environment), dash(r.Account), r.Region, r.AuthMode, r.Endpoint, r.Version, dash(r.Action))
@@ -374,7 +373,7 @@ func eksAccess(ctx context.Context, cfgPath string, args []string, stdout, stder
 	if *output == "json" {
 		return writeJSON(stdout, stderr, entries)
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "PRINCIPAL\tTYPE\tPOLICIES\tGROUPS")
 	for _, e := range entries {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", e.Principal, dash(e.Type), dash(strings.Join(e.Policies, "; ")), dash(strings.Join(e.Groups, ",")))

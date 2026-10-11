@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"nedctl/internal/audit"
@@ -86,7 +85,7 @@ func cmdAudit(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		}
 		return code
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "LOG\tEVENTS\tCHAIN\tDETAIL")
 	for _, r := range results {
 		status, detail := "intact", "last hash "+short(r.LastHash)
@@ -219,7 +218,7 @@ func cmdEvidence(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	fmt.Fprintf(stdout, "\nNEEDS REVIEW (%d)\n", len(rep.Exceptions))
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "STARTED (UTC)\tUSER\tCLUSTER\tENV\tCHANGE\tREASON")
 	for _, e := range rep.Exceptions {
 		started := e.Started

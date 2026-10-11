@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 
 	"nedctl/internal/audit"
 	"nedctl/internal/config"
@@ -101,7 +100,7 @@ func cmdSweep(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return code
 	}
 
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "CONTEXT\tVERDICT\tDETAIL")
 	for _, p := range rep.Plans {
 		detail := p.Reason

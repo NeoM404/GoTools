@@ -108,6 +108,9 @@ func (s Style) Table(w io.Writer, header []string, rows [][]string) {
 	line(header, s.Bold)
 	rule := make([]string, len(widths))
 	for i, n := range widths {
+		if i == len(widths)-1 && n > 48 {
+			n = max(Width(header[i]), 48) // a long free-text column needs no full-width rule
+		}
 		rule[i] = strings.Repeat("─", n)
 	}
 	fmt.Fprintln(w, s.Dim(strings.Join(rule, "  ")))

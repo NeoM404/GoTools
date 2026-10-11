@@ -144,6 +144,9 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return code
 	}
 	warnShellProfile(profile, stderr)
+	if colorOn(stderr) {
+		fmt.Fprintln(stderr, ui.Style{Color: true}.Hint("next: nedctl kube · nedctl shell · nedctl console"))
+	}
 	printProfileEnv(stdout, *format, profile)
 	return ExitOK
 }
@@ -500,7 +503,8 @@ func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsCho
 	if colorOn(stderr) {
 		label = picker.Paint(cfg.ColorFor(c.Environment), label)
 	}
-	fmt.Fprintf(stderr, "Signed in: %s (profile %s)\n", label, name)
+	st := ui.Style{Color: colorOn(stderr)}
+	fmt.Fprintf(stderr, "%s %s %s\n", st.Fg(ui.Green, "✔ Signed in:"), st.Bold(label), st.Dim("(profile "+name+")"))
 	colorTab(stderr, cfg.ColorFor(c.Environment))
 	return name, ExitOK
 }

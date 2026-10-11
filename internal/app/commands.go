@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"nedctl/internal/audit"
@@ -128,7 +127,7 @@ func clustersList(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "no clusters match")
 		return ExitOK
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "NAME\tCLOUD\tENV\tREGION\tVERSION\tOWNER\tCOST-CENTRE")
 	for _, c := range matches {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
@@ -166,7 +165,7 @@ func clustersGet(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if *output == "json" {
 		return writeJSON(stdout, stderr, c)
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintf(tw, "Name:\t%s\n", c.Name)
 	fmt.Fprintf(tw, "Cloud:\t%s\n", c.Cloud)
 	fmt.Fprintf(tw, "Environment:\t%s\n", c.Environment)
@@ -668,7 +667,7 @@ func liveClusters(_ string, cfg config.Config, cloud, env, output string, stdout
 		fmt.Fprintf(stdout, "no EKS clusters in %s (searched %s)\n", pc.label(), strings.Join(searched, ", "))
 		return ExitOK
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "NAME\tENV\tACCOUNT\tREGION\tVERSION\tENDPOINT\tAUTH MODE")
 	for _, r := range rows {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Cluster, dash(r.Environment), dash(r.Account), r.Region, r.Version, r.Endpoint, r.AuthMode)

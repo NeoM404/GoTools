@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"nedctl/internal/config"
 	"nedctl/internal/discovery"
@@ -116,7 +115,7 @@ func inventoryDiff(ctx context.Context, cfgPath string, args []string, stdout, s
 		rep.Declared, rep.Observed, rep.Matched, len(rep.Scanned))
 	if len(rep.Findings) > 0 {
 		fmt.Fprintln(stdout)
-		tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+		tw := newTable(stdout)
 		fmt.Fprintln(tw, "KIND\tCLUSTER\tSCOPE\tDETAIL")
 		for _, f := range rep.Findings {
 			detail := f.Detail

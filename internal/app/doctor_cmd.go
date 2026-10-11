@@ -9,12 +9,12 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"nedctl/internal/config"
 	"nedctl/internal/httpx"
 	"nedctl/internal/tools"
+	"nedctl/internal/ui"
 )
 
 // doctorTool is one row of `doctor -o json`.
@@ -136,6 +136,7 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	fs.SetOutput(stderr)
 	strict := fs.Bool("strict", false, "exit 1 if any tool with a floor is below it (for CI)")
 	offline := fs.Bool("offline", false, "skip the network check")
+	all := fs.Bool("all", false, "list every optional tool, not only required ones and problems")
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
@@ -198,10 +199,17 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 		return code
 	}
 
-	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw := newTable(stdout)
 	fmt.Fprintln(tw, "TOOL\tREQUIRED\tSTATUS\tVERSION\tMIN\tPURPOSE")
+	hidden := 0
 	for _, r := range results {
 		status := toolStatus(r)
+		// Optional tools are listed only when they need attention, or with
+		// --all: a squad engineer needs to see what blocks them.
+		if !*all && !r.Required && status != "outdated" {
+			hidden++
+			continue
+		}
 		if status == "outdated" {
 			status = "OUTDATED"
 		}
@@ -221,23 +229,27 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	}
 	tw.Flush()
 
+	st := ui.Style{Color: colorOn(stdout)}
 	if len(missing) > 0 {
-		fmt.Fprintln(stderr, "\nmissing REQUIRED tools:")
+		fmt.Fprintln(stderr, "\n"+ui.Style{Color: colorOn(stderr)}.Fail("missing REQUIRED tools:"))
 		for _, m := range missing {
 			fmt.Fprintf(stderr, "  %s — install: %s\n", m.Name, m.Install)
 		}
 	}
 	if len(outdatedAll) > 0 {
-		fmt.Fprintln(stderr, "\nbelow version floor (update these):")
+		fmt.Fprintln(stderr, "\n"+ui.Style{Color: colorOn(stderr)}.Warn("below version floor (update these):"))
 		for _, o := range outdatedAll {
 			fmt.Fprintf(stderr, "  %s %s < %s — %s\n", o.Name, o.Detected, o.MinVersion, o.Install)
 		}
 	}
 	if len(missing) == 0 && len(outdatedAll) == 0 {
-		fmt.Fprintln(stdout, "\nall required tools present and current")
+		fmt.Fprintln(stdout, "\n"+st.OK("all required tools present and current"))
+	}
+	if hidden > 0 {
+		fmt.Fprintln(stdout, st.Hint(fmt.Sprintf("%d optional tools not shown — nedctl doctor --all", hidden)))
 	}
 	fmt.Fprintln(stdout)
-	tw = tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
+	tw = newTable(stdout)
 	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
 	for _, c := range checks {
 		lines := strings.Split(c.Detail, "\n")
