@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strings"
 
 	"nedctl/internal/audit"
@@ -68,9 +67,13 @@ func cmdConsole(ctx context.Context, cfgPath string, args []string, stdout, stde
 		fmt.Fprintf(stderr, "%v — refusing to open the console: every access must be recorded\n", err)
 		return ExitFailure
 	}
-	if *printOnly || !openBrowser(link) {
+	switch {
+	case *printOnly:
 		fmt.Fprintln(stdout, link)
-	} else {
+	case !openBrowser(link):
+		fmt.Fprintln(stderr, helpStyle(stderr).Warn("no browser could be opened from here — open this link:"))
+		fmt.Fprintln(stdout, link)
+	default:
 		s := helpStyle(stderr)
 		fmt.Fprintf(stderr, "%s %s\n", s.OK("Opening the AWS console:"), s.Fg(cfg.ColorFor(pc.Environment), pc.label()+" · "+pc.Role+" · "+firstNonBlank(service, "home")+" · "+r))
 	}
@@ -144,6 +147,9 @@ func consoleLink(portalURL, account, role, service, region string) string {
 	return portal + "/#/console?" + q.Encode()
 }
 
+// windowsRoot is where WSL mounts the Windows drive; a var for tests.
+var windowsRoot = "/mnt/c"
+
 // openURL starts the platform's browser opener; a var so tests can see the
 // link instead of opening a browser.
 var openURL = func(name string, args ...string) error {
@@ -160,12 +166,16 @@ var openURL = func(name string, args ...string) error {
 func openBrowser(link string) bool {
 	var tries [][]string
 	switch {
-	case runtime.GOOS == "darwin":
+	case goos == "darwin":
 		tries = [][]string{{"open", link}}
-	case runtime.GOOS == "windows":
+	case goos == "windows":
 		tries = [][]string{{"rundll32", "url.dll,FileProtocolHandler", link}}
 	case inWSL():
-		tries = [][]string{{"wslview", link}, {"explorer.exe", link}}
+		// WSL often runs without the Windows PATH, so the Windows openers
+		// are also tried at their fixed locations.
+		tries = [][]string{{"wslview", link}, {"rundll32.exe", "url.dll,FileProtocolHandler", link},
+			{windowsRoot + "/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler", link},
+			{"explorer.exe", link}, {windowsRoot + "/Windows/explorer.exe", link}}
 	case lookupEnv("SSH_CONNECTION") != "" || (lookupEnv("DISPLAY") == "" && lookupEnv("WAYLAND_DISPLAY") == ""):
 		return false
 	default:
@@ -173,7 +183,7 @@ func openBrowser(link string) bool {
 	}
 	for _, t := range tries {
 		if _, err := exec.LookPath(t[0]); err != nil {
-			continue
+			continue // LookPath also checks a full path is an executable file
 		}
 		if openURL(t[0], t[1:]...) == nil {
 			return true

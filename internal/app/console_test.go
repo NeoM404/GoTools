@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/url"
+	"path/filepath"
 
 	"nedctl/internal/config"
 	"os"
@@ -53,11 +54,28 @@ func TestConsoleOpensAsTheCurrentAccountAndRecordsIt(t *testing.T) {
 	t.Cleanup(func() { openURL = old })
 	openURL = func(name string, args ...string) error { opened = append([]string{name}, args...); return nil }
 	fakeWSL(t, map[string]string{"WSL_DISTRO_NAME": "Ubuntu", "DISPLAY": ":0"})
-	fakeCLI(t, "explorer.exe", "exit 0")
-	fakeCLI(t, "xdg-open", "exit 0")
+	// No Windows programs on PATH (appendWindowsPath=false): the opener is
+	// found at its fixed location on the Windows drive.
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "Windows", "System32"), 0o755)
+	os.WriteFile(filepath.Join(root, "Windows", "System32", "rundll32.exe"), []byte("#!/bin/sh\n"), 0o755)
+	oldRoot := windowsRoot
+	t.Cleanup(func() { windowsRoot = oldRoot })
+	windowsRoot = root
+	t.Setenv("PATH", "/usr/bin:/bin")
+	oldOS := goos
+	t.Cleanup(func() { goos = oldOS })
+	goos = "linux"
 	code, out, errb = run("--config", w.cfg, "console")
-	if code != ExitOK || out != "" || len(opened) < 2 || !strings.Contains(opened[len(opened)-1], "#/console?") || !strings.Contains(errb, "Opening the AWS console") {
+	if code != ExitOK || out != "" || len(opened) < 3 || !strings.HasSuffix(opened[0], "/Windows/System32/rundll32.exe") ||
+		opened[1] != "url.dll,FileProtocolHandler" || !strings.Contains(opened[2], "#/console?") || !strings.Contains(errb, "Opening the AWS console") {
 		t.Fatalf("code=%d out=%q opened=%v err=%q", code, out, opened, errb)
+	}
+	// Nowhere to open it: say so, and print the link.
+	os.Remove(filepath.Join(root, "Windows", "System32", "rundll32.exe"))
+	code, out, errb = run("--config", w.cfg, "console")
+	if code != ExitOK || !strings.Contains(out, "#/console?") || !strings.Contains(errb, "no browser could be opened") {
+		t.Fatalf("fallback: code=%d out=%q err=%q", code, out, errb)
 	}
 	if code, _, _ := run("--config", w.cfg, "console", "bad service!"); code != ExitUsage {
 		t.Fatal("service names are validated")
