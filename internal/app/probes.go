@@ -13,6 +13,7 @@ import (
 
 	"nedctl/internal/config"
 	"nedctl/internal/execx"
+	"nedctl/internal/safetext"
 	"nedctl/internal/ui"
 )
 
@@ -222,7 +223,7 @@ func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match st
 	prog.finish()
 	if err != nil {
 		err = sshError(t, err)
-		if msg := strings.TrimSpace(prog.other.String()); msg != "" && !strings.Contains(err.Error(), "could not reach") {
+		if msg := safetext.Text(strings.TrimSpace(prog.other.String())); msg != "" && !strings.Contains(err.Error(), "could not reach") {
 			err = fmt.Errorf("%w: %s", err, msg)
 		}
 		return []clusterOut{{Cloud: "azure", Env: t.Env, Where: "on bastion " + t.Name, Err: err}}
@@ -356,10 +357,10 @@ func parseProbeOutput(data []byte, cloud, env, where string, clusters []string, 
 			rest := strings.TrimPrefix(trim, probeEnd+" ")
 			rc, msg, _ := strings.Cut(rest, " ")
 			out := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
-			cur.Out = append([]byte(nil), out...)
+			cur.Out = safetext.Bytes(append([]byte(nil), out...))
 			cur.Err = nil
 			if rc != "0" {
-				cur.Err = fmt.Errorf("%s", firstNonBlank(strings.TrimSpace(msg), "exit status "+rc))
+				cur.Err = fmt.Errorf("%s", firstNonBlank(safetext.Text(strings.TrimSpace(msg)), "exit status "+rc))
 			}
 			cur = nil
 		case cur != nil:

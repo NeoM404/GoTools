@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"nedctl/internal/execx"
+	"nedctl/internal/safetext"
 	"nedctl/internal/ui"
 )
 
@@ -131,7 +132,7 @@ func azureAuth(ctx context.Context, cfgPath string, args []string, stdout, stder
 		sp.Stop()
 		if err == nil {
 			var r []aksAuthRow
-			if r, err = aksAuthRows(env, out.Bytes()); err == nil {
+			if r, err = aksAuthRows(env, safetext.Bytes(out.Bytes())); err == nil {
 				rows = append(rows, r...)
 				continue
 			}

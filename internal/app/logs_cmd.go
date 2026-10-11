@@ -14,6 +14,7 @@ import (
 
 	"nedctl/internal/audit"
 	"nedctl/internal/config"
+	"nedctl/internal/safetext"
 	"nedctl/internal/ui"
 )
 
@@ -145,6 +146,7 @@ func (w *logWriter) flush() {
 }
 
 func (w *logWriter) line(l string) {
+	l = safetext.Text(l) // a log line is anyone's text: it must not act on the terminal
 	if w.grep != "" && !strings.Contains(strings.ToLower(l), w.grep) {
 		return
 	}

@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"nedctl/internal/safetext"
 )
 
 // ErrCancelled means the operator quit (q) or input ended.
@@ -56,6 +58,17 @@ func (p Picker) Pick() (int, error) {
 	if len(p.Rows) == 0 {
 		return -1, errors.New("nothing to choose from")
 	}
+	// Cells come from clouds and clusters (tags anyone may set); they must
+	// not act on the terminal.
+	rows := make([]Row, len(p.Rows))
+	for i, r := range p.Rows {
+		r.Cells = append([]string(nil), r.Cells...)
+		for j, c := range r.Cells {
+			r.Cells[j] = safetext.Text(c)
+		}
+		rows[i] = r
+	}
+	p.Rows = rows
 	in := bufio.NewReader(p.In)
 	filter := p.Filter
 	view := p.filter(filter)

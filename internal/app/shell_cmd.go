@@ -19,6 +19,7 @@ import (
 	"nedctl/internal/execx"
 	"nedctl/internal/inventory"
 	"nedctl/internal/picker"
+	"nedctl/internal/safetext"
 	"nedctl/internal/ui"
 )
 
@@ -165,9 +166,9 @@ func instancesIn(ctx context.Context, cfg config.Config, profile, region string)
 			for _, tg := range in.Tags {
 				switch {
 				case tg.Key == "Name":
-					e.Name = tg.Value
+					e.Name = safetext.Text(tg.Value) // anyone who can tag an instance writes this
 				case config.SameTagKey(tg.Key, levelTag):
-					e.AccessLevel = tg.Value
+					e.AccessLevel = safetext.Text(tg.Value)
 				}
 			}
 			list = append(list, e)

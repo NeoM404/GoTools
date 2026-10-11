@@ -115,6 +115,28 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
   certificate under its EKS hostname through the tunnel; a tampered hostname
   fails (tested with the real `kubectl`).
 
+## Text from clusters never controls your terminal
+
+Log lines, event messages, annotations, EC2 tags and replies from a host
+under test are other people's text. Anyone who can write a log line could
+otherwise hide escape sequences in it that:
+
+- retitle the window;
+- erase or rewrite what you see;
+- plant a link whose text and target differ;
+- on some terminals, put a command on your clipboard (OSC 52).
+
+nedctl cleans all such text before printing it:
+
+- escape sequences are removed;
+- other control characters and bidirectional overrides show as `�`;
+- JSON escapes that would decode to them (`\u001b`) are neutralised.
+
+This covers every kubectl read, every bastion probe, `logs`, the instance
+and cluster pickers, `azure auth` and `debug net`. nedctl's own colours are
+added after cleaning. Interactive shells (`kube`, `azure shell`,
+`debug pod`) remain a real terminal, as they must.
+
 ## Supply chain
 
 | Control | Status |

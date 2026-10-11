@@ -19,6 +19,7 @@ import (
 	"nedctl/internal/config"
 	"nedctl/internal/inventory"
 	"nedctl/internal/picker"
+	"nedctl/internal/safetext"
 	"nedctl/internal/ui"
 )
 
@@ -318,7 +319,9 @@ func debugWithPod(ctx context.Context, cfg config.Config, kind string, args []st
 	var useErr error
 	switch kind {
 	case "net":
-		useErr = s.kubectl(ctx, []string{"exec", p.Name, "-n", p.Namespace, "--", "sh", "-c", netCheckScript, "nedctl", netHost, netPort}, strings.NewReader(""), stdout, stderr, false)
+		out, errw := safetext.Writer(stdout), safetext.Writer(stderr) // replies from the tested host are its text
+		useErr = s.kubectl(ctx, []string{"exec", p.Name, "-n", p.Namespace, "--", "sh", "-c", netCheckScript, "nedctl", netHost, netPort}, strings.NewReader(""), out, errw, false)
+		flushSafe(out, errw)
 	default:
 		st := ui.Style{Color: colorOn(stderr)}
 		fmt.Fprintf(stderr, "%s %s ready on %s. Type exit to leave; the pod is removed.\n", st.OK("⎈"), p.Name, s.label())
@@ -752,4 +755,13 @@ func parseDebugPods(data []byte) ([]debugPodInfo, error) {
 	}
 	sort.Slice(pods, func(i, j int) bool { return pods[i].Namespace+pods[i].Name < pods[j].Namespace+pods[j].Name })
 	return pods, nil
+}
+
+// flushSafe writes what remains in safetext writers.
+func flushSafe(ws ...io.Writer) {
+	for _, w := range ws {
+		if f, ok := w.(interface{ Flush() error }); ok {
+			_ = f.Flush()
+		}
+	}
 }

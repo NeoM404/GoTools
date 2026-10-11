@@ -11,6 +11,7 @@ import (
 	"nedctl/internal/config"
 	"nedctl/internal/execx"
 	"nedctl/internal/picker"
+	"nedctl/internal/safetext"
 )
 
 // kubeSession runs kubectl against one chosen cluster, for commands that
@@ -29,13 +30,15 @@ type kubeSession struct {
 // output runs kubectl and returns its stdout; its stderr is in the error.
 func (s *kubeSession) output(ctx context.Context, stdin string, args ...string) ([]byte, error) {
 	var out, errb bytes.Buffer
+	// What the cluster returns is data: cleaned so it cannot act on the
+	// terminal wherever it is printed (JSON escapes included).
 	if err := s.kubectl(ctx, args, strings.NewReader(stdin), &out, &errb, false); err != nil {
 		if msg := strings.TrimSpace(errb.String()); msg != "" {
-			return out.Bytes(), fmt.Errorf("%s", msg)
+			return safetext.Bytes(out.Bytes()), fmt.Errorf("%s", safetext.Text(msg))
 		}
-		return out.Bytes(), err
+		return safetext.Bytes(out.Bytes()), err
 	}
-	return out.Bytes(), nil
+	return safetext.Bytes(out.Bytes()), nil
 }
 
 // interactive runs kubectl attached to the terminal.
