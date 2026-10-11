@@ -121,16 +121,19 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	}
 	defer logFile.Close()
 	banner(cfg, pc, plan.cluster.Name, stderr)
-	fmt.Fprintf(stderr, "Opening the tunnel through %s…\n", firstNonBlank(plan.hop.Name, plan.hop.ID))
+	sp := working(stderr, fmt.Sprintf("Opening the tunnel through %s…", firstNonBlank(plan.hop.Name, plan.hop.ID)))
 	tunnel, err := execx.Start(ctx, execx.Spec{Name: "aws", Args: portForwardArgs(plan, pc.Name),
 		Stdout: logFile, Stderr: logFile, Timeout: cfg.AWS.Timeout()})
 	if err != nil {
+		sp.Stop()
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "starting the tunnel: %v\n", err)
 		return ExitFailure
 	}
 	defer tunnel.Stop(3 * time.Second)
-	if err := waitForTunnel(tunnel, plan.port, tunnelReadyTimeout); err != nil {
+	err = waitForTunnel(tunnel, plan.port, tunnelReadyTimeout)
+	sp.Stop()
+	if err != nil {
 		tunnel.Stop(3 * time.Second)
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n", err, logTail(logPath, 8), logPath)

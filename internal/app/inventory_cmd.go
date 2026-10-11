@@ -51,15 +51,17 @@ func scan(ctx context.Context, cfgPath string, stderr io.Writer, quiet bool) (co
 		fmt.Fprintln(stderr, `no discovery scope configured — add a "discovery" block listing the AWS accounts/regions and Azure subscriptions to scan (see docs/nedctl.md)`)
 		return cfg, declared, discovery.Result{}, false
 	}
+	stop := func() {}
 	if !quiet {
 		regions := 0
 		for _, t := range d.AWS {
 			regions += len(t.Regions)
 		}
-		fmt.Fprintf(stderr, "scanning %d AWS account(s) across %d account-region scope(s) and %d Azure subscription(s)…\n",
-			len(d.AWS), regions, len(d.Azure))
+		stop = working(stderr, fmt.Sprintf("scanning %d AWS account(s) across %d account-region scope(s) and %d Azure subscription(s)…",
+			len(d.AWS), regions, len(d.Azure))).Stop
 	}
 	res := discovery.Scan(ctx, discovery.ExecRunner(cfg.Timeout()), d)
+	stop()
 	return cfg, declared, res, true
 }
 

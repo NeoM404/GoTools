@@ -124,10 +124,11 @@ func azureAuth(ctx context.Context, cfgPath string, args []string, stdout, stder
 	failed := false
 	for _, env := range envs {
 		t := bastionTarget(cfg, env)
-		fmt.Fprintf(stderr, "Reading the kubeconfig on %s…\n", t.Name)
+		sp := working(stderr, fmt.Sprintf("Reading the kubeconfig on %s…", t.Name))
 		var out bytes.Buffer
 		err := execx.Interactive(ctx, execx.Spec{Stdin: strings.NewReader(""), Stdout: &out, Name: "ssh",
 			Args: sshArgs(cfg, t, false, remoteBash("kubectl config view -o json")), Timeout: cfg.Timeout()})
+		sp.Stop()
 		if err == nil {
 			var r []aksAuthRow
 			if r, err = aksAuthRows(env, out.Bytes()); err == nil {

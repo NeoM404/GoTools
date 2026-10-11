@@ -332,7 +332,9 @@ func runRunbook(ctx context.Context, cfg config.Config, s *kubeSession, rb runbo
 		}
 		if step.Change {
 			if step.DryRun {
+				sp := spinning(stderr, "  asking the cluster for a dry run…")
 				out, err := s.output(ctx, "", append(append([]string{}, args...), "--dry-run=server")...)
+				sp.Stop()
 				if err != nil {
 					fmt.Fprintf(stderr, "%s %v\n", st.Fail("The cluster refuses it (server-side dry run):"), err)
 					tr.end(ctx, audit.OutcomeFailure, s.pc.Role, fmt.Sprintf("%s; step %d dry run refused: %v", base.Detail, i+1, err), stderr)

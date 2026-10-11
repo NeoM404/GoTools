@@ -300,8 +300,10 @@ func debugWithPod(ctx context.Context, cfg config.Config, kind string, args []st
 		return ExitFailure
 	}
 	defer removeDebugPod(ctx, s, p.Namespace, p.Name, stderr)
-	fmt.Fprintf(stderr, "Waiting for %s to start…\n", p.Name)
-	if err := waitDebugPod(ctx, s, p.Namespace, p.Name); err != nil {
+	sp := working(stderr, fmt.Sprintf("Waiting for %s to start…", p.Name))
+	err = waitDebugPod(ctx, s, p.Namespace, p.Name)
+	sp.Stop()
+	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, s.pc.Role, err.Error(), stderr)
 		fmt.Fprintln(stderr, err)
 		return ExitFailure
@@ -361,7 +363,10 @@ func approveDeploy(ctx context.Context, cfg config.Config, s *kubeSession, what,
 	}
 	fmt.Fprintln(stderr)
 	if serverCheck {
-		if _, err := s.output(ctx, manifest, "create", "--dry-run=server", "-f", "-", "-o", "name"); err != nil {
+		sp := spinning(stderr, "Asking the cluster for a dry run…")
+		_, err := s.output(ctx, manifest, "create", "--dry-run=server", "-f", "-", "-o", "name")
+		sp.Stop()
+		if err != nil {
 			fmt.Fprintf(stderr, "%s %v\n", st.Fail("The cluster refuses it (server-side dry run):"), err)
 			return ExitFailure
 		}

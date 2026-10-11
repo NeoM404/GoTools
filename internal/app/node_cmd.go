@@ -55,7 +55,10 @@ func cmdNode(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		return code
 	}
 	defer s.close()
-	if _, err := s.output(ctx, "", "get", "node", node, "-o", "name"); err != nil {
+	sp := spinning(stderr, "Looking up "+node+" on "+s.label()+"…")
+	_, err = s.output(ctx, "", "get", "node", node, "-o", "name")
+	sp.Stop()
+	if err != nil {
 		fmt.Fprintf(stderr, "node %s on %s: %v\n", node, s.label(), err)
 		return ExitFailure
 	}
@@ -68,7 +71,9 @@ func cmdNode(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if action == "drain" {
 		drainPreview(ctx, s, node, stderr)
 	}
+	sp = spinning(stderr, "Asking the cluster for a dry run…")
 	out, err := s.output(ctx, "", append(append([]string{}, kargs...), "--dry-run=server")...)
+	sp.Stop()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %v\n", st.Fail("The cluster refuses it (server-side dry run):"), err)
 		return ExitFailure
@@ -120,8 +125,10 @@ func cmdNode(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 // drainPreview lists what a drain moves and what could block it.
 func drainPreview(ctx context.Context, s *kubeSession, node string, stderr io.Writer) {
 	st := ui.Style{Color: colorOn(stderr)}
+	sp := spinning(stderr, "Listing the pods on "+node+"…")
 	out, err := s.output(ctx, "", "get", "pods", "-A", "--field-selector", "spec.nodeName="+node, "-o",
 		`jsonpath={range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.metadata.ownerReferences[0].kind}{"\n"}{end}`)
+	sp.Stop()
 	if err != nil {
 		fmt.Fprintf(stderr, "  (could not list the node's pods: %v)\n", err)
 		return
@@ -154,7 +161,10 @@ func drainPreview(ctx context.Context, s *kubeSession, node string, stderr io.Wr
 	for _, b := range bare {
 		fmt.Fprintf(stderr, "  %s\n", st.Fail("pod "+b+" belongs to no controller: the drain stops on it (nedctl never forces); move or delete it first"))
 	}
-	if out, err := s.output(ctx, "", "get", "pdb", "-A", "-o", `jsonpath={range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.disruptionsAllowed}{"\n"}{end}`); err == nil {
+	sp = spinning(stderr, "Checking disruption budgets…")
+	out, err = s.output(ctx, "", "get", "pdb", "-A", "-o", `jsonpath={range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.disruptionsAllowed}{"\n"}{end}`)
+	sp.Stop()
+	if err == nil {
 		var blocking []string
 		for _, l := range nonEmptyLines(string(out)) {
 			if f := strings.Split(l, "\t"); len(f) == 3 && f[2] == "0" && namespaces[f[0]] {

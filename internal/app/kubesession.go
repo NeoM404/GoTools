@@ -158,14 +158,17 @@ func openEKSSession(ctx context.Context, cfg config.Config, f sessionFlags, stde
 			fmt.Fprintf(stderr, "opening the tunnel log: %v\n", err)
 			return nil, ExitFailure
 		}
-		fmt.Fprintf(stderr, "Opening the tunnel through %s…\n", firstNonBlank(plan.hop.Name, plan.hop.ID))
+		sp := working(stderr, fmt.Sprintf("Opening the tunnel through %s…", firstNonBlank(plan.hop.Name, plan.hop.ID)))
 		tunnel, err := execx.Start(ctx, execx.Spec{Name: "aws", Args: portForwardArgs(plan, pc.Name), Stdout: logFile, Stderr: logFile, Timeout: cfg.AWS.Timeout()})
 		if err != nil {
+			sp.Stop()
 			logFile.Close()
 			fmt.Fprintf(stderr, "starting the tunnel: %v\n", err)
 			return nil, ExitFailure
 		}
-		if err := waitForTunnel(tunnel, plan.port, tunnelReadyTimeout); err != nil {
+		err = waitForTunnel(tunnel, plan.port, tunnelReadyTimeout)
+		sp.Stop()
+		if err != nil {
 			tunnel.Stop(3 * time.Second)
 			logFile.Close()
 			fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n", err, logTail(logPath, 8), logPath)

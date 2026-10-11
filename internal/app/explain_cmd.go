@@ -204,7 +204,9 @@ func cmdExplain(ctx context.Context, cfgPath string, args []string, stdout, stde
 	}
 	defer s.close()
 
+	sp := spinning(stderr, "Looking at "+name+" on "+s.label()+"…")
 	subject, findings, err := explainTarget(ctx, s, *ns, kind, name, !*noLogs)
+	sp.Stop()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return ExitFailure

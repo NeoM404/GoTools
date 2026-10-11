@@ -68,6 +68,8 @@ func runProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 			return nil, code
 		}
 		defer s.close()
+		sp := spinning(stderr, "Reading "+s.label()+"…")
+		defer sp.Stop()
 		return []clusterOut{sessionProbes(ctx, s, probes)}, ExitOK
 	}
 	var all []clusterOut
@@ -124,7 +126,9 @@ func eksProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 			all = append(all, clusterOut{Cloud: "aws", Env: pc.Environment, Cluster: h.Name, Err: errors.New("could not reach the cluster")})
 			continue
 		}
+		sp := spinning(stderr, "Reading "+s.label()+"…")
 		all = append(all, sessionProbes(ctx, s, probes))
+		sp.Stop()
 		s.close()
 	}
 	return all
@@ -224,6 +228,22 @@ func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match st
 		return []clusterOut{{Cloud: "azure", Env: t.Env, Where: "on bastion " + t.Name, Err: err}}
 	}
 	return parseProbeOutput(out.Bytes(), "azure", t.Env, "on bastion "+t.Name, clusters, len(probes))
+}
+
+// working shows msg with a spinner while a wait lasts, on a terminal; in
+// a log or pipe it prints msg once, as before. Stop it when the wait ends.
+func working(w io.Writer, msg string) *ui.Spinner {
+	st := ui.Style{Color: colorOn(w)}
+	if !st.Color {
+		fmt.Fprintln(w, msg)
+	}
+	return st.Spinner(w, msg)
+}
+
+// spinning is working that prints nothing off a terminal: for short waits
+// whose result is printed straight after.
+func spinning(w io.Writer, msg string) *ui.Spinner {
+	return ui.Style{Color: colorOn(w)}.Spinner(w, msg)
 }
 
 // probeProgress reads the bastion script's stderr: each done line moves a
