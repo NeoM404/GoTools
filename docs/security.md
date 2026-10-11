@@ -43,7 +43,7 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
 
 - **Azure:** the AKS bastions authenticate to the clusters as a shared AKS
   local account (`clusterUser`), so the clusters' own audit logs cannot name
-  a person. The engineer's identity there is their Linux login on the
+  a person (`nedctl azure auth` shows which clusters, and tracks the move). The engineer's identity there is their Linux login on the
   bastion; nedctl's `aks-session` and `ssh-session` records add who used
   which cluster, when, from which workstation. Moving AKS to Entra ID
   (per-person) authentication would close this gap; nedctl would then not

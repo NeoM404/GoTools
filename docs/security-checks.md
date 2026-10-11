@@ -176,3 +176,51 @@ It runs locally and sends nothing anywhere. **It never prints a secret**:
 only where it is and how to fix it (tests enforce this). It exits 1 when
 long-term AWS keys are found. Run it once after `setup`, and whenever a
 laptop changes hands.
+
+## AKS local accounts versus Entra ID: `nedctl azure auth`
+
+```bash
+nedctl azure auth
+nedctl azure auth --env prod -o json
+nedctl azure auth --fail-on-local          # a gate, once the migration is under way
+```
+
+```
+ENV  CLUSTER             AUTH           KUBECONFIG USER
+qa   acm-k8s-qa-cluster  local-account  clusterUser_rg_acm
+qa   pay-k8s-qa-cluster  entra-id       entra
+
+⚠ 1 of 2 cluster(s) are reached with a shared local account: their audit logs cannot name the engineer
+```
+
+Today the AKS bastions reach clusters with the clusters' **local
+accounts** (`clusterUser_…`). That's a certificate in `system:masters`, the
+same for everyone, so the cluster's own audit log can't tell engineers
+apart. Until that changes, nedctl's audit trail is the only record of who
+used which cluster.
+
+`azure auth` reads each bastion's kubeconfig with `kubectl config view`,
+which hides every key, certificate and token. For each cluster it shows:
+
+| AUTH | Means |
+|---|---|
+| `local-account` | Shared client certificate or token: no per-person identity |
+| `entra-id` | `kubelogin`, so each engineer signs in as themselves |
+| `entra-id (legacy auth-provider)` | The old in-tree Azure plugin, which needs moving to kubelogin |
+| `exec: …` | Another credential plugin |
+
+**Moving a cluster to per-person access** (platform team, per cluster,
+through the usual Terraform change):
+
+1. Enable AKS-managed Entra ID integration with Kubernetes RBAC (or Azure
+   RBAC).
+2. Bind the squads' and platform team's Entra groups to roles. Write the
+   same grants into `access/approved.json` so `access review` checks them.
+3. Give the bastions `kubelogin` and Entra contexts. Engineers sign in once
+   a day, and `nedctl azure kube` works the same.
+4. Disable local accounts: `az aks update --disable-local-accounts`.
+5. Run `nedctl azure auth` again. The cluster now shows `entra-id`.
+
+nedctl doesn't need to change for this. `azure kube`, `debug`, `logs` and
+the rest work the same way, and the clusters' audit logs then name the
+engineer as well.

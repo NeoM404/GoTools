@@ -171,6 +171,13 @@ AKS on the bastions authenticates as a **shared AKS local account**
 nedctl's record is the one that names who used which cluster and when. It
 says so in its detail.
 
+## Shared local account or per-person sign-in?
+
+`nedctl azure auth` shows, per cluster, whether the bastion reaches it with
+the shared local account or with Entra ID. It also lists the steps to move
+a cluster to per-person sign-in; see
+[For DevSecOps](security-checks.md#aks-local-accounts-versus-entra-id-nedctl-azure-auth).
+
 ## Settings
 
 | Setting | Meaning |

@@ -24,7 +24,7 @@ import (
 
 var subcommands = map[string][]string{
 	"aws":       {"login", "whoami", "env"},
-	"azure":     {"kube", "shell", "clusters", "hosts", "cp"},
+	"azure":     {"kube", "shell", "clusters", "hosts", "cp", "auth"},
 	"access":    {"review"},
 	"node":      {"cordon", "uncordon", "drain"},
 	"debug":     {"pod", "node", "attach", "net", "ls", "clean"},
