@@ -50,6 +50,9 @@ check "break-glass needs a reason" 2 'go together' -- --config "$root/configs/ne
 check "kubeconfig is refused on a bastion" 2 'does not fetch any' -- --config "$root/configs/nedctl.bastion.example.json" kubeconfig payments-k8s-prod-cluster
 check "connect validates its argument" 2 'usage: nedctl connect' -- --config "$root/configs/nedctl.aws.example.json" connect 'bad name'
 check "kube validates its argument" 2 'usage: nedctl kube' -- --config "$root/configs/nedctl.aws.example.json" kube 'bad name'
+check "help lists azure kube" 0 'azure kube \[cluster' -- help
+check "azure example lists the bastions" 0 'qa +aks-qa +aks bastion' -- --config "$root/configs/nedctl.aws.example.json" azure hosts
+check "azure needs bastions" 1 'Azure access is not set up' -- --config "$work/b.json" azure kube
 check "prompt never fails" 0 - -- prompt --shell bash
 check "guard without a kubeconfig fails clearly" 1 'current kube-context' -- guard
 check "doctor -o json is machine readable" 0 '"healthy"' -- --config "$root/configs/nedctl.bastion.example.json" doctor -o json

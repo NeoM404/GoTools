@@ -24,6 +24,7 @@ import (
 
 var subcommands = map[string][]string{
 	"aws":       {"login", "whoami", "env"},
+	"azure":     {"kube", "shell", "clusters", "hosts"},
 	"eks":       {"auth", "access"},
 	"ec2":       {"start", "stop"},
 	"clusters":  {"list"},
@@ -34,7 +35,7 @@ var subcommands = map[string][]string{
 }
 
 var commandNames = []string{
-	"setup", "status", "aws", "shell", "kube", "connect", "console", "eks", "ec2", "clusters", "kubeconfig", "login",
+	"setup", "status", "aws", "shell", "kube", "connect", "console", "azure", "eks", "ec2", "clusters", "kubeconfig", "login",
 	"fleet", "inventory", "sweep", "audit", "evidence", "guard", "current", "prompt", "doctor", "init", "version", "help",
 }
 
@@ -115,6 +116,18 @@ func completions(ctx context.Context, cfgPath string, done []string, cur string)
 		}
 	case "aws login":
 		return assignmentWords(cfg)
+	case "azure kube":
+		return append(azureEnvs(cfg), knownAKS(cfg)...)
+	case "azure shell":
+		out := azureEnvs(cfg)
+		for _, t := range azureTargets(cfg) {
+			out = append(out, t.Name)
+		}
+		return out
+	case "azure clusters":
+		if positionals(rest, flags) == 0 {
+			return azureEnvs(cfg)
+		}
 	case "prompt init":
 		return []string{"bash", "zsh", "powershell"}
 	case "console":
@@ -181,6 +194,8 @@ func flagValues(cfg config.Config, path []string, flag string) []string {
 		return []string{config.ModeWorkstation, config.ModeBastion}
 	case flag == "cloud":
 		return []string{"aws", "azure"}
+	case flag == "env" && path[0] == "azure":
+		return azureEnvs(cfg)
 	case flag == "env":
 		return cfg.Environments
 	case flag == "account":
@@ -189,6 +204,15 @@ func flagValues(cfg config.Config, path []string, flag string) []string {
 		return assignmentField(cfg, func(a awssso.Assignment) string { return a.Role })
 	}
 	return nil
+}
+
+// knownAKS are the AKS clusters nedctl has seen on any bastion.
+func knownAKS(cfg config.Config) []string {
+	var out []string
+	for _, env := range azureEnvs(cfg) {
+		out = append(out, loadNames(cfg, "azure-"+env, "aks")...)
+	}
+	return out
 }
 
 func managedProfiles() []string {

@@ -164,7 +164,8 @@ One-time setup, under Pipelines → Library:
 
 - **Secure file `nedctl-org.json`.** The config fragment every engineer
   shares: the Identity Center start URL and region, environments, prod
-  patterns, and `releaseUrl`. It is built into the binaries and never
+  patterns, `releaseUrl`, and `azure.bastions` (each environment's AKS
+  bastion address, so nobody needs an `~/.ssh/config` entry). It is built into the binaries and never
   committed. Because the defaults are built in, an engineer downloads one
   file and runs `setup`; there is no config to hand out.
 - **`releaseBaseUrl`** (optional): where engineers download releases from.

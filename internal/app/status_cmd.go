@@ -25,7 +25,7 @@ func cmdStatus(cfgPath string, w io.Writer) int {
 		fmt.Fprintf(w, "  %s\n  %s\n", s.Fail("config error: "+err.Error()), s.Hint("fix it, or run nedctl doctor"))
 		return ExitFailure
 	}
-	if !cfg.AWS.Configured() && cfg.InventoryPath == "" && cfg.InventoryURL == "" {
+	if !cfg.AWS.Configured() && !cfg.Azure.Configured() && cfg.InventoryPath == "" && cfg.InventoryURL == "" {
 		fmt.Fprintf(w, "  Welcome. Start with %s — it takes a minute.\n\n", s.Bold("nedctl setup"))
 		fmt.Fprintf(w, "  %s\n", s.Hint("nedctl help lists every command"))
 		return ExitOK
@@ -65,18 +65,23 @@ func cmdStatus(cfgPath string, w io.Writer) int {
 	}
 
 	fmt.Fprintln(w)
-	rows := [][2]string{
-		{"nedctl kube", "kubectl on a cluster"},
-		{"nedctl shell", "a shell on an instance"},
-		{"nedctl console", "the AWS console, same account and role"},
-		{"nedctl aws login", "switch account"},
-		{"nedctl help", "everything else"},
+	var rows [][2]string
+	if cfg.AWS.Configured() || !cfg.Azure.Configured() {
+		rows = append(rows, [2]string{"nedctl kube", "kubectl on a cluster"},
+			[2]string{"nedctl shell", "a shell on an instance"},
+			[2]string{"nedctl console", "the AWS console, same account and role"},
+			[2]string{"nedctl aws login", "switch account"})
+		if lastCluster != "" {
+			rows[0][1] += s.Dim("   last: " + lastCluster)
+		}
 	}
-	if lastCluster != "" {
-		rows[0][1] += s.Dim("   last: " + lastCluster)
+	if cfg.Azure.Configured() {
+		rows = append(rows, [2]string{"nedctl azure kube", "kubectl on an AKS cluster, on its bastion"},
+			[2]string{"nedctl azure shell", "SSH to an AKS bastion or Azure machine"})
 	}
+	rows = append(rows, [2]string{"nedctl help", "everything else"})
 	for _, r := range rows {
-		fmt.Fprintf(w, "  %s  %s\n", ui.Pad(s.Bold(r[0]), 18), r[1])
+		fmt.Fprintf(w, "  %s  %s\n", ui.Pad(s.Bold(r[0]), 19), r[1])
 	}
 	return ExitOK
 }

@@ -89,6 +89,37 @@ says so. Run `echo $KUBECONFIG` — it should point at
 Your role has no EKS access entry (or aws-auth mapping) on that cluster. See
 who can reach it: `nedctl eks access <cluster>`, and ask the platform team.
 
+## Azure (AKS through the bastions)
+
+**`Azure access is not set up`**
+Your build has no bastions in it. Add them under `azure.bastions` in
+`~/.config/nedctl/config.json` — see [Azure access](azure.md#2-the-bastions).
+
+**`could not reach aks-qa over SSH`**
+Run `ssh aks-qa` yourself: the message it gives is the real one. Usually
+the VPN, a key that is not loaded (`ssh-add -l`), or a name your
+`~/.ssh/config` does not know. `nedctl doctor` checks each bastion's port
+without logging in.
+
+**`no such host` for a bastion in doctor**
+The bastion is given as an alias (`aks-qa`) your `~/.ssh/config` does not
+define. Add `Host aks-qa` with `HostName <address>`, or put the address in
+`azure.bastions`.
+
+**The passphrase is asked every time**
+No SSH agent in this terminal. WSL/Linux: run `nedctl setup` again and open
+a new terminal. Windows: start the `ssh-agent` service (see
+[Azure access](azure.md#3-the-ssh-agent-type-your-passphrase-once)).
+
+**`there is no kube-context "…" on <bastion>`, or a new cluster is missing**
+nedctl's remembered list is out of date: `nedctl azure clusters qa
+--refresh`. If the bastion itself lacks the context, ask the platform team.
+
+**Strange prompt or no colour on the bastion**
+nedctl starts bash with your own `~/.bashrc`, then adds the label. For a
+machine without bash, or to keep the prompt untouched, use
+`nedctl azure shell <name> --plain`.
+
 ## Terminal tabs, the console and sm
 
 **`--tab`: `wt.exe not found`**

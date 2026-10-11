@@ -153,20 +153,26 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	case cfg.Bastion():
 		// Credentials are provisioned on a bastion; nedctl needs only kubectl.
 		notRequired = []string{"aws", "az"}
-	case cfg.AWS.Configured() && len(cfg.Discovery.Azure) == 0:
-		// An AWS squad: nothing it runs needs the Azure CLI.
+	case !cfg.AWS.Configured() && cfg.Azure.Configured() && len(cfg.Discovery.Azure) == 0:
+		// Azure through the bastions only: SSH, no cloud CLI.
+		notRequired = []string{"aws", "az"}
+	case (cfg.AWS.Configured() || cfg.Azure.Configured()) && len(cfg.Discovery.Azure) == 0:
+		// Nothing it runs needs the Azure CLI: AKS is reached on the bastions.
 		notRequired = []string{"az"}
 	}
 	results := tools.Inspect(ctx, cfg.MinVersions, notRequired...)
-	if cfg.AWS.Configured() {
-		// shell, connect and kube cannot work without it.
-		for i := range results {
-			if results[i].Name == "session-manager-plugin" {
-				results[i].Required = true
-			}
+	for i := range results {
+		switch {
+		case results[i].Name == "session-manager-plugin" && cfg.AWS.Configured():
+			results[i].Required = true // shell, connect and kube cannot work without it
+		case results[i].Name == "ssh" && cfg.Azure.Configured():
+			results[i].Required = true // the azure commands go through it
 		}
 	}
 	checks := environmentChecks(ctx, cfg, used, cfgErr, *offline)
+	if cfgErr == nil && cfg.Azure.Configured() {
+		checks = append(checks, azureChecks(ctx, cfg, *offline)...)
+	}
 
 	missing := tools.MissingRequired(results)
 	outdatedReq := tools.OutdatedRequired(results)

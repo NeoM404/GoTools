@@ -39,6 +39,15 @@
     "legacyTool": "sm",
     "sessionTimeout": "12h"
   },
+  "azure": {
+    "bastions": {
+      "dev": "aks-dev",
+      "ete": "aks-ete",
+      "qa": "aks-qa",
+      "prod": "aks-prod"
+    },
+    "hosts": []
+  },
   "audit": {
     "forward": {
       "url": "",

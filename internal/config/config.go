@@ -113,6 +113,10 @@ type Config struct {
 	// commands (`nedctl aws`, `shell`, `connect`).
 	AWS AWS `json:"aws"`
 
+	// Azure configures `nedctl azure`: AKS clusters and Azure machines,
+	// reached over SSH through each environment's bastion.
+	Azure Azure `json:"azure"`
+
 	// EnvironmentColors maps an environment to a #rrggbb colour for pickers,
 	// terminal tabs and the prompt. Defaults: dev green, ete orange, qa blue,
 	// prod red.
@@ -198,6 +202,111 @@ type AWS struct {
 	// DevopsInstance is matched against instance names to find the hop for
 	// `nedctl connect` (default "devops").
 	DevopsInstance string `json:"devopsInstance"`
+}
+
+// Azure is SSH access to AKS clusters and Azure machines. Clusters are
+// used on their environment's bastion, with the kubeconfig the platform
+// provisions there: nedctl never copies cluster credentials to the
+// workstation, and needs no az CLI.
+type Azure struct {
+	// Bastions maps each environment to its AKS bastion's SSH destination:
+	// a Host alias from ~/.ssh/config ("aks-qa"), a host name or an
+	// address, optionally as user@host.
+	Bastions map[string]string `json:"bastions"`
+	// User is the SSH login name for destinations that do not name one
+	// (default: ssh's own choice — ~/.ssh/config, else the local user).
+	User string `json:"user"`
+	// Hosts are further machines `nedctl azure shell` offers.
+	Hosts []AzureHost `json:"hosts"`
+}
+
+// AzureHost is one machine reached over SSH.
+type AzureHost struct {
+	Name        string `json:"name"`
+	Host        string `json:"host"` // SSH destination; default Name
+	Environment string `json:"environment"`
+	// Jump is an SSH destination to go through (ssh -J), or "bastion" for
+	// this environment's bastion.
+	Jump string `json:"jump"`
+}
+
+// Configured reports whether any Azure machine is set up.
+func (a Azure) Configured() bool { return len(a.Bastions) > 0 || len(a.Hosts) > 0 }
+
+// Bastion returns the bastion of env (case-insensitive).
+func (a Azure) Bastion(env string) (string, bool) {
+	for k, v := range a.Bastions {
+		if strings.EqualFold(k, env) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+var (
+	// sshDestRe is an SSH destination: [user@]alias, host name or address.
+	// It can never start with "-", so ssh cannot read it as an option.
+	sshDestRe  = regexp.MustCompile(`^([A-Za-z0-9_][A-Za-z0-9._-]*@)?[A-Za-z0-9_\[][A-Za-z0-9._:\[\]-]*$`)
+	sshUserRe  = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
+	hostNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+)
+
+// ValidSSHDest reports whether d is a destination nedctl passes to ssh.
+func ValidSSHDest(d string) bool { return sshDestRe.MatchString(d) }
+
+func (c Config) validateAzure() error {
+	a := c.Azure
+	var errs []error
+	allowed := map[string]bool{}
+	for _, e := range c.Environments {
+		allowed[strings.ToLower(e)] = true
+	}
+	for env, dest := range a.Bastions {
+		if !envNameRe.MatchString(env) || (len(allowed) > 0 && !allowed[strings.ToLower(env)]) {
+			errs = append(errs, fmt.Errorf("azure.bastions: %q is not an environment%s", env, envList(c.Environments)))
+		}
+		if !ValidSSHDest(dest) {
+			errs = append(errs, fmt.Errorf("azure.bastions[%q] %q: want an SSH destination such as aks-qa or user@10.0.0.4", env, dest))
+		}
+	}
+	if a.User != "" && !sshUserRe.MatchString(a.User) {
+		errs = append(errs, fmt.Errorf("azure.user %q is not a user name", a.User))
+	}
+	seen := map[string]bool{}
+	for i, h := range a.Hosts {
+		switch {
+		case !hostNameRe.MatchString(h.Name):
+			errs = append(errs, fmt.Errorf("azure.hosts[%d]: name %q may hold only letters, digits, '.', '_' and '-'", i, h.Name))
+		case seen[strings.ToLower(h.Name)]:
+			errs = append(errs, fmt.Errorf("azure.hosts[%d]: name %q is used twice", i, h.Name))
+		}
+		seen[strings.ToLower(h.Name)] = true
+		if h.Host != "" && !ValidSSHDest(h.Host) {
+			errs = append(errs, fmt.Errorf("azure.hosts[%d] (%s): host %q is not an SSH destination", i, h.Name, h.Host))
+		}
+		if h.Environment != "" && (!envNameRe.MatchString(h.Environment) || (len(allowed) > 0 && !allowed[strings.ToLower(h.Environment)])) {
+			errs = append(errs, fmt.Errorf("azure.hosts[%d] (%s): %q is not an environment%s", i, h.Name, h.Environment, envList(c.Environments)))
+		}
+		switch {
+		case h.Jump == "":
+		case strings.EqualFold(h.Jump, "bastion"):
+			if _, ok := a.Bastion(h.Environment); !ok {
+				errs = append(errs, fmt.Errorf("azure.hosts[%d] (%s): jump \"bastion\" needs azure.bastions[%q]", i, h.Name, h.Environment))
+			}
+		case !ValidSSHDest(h.Jump):
+			errs = append(errs, fmt.Errorf("azure.hosts[%d] (%s): jump %q is not an SSH destination", i, h.Name, h.Jump))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+var envNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+
+func envList(envs []string) string {
+	if len(envs) == 0 {
+		return ""
+	}
+	return " in environments " + fmt.Sprint(envs)
 }
 
 // DevopsName returns the devops-instance name match.
@@ -847,7 +956,7 @@ func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
 	return errors.Join(c.validateMode(), errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
-		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl(), c.validateAWS())
+		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl(), c.validateAWS(), c.validateAzure())
 }
 
 var minorRe = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?$`)
@@ -992,6 +1101,7 @@ var settingHome = map[string]string{
 	"tokenEnv": "changeControl.serviceNow or audit.forward", "logPath": "audit", "forward": "audit",
 	"profile": "discovery.aws[]", "account": "discovery.aws[]", "subscription": "discovery.azure[]",
 	"tagKeys": "discovery", "nameEnvironmentPattern": "discovery",
+	"bastions": "azure", "hosts": "azure",
 }
 
 var unknownFieldRe = regexp.MustCompile(`unknown field "([^"]+)"`)

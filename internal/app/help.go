@@ -48,6 +48,16 @@ var helpGroups = []helpGroup{
 		{"aws whoami", "", "Who you act as, where, and sign-in time left", "", []string{"nedctl aws whoami", "nedctl aws whoami -o json"}},
 		{"status", "", "Your sign-in, current cluster and the commands you use most", "", []string{"nedctl status"}},
 	}},
+	{"Azure: AKS and machines over SSH", []cmdHelp{
+		{"azure kube", "[cluster|words…]", "A shell on the AKS bastion with one cluster selected",
+			"Connects to the environment's AKS bastion over SSH and starts a shell there in which kubectl, helm and kubectx use the cluster you chose, for this session only (other sessions are not switched). The prompt and the Windows Terminal tab take the environment's colour. Credentials stay on the bastion: nothing is copied to your machine. Words narrow the list; an environment word (dev, ete, qa, prod) picks the bastion.",
+			[]string{"nedctl azure kube", "nedctl azure kube qa payments", "nedctl azure kube acm-k8s-qa-cluster", "nedctl azure kube acm-k8s-qa-cluster -- kubectl get pods -A", "nedctl azure kube payments prod --tab"}},
+		{"azure shell", "[name|env]", "SSH to a bastion or Azure machine, coloured and recorded",
+			"Opens SSH to an AKS bastion or a machine from azure.hosts, with the environment in the prompt and the tab. --plain leaves the remote prompt alone.",
+			[]string{"nedctl azure shell qa", "nedctl azure shell", "nedctl azure shell ete --tab"}},
+		{"azure clusters", "[env]", "The AKS clusters on each bastion", "Uses what nedctl remembers; --refresh asks the bastions again.", []string{"nedctl azure clusters", "nedctl azure clusters qa --refresh"}},
+		{"azure hosts", "", "The bastions and machines azure shell reaches", "", []string{"nedctl azure hosts"}},
+	}},
 	{"Instances and clusters", []cmdHelp{
 		{"ec2", "<start|stop> <instance>", "Start or stop an instance, recorded", "In production you confirm by typing the instance ID.", []string{"nedctl ec2 start payments-batch"}},
 		{"clusters list", "", "The fleet's clusters, or the signed-in account's EKS clusters", "", []string{"nedctl clusters list", "nedctl clusters list --env prod -o json"}},
@@ -89,6 +99,7 @@ var helpGroups = []helpGroup{
 var aliases = map[string]string{
 	"whoami": "aws whoami", "signin": "aws login", "sign-in": "aws login", "ssh": "shell", "session": "shell",
 	"tunnel": "connect", "kubectl": "kube", "k8s": "kube", "k": "kube", "env": "aws env", "home": "status", "update": "version --check",
+	"aks": "azure kube", "az": "azure", "ssh-aks": "azure shell",
 }
 
 func findHelp(name string) (cmdHelp, bool) {

@@ -129,7 +129,8 @@ work). Example — copy [`configs/nedctl.example.json`](../configs/nedctl.exampl
 | `environments` | Optional allow-list for every cluster's `environment`, e.g. `["dev","ete","qa","prod"]`. A typo such as `prd` then fails at load time instead of quietly dodging production checks. |
 | `discovery` | The cloud scope `inventory diff` / `inventory sync` scan — see [Discovery](#discovery). |
 | `aws` | IAM Identity Center sign-in and the EC2/EKS access commands (`aws`, `shell`, `connect`, `eks`) — see [aws.md](aws.md). |
-| `confirmProduction` | `true` makes `shell`, `kube`, `connect` and `console` ask you to type the environment's name before a production session; `--yes` confirms without asking (needed without a terminal). Off by default. |
+| `azure` | AKS clusters and Azure machines over SSH through each environment's bastion (`azure kube`, `azure shell`): `bastions`, `user`, `hosts` — see [azure.md](azure.md). |
+| `confirmProduction` | `true` makes `shell`, `kube`, `connect`, `console`, `azure kube` and `azure shell` ask you to type the environment's name before a production session; `--yes` confirms without asking (needed without a terminal). Off by default. |
 | `releaseUrl` | HTTPS address of the `latest.json` the release pipeline publishes; `nedctl version --check` compares against it. Usually built in. |
 | `windowsTerminal` | Path to `wt.exe` for `--tab` when it is not on PATH (WSL); a `C:\` path works. |
 | `environmentColors` | `#rrggbb` per environment for pickers, terminal tabs and the prompt. Default: dev green, ete orange, qa blue, prod red. |
@@ -332,6 +333,13 @@ The credentials need only read access: `sts:GetCallerIdentity`,
 Center and EC2/EKS access flow, the prompt and tab colours, and tab
 completion. They are documented in **[aws.md](aws.md)**, with the security model for
 reviewers in **[security.md](security.md)**.
+
+## Azure access
+
+`azure kube`, `azure shell`, `azure clusters` and `azure hosts` reach AKS
+clusters and Azure machines over SSH through each environment's bastion,
+with the cluster selected for that session only and nothing copied to the
+workstation. They are documented in **[azure.md](azure.md)**.
 
 ## Commands
 

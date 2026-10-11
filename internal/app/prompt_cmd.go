@@ -22,7 +22,7 @@ import (
 // a prompt must never fail or stall.
 func cmdPrompt(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "init" {
-		return promptInit(args[1:], stdout, stderr)
+		return promptInit(cfgPath, args[1:], stdout, stderr)
 	}
 	fs := flag.NewFlagSet("prompt", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -118,7 +118,7 @@ func nonPrinting(shell, s string) string {
 // `eval "$(nedctl prompt init bash)"` in ~/.bashrc. It refers to this
 // nedctl by full path, so it works when nedctl is not on PATH. Inside
 // `nedctl kube`, the cluster prefix that shell sets is kept in front.
-func promptInit(args []string, stdout, stderr io.Writer) int {
+func promptInit(cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 || (args[0] != "bash" && args[0] != "zsh" && args[0] != "powershell") {
 		fmt.Fprintln(stderr, "usage: nedctl prompt init <bash|zsh|powershell>   (nedctl setup adds it to your shell's startup file)")
 		return ExitUsage
@@ -153,6 +153,9 @@ func promptInit(args []string, stdout, stderr io.Writer) int {
   esac
 }
 `, bin)
+	if cfg, _, err := config.Load(cfgPath); err == nil && cfg.Azure.Configured() {
+		fmt.Fprint(stdout, sharedSSHAgent)
+	}
 	switch args[0] {
 	case "bash":
 		// Tab completion: commands, flags, and this account's clusters,
@@ -198,6 +201,21 @@ add-zsh-hook precmd __nedctl_prompt
 	}
 	return ExitOK
 }
+
+// sharedSSHAgent gives every terminal one SSH agent, so a key is unlocked
+// once (the azure commands add it on first use) instead of in each
+// terminal with eval "$(ssh-agent -s)" and ssh-add. Only where no agent is
+// set up already (macOS and desktop Linux have their own); keys are
+// forgotten after 12 hours.
+const sharedSSHAgent = `if [ -z "${SSH_AUTH_SOCK-}" ] && [ -d "$HOME/.ssh" ] && command -v ssh-agent >/dev/null 2>&1; then
+  export SSH_AUTH_SOCK="$HOME/.ssh/nedctl-agent.sock"
+  ssh-add -l >/dev/null 2>&1
+  if [ $? -eq 2 ]; then
+    rm -f "$SSH_AUTH_SOCK"
+    eval "$(ssh-agent -s -t 12h -a "$SSH_AUTH_SOCK")" >/dev/null
+  fi
+fi
+`
 
 func segment(cfg config.Config, shell, label, env string, prod bool) string {
 	text := label

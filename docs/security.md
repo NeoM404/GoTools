@@ -1,10 +1,11 @@
 # nedctl security model
 
 This page is written for Information Security reviewers. It says what nedctl
-touches, what it never does, and what it relies on AWS to enforce.
+touches, what it never does, and what it relies on AWS and Azure to enforce.
 
 **nedctl is not an access control.** Every control that matters lives in IAM
-Identity Center, IAM, Session Manager and EKS, and nedctl cannot bypass any
+Identity Center, IAM, Session Manager and EKS — and for Azure in the
+bastions' SSH access and AKS — and nedctl cannot bypass any
 of them. Its job is to make the secure path the easiest one: no pasted keys,
 your own identity everywhere, and a record of every access.
 
@@ -18,6 +19,8 @@ your own identity everywhere, and a record of every access.
 | EKS tokens | **No** | Kubeconfigs use `aws eks get-token` as an exec plugin. No token is stored. |
 | ServiceNow / SIEM tokens | Reads them from the environment | Only the name of the environment variable is in config. Sent over HTTPS only. |
 | Keys for a Windows tool started from WSL (`legacyTool` = `C:\…\AWS-EC2-SSMshell.exe`) | Passes them on, on request | WSL gives a Windows program only the variables listed in `WSLENV`, so nedctl adds the credential variable *names* to `WSLENV` for that one child process. Nothing is written to disk. |
+| AKS cluster credentials on the bastions | **No** | `azure kube` never reads, copies or moves them: on the bastion it adds a file holding only `current-context` in front of the engineer's own kubeconfig, for that session. Nothing reaches the workstation. |
+| SSH keys | **No** | nedctl runs the system `ssh` with the engineer's own `~/.ssh/config` and agent; it never reads a key. The shell block from `setup` (WSL/Linux, only when no agent is set up) starts one `ssh-agent` per user with a 0600 socket in `~/.ssh` and a 12-hour key lifetime. |
 | Proxy settings for a `--tab` started from WSL | Copies them into the new tab | A proxy URL may hold a password. The tab is started from a one-shot script created with mode 0600 in the temp directory, which deletes itself as its first command. |
 
 A test checks that no Identity Center token, access key, secret or EKS token
@@ -38,10 +41,19 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
   runs `kubectl`, as the engineer's own SSO role. CloudTrail, Session Manager
   and EKS therefore record the person, not a shared box or pipeline role.
 
+- **Azure:** the AKS bastions authenticate to the clusters as a shared AKS
+  local account (`clusterUser`), so the clusters' own audit logs cannot name
+  a person. The engineer's identity there is their Linux login on the
+  bastion; nedctl's `aks-session` and `ssh-session` records add who used
+  which cluster, when, from which workstation. Moving AKS to Entra ID
+  (per-person) authentication would close this gap; nedctl would then not
+  need to change how engineers start a session.
+
 ## Audit trail
 
 - Every access (`aws-login`, `ssm-session`, `eks-connect`,
-  `legacy-ssm-tool`, `aws-export-credentials`, `ec2-start`/`ec2-stop`, and
+  `legacy-ssm-tool`, `aws-export-credentials`, `ec2-start`/`ec2-stop`,
+  `aks-session`, `ssh-session`, and
   the cluster credential commands) writes a start event **before** acting.
   If the event cannot be written, the action does not happen.
 - The log is hash-chained and file-locked. `nedctl audit verify` detects any
@@ -131,3 +143,8 @@ enforced one.
 - Whether EKS access entries need SSO role ARNs with or without the
   `/aws-reserved/sso.amazonaws.com/` path is to be tested in dev.
 - Release binaries are checksummed but not yet signed.
+- `azure kube` and `azure shell` are tested with a real bash running the
+  session script against a fake bastion; they have not yet been run against
+  the real bastions.
+- SSH sessions are only as strong as the bastion's own access control: who
+  holds a key that logs in, and how the bastion's kubeconfig is protected.

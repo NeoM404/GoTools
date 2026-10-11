@@ -1,8 +1,9 @@
 # Getting started
 
-From nothing to `kubectl` on a cluster in about ten minutes. You need an IAM
-Identity Center login (the AWS access portal you use today) and the bank
-network or VPN.
+From nothing to `kubectl` on a cluster in about ten minutes. You need the
+bank network or VPN, and for AWS an IAM Identity Center login (the AWS
+access portal you use today); for Azure, the SSH key you use for the AKS
+bastions.
 
 ## 1. Install the prerequisites
 
@@ -115,6 +116,21 @@ change and delete resources.
 
 You sign in once a day; when it expires, the next command renews it.
 
+## 4b. Azure: AKS through the bastions
+
+Nothing to sign in to — nedctl uses your SSH key. Check that it can reach
+the bastions, then go:
+
+```bash
+nedctl doctor            # "ssh agent" and one "bastion <env>" line each
+nedctl azure kube qa     # pick a QA cluster; exit to leave
+```
+
+Your key's passphrase is asked once and kept for 12 hours (WSL/Linux, after
+`setup`; on Windows see [Azure access](azure.md#3-the-ssh-agent-type-your-passphrase-once)).
+If `nedctl azure hosts` says Azure access is not set up, add your bastions
+as shown in [Azure access](azure.md#2-the-bastions).
+
 ## 5. Daily use
 
 | Do this | Command |
@@ -128,6 +144,8 @@ You sign in once a day; when it expires, the next command renews it.
 | Your `sm` / SSMshell, already signed in | `nedctl shell --via legacy` |
 | The AWS console as the same account and role | `nedctl console` or `nedctl console eks` |
 | Keys for a tool that needs them | `eval "$(nedctl aws env)"` |
+| kubectl on an AKS cluster (on its bastion) | `nedctl azure kube` or `nedctl azure kube qa payments` |
+| A shell on an Azure bastion or machine | `nedctl azure shell qa` |
 | Check your machine | `nedctl doctor` |
 
 Press **Tab** to complete commands, cluster names, instance names and the
@@ -153,5 +171,5 @@ startup file. nedctl's AWS profiles live in a marked section of
 ---
 
 **Next:** [Troubleshooting](troubleshooting.md) if anything above went wrong ·
-[AWS access](aws.md) for every option · [Security](security.md) for how it
+[AWS access](aws.md) and [Azure access](azure.md) for every option · [Security](security.md) for how it
 keeps you safe.
