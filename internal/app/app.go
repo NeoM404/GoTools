@@ -110,6 +110,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdLogs(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "forward":
 		return cmdForward(ctx, cfgPath, cmdArgs, stderr)
+	case "health":
+		return cmdHealth(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "explain":
 		return cmdExplain(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":

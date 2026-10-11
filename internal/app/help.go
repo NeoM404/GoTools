@@ -72,6 +72,11 @@ var helpGroups = []helpGroup{
 			"Searches every AKS cluster on the bastions (or --env, --cluster, --aws for EKS) for deployments and statefulsets whose name contains NAME, and shows each one's image version, ready replicas and last update, then a one-line summary of which version runs where. Read-only.",
 			[]string{"nedctl app payments-api", "nedctl app payments-api --env qa,prod --match payments", "nedctl app payments-api --exact -o json"}},
 	}},
+	{"For DevOps: run the fleet", []cmdHelp{
+		{"health", "", "One line per cluster, then what needs attention",
+			"Nodes not ready or under pressure, pods crash-looping or stuck pending, workloads below their replicas, volume claims not bound, TLS certificates expiring (default within 30 days), and the version's support status. --env qa checks every QA cluster in one SSH connection per bastion. Read-only; exits 1 when a cluster fails or cannot be reached.",
+			[]string{"nedctl health --env qa", "nedctl health --env dev,qa --match payments", "nedctl health --cluster acm-k8s-qa-cluster", "nedctl health --aws -o json"}},
+	}},
 	{"Debugging on a cluster (EKS or AKS)", []cmdHelp{
 		{"debug pod", "", "A debug pod (netshoot by default) with a shell; removed when you exit",
 			"Shows the pod it will deploy, has the cluster check it (server-side dry run), and deploys it only when you approve. It goes in the default namespace unless you give -n, never gets a service-account token, and is removed when you exit (or at its time limit, 2h). --image takes a short name (netshoot, busybox, alpine, ubuntu, curl) or any image. Profiles: general (default), netadmin (tcpdump), sysadmin (privileged), restricted (non-root).",
