@@ -191,3 +191,16 @@ func openBrowser(link string) bool {
 	}
 	return false
 }
+
+// cmdOpenURL is `nedctl __open-url <https-url>`: the BROWSER the AWS CLI is
+// given during sign-in in WSL. It opens only https links.
+func cmdOpenURL(args []string, stderr io.Writer) int {
+	if len(args) != 1 || !strings.HasPrefix(args[0], "https://") || strings.ContainsAny(args[0], " \t\r\n") {
+		fmt.Fprintln(stderr, "usage: nedctl __open-url <https-url>")
+		return ExitUsage
+	}
+	if !openBrowser(args[0]) {
+		return ExitFailure // the AWS CLI then prints the link itself
+	}
+	return ExitOK
+}

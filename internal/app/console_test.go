@@ -1,9 +1,12 @@
 package app
 
 import (
+	"context"
 	"net/url"
 	"path/filepath"
+	"time"
 
+	"nedctl/internal/awssso"
 	"nedctl/internal/config"
 	"os"
 	"strings"
@@ -107,5 +110,41 @@ func TestConfirmProduction(t *testing.T) {
 	os.WriteFile(dev.cfg, []byte(strings.Replace(string(body), "{", `{"confirmProduction": true, `, 1)), 0o600)
 	if code, _, _ := run("--config", dev.cfg, "console", "--print"); code != ExitOK {
 		t.Fatal("dev must not ask")
+	}
+}
+
+func TestOpenURLCommand(t *testing.T) {
+	var opened []string
+	old, oldOS := openURL, goos
+	t.Cleanup(func() { openURL, goos = old, oldOS })
+	openURL = func(name string, args ...string) error { opened = append([]string{name}, args...); return nil }
+	goos = "darwin"
+	fakeCLI(t, "open", "exit 0")
+	if code, _, _ := run("__open-url", "https://device.sso.eu-west-1.amazonaws.com/?user_code=ABCD-EFGH"); code != ExitOK || len(opened) != 2 || opened[1] != "https://device.sso.eu-west-1.amazonaws.com/?user_code=ABCD-EFGH" {
+		t.Fatalf("code=%d opened=%v", code, opened)
+	}
+	for _, bad := range []string{"http://x", "file:///etc/passwd", "https://a b"} {
+		if code, _, _ := run("__open-url", bad); code != ExitUsage {
+			t.Errorf("%q must be refused", bad)
+		}
+	}
+}
+
+func TestSignInHandsTheBrowserToNedctlInWSL(t *testing.T) {
+	w := newAWSWorld(t, "")
+	cfg, _, _ := config.Load(w.cfg)
+	seen := filepath.Join(w.home, "browser-env")
+	cache := filepath.Join(w.home, ".aws", "sso", "cache")
+	expires := time.Now().Add(8 * time.Hour).UTC().Format(time.RFC3339)
+	fakeCLI(t, "aws", `printf '%s' "$BROWSER" > `+sq(seen)+`
+mkdir -p `+sq(cache)+` && printf '%s' '{"accessToken":"t","expiresAt":"`+expires+`","region":"eu-west-1"}' > `+sq(awssso.TokenPath(cache, "nedctl")))
+	fakeWSL(t, map[string]string{"WSL_DISTRO_NAME": "Ubuntu"})
+	var errb strings.Builder
+	if _, _, code := ensureSignIn(context.Background(), cfg, true, true, &errb); code != ExitOK {
+		t.Fatalf("code=%d %s", code, errb.String())
+	}
+	got, _ := os.ReadFile(seen)
+	if !strings.HasSuffix(string(got), "' __open-url %s") || !strings.Contains(errb.String(), "your browser opens") {
+		t.Fatalf("BROWSER=%q\n%s", got, errb.String())
 	}
 }

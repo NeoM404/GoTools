@@ -383,15 +383,29 @@ func ensureSignIn(ctx context.Context, cfg config.Config, deviceCode, force bool
 		}
 	}
 	args := []string{"sso", "login", "--sso-session", a.Session()}
+	var env []string
+	if inWSL() {
+		// The AWS CLI opens its sign-in page with Python's webbrowser, which
+		// finds no browser inside WSL and only prints the link. BROWSER makes
+		// it hand the page — with the device code already in it — to nedctl,
+		// which opens the Windows browser.
+		if self, err := os.Executable(); err == nil {
+			env = append(env, "BROWSER="+shellQuote(self)+" __open-url %s")
+		}
+	}
 	if deviceCode {
 		args = append(args, "--use-device-code")
-		fmt.Fprintln(stderr, "Signing in to IAM Identity Center — open the link below in any browser (e.g. on Windows) and confirm the code.")
+		if env != nil {
+			fmt.Fprintln(stderr, "Signing in to IAM Identity Center — your browser opens; check the code matches and confirm.")
+		} else {
+			fmt.Fprintln(stderr, "Signing in to IAM Identity Center — open the link below in any browser and confirm the code.")
+		}
 	} else {
 		fmt.Fprintln(stderr, "Signing in to IAM Identity Center — approve the request in your browser.")
 	}
 	// stdout stays clean for `eval "$(nedctl aws login)"`; the CLI's
 	// instructions go to the terminal on stderr.
-	if err := execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "aws", Args: args, Stdout: stderr, Stderr: stderr, Timeout: 15 * time.Minute}); err != nil {
+	if err := execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "aws", Args: args, Env: env, Stdout: stderr, Stderr: stderr, Timeout: 15 * time.Minute}); err != nil {
 		fmt.Fprintf(stderr, "sign-in failed: %v\n", err)
 		return awssso.Token{}, m, ExitFailure
 	}

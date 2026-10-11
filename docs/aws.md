@@ -157,8 +157,10 @@ nedctl aws login --browser                       # force browser sign-in (defaul
 
 1. If no valid sign-in is cached, nedctl runs `aws sso login`, the AWS CLI's
    own flow. Where no browser can open here (WSL, SSH, Linux without a
-   desktop, such as a devops box), it uses a device code automatically. Open
-   the link in any browser, for example on Windows, and confirm the code.
+   desktop, such as a devops box), it uses a device code automatically. In
+   WSL the Windows browser opens on the page with the code filled in (the AWS
+   CLI is given nedctl as its `BROWSER`); check the code matches and confirm.
+   Over SSH, open the printed link in any browser and enter the code.
 2. It lists **only the accounts and roles Identity Center assigns you**, in a
    picker coloured by environment. Type to filter, enter a number to choose.
    `--account`/`--role` choose without the picker. With no terminal and more
