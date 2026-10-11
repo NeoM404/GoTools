@@ -131,6 +131,7 @@ func (s Style) Progress(w io.Writer, msg string) (stop func()) {
 type Spinner struct {
 	mu       sync.Mutex
 	msg      string
+	draw     func(frame int) string // Animate: the whole line, frame by frame
 	done     chan struct{}
 	finished chan struct{}
 	once     sync.Once
@@ -143,6 +144,10 @@ func (s Style) Spinner(w io.Writer, msg string) *Spinner {
 		close(sp.finished)
 		return sp
 	}
+	return s.spin(w, sp)
+}
+
+func (s Style) spin(w io.Writer, sp *Spinner) *Spinner {
 	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	go func() {
 		defer close(sp.finished)
@@ -150,9 +155,13 @@ func (s Style) Spinner(w io.Writer, msg string) *Spinner {
 		defer t.Stop()
 		for i := 0; ; i++ {
 			sp.mu.Lock()
-			msg := sp.msg
+			msg, draw := sp.msg, sp.draw
 			sp.mu.Unlock()
-			fmt.Fprintf(w, "\r\x1b[K%s %s", s.Fg(Blue, frames[i%len(frames)]), s.Dim(msg))
+			if draw != nil {
+				fmt.Fprintf(w, "\r\x1b[K%s", draw(i))
+			} else {
+				fmt.Fprintf(w, "\r\x1b[K%s %s", s.Fg(Blue, frames[i%len(frames)]), s.Dim(msg))
+			}
 			select {
 			case <-sp.done:
 				fmt.Fprint(w, "\r\x1b[K")
@@ -162,6 +171,17 @@ func (s Style) Spinner(w io.Writer, msg string) *Spinner {
 		}
 	}()
 	return sp
+}
+
+// Animate draws a line of its own each frame (draw gets the frame number)
+// until stopped; like Spinner it draws only on a terminal.
+func (s Style) Animate(w io.Writer, draw func(frame int) string) *Spinner {
+	sp := &Spinner{draw: draw, done: make(chan struct{}), finished: make(chan struct{})}
+	if !s.Color {
+		close(sp.finished)
+		return sp
+	}
+	return s.spin(w, sp)
 }
 
 // Set changes the message shown from the next frame on.

@@ -114,11 +114,13 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if plan.direct {
 		banner(cfg, pc, plan.cluster.Name, stderr)
 		fmt.Fprintln(stderr, "Direct: the endpoint answers from here, no tunnel needed.")
+		printRoute(stderr, "direct", "⎈ "+plan.cluster.Name)
 		return runKubeChild(ctx, cfg, pc, plan, command, tr, base, nil, "", func() {}, stderr)
 	}
 	if plan.shared {
 		banner(cfg, pc, plan.cluster.Name, stderr)
 		fmt.Fprintf(stderr, "Using the tunnel already open through %s (127.0.0.1:%d) — no new tunnel.\n", firstNonBlank(plan.hop.Name, plan.hop.ID), plan.port)
+		printRoute(stderr, "reusing the open tunnel", firstNonBlank(plan.hop.Name, plan.hop.ID), "⎈ "+plan.cluster.Name)
 		return runKubeChild(ctx, cfg, pc, plan, command, tr, base, nil, "", leaseTunnel(cfg, plan.cluster.Name), stderr)
 	}
 	logPath, logFile, err := tunnelLog(cfg, plan.cluster.Name)
@@ -129,18 +131,19 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	}
 	defer logFile.Close()
 	banner(cfg, pc, plan.cluster.Name, stderr)
-	sp := working(stderr, fmt.Sprintf("Opening the tunnel through %s…", firstNonBlank(plan.hop.Name, plan.hop.ID)))
+	hop := firstNonBlank(plan.hop.Name, plan.hop.ID)
+	sp := showRoute(stderr, fmt.Sprintf("Opening the tunnel through %s…", hop), hop, "⎈ "+plan.cluster.Name)
 	tunnel, err := execx.Start(ctx, execx.Spec{Name: "aws", Args: portForwardArgs(plan, pc.Name),
 		Stdout: logFile, Stderr: logFile, Timeout: cfg.AWS.Timeout()})
 	if err != nil {
-		sp.Stop()
+		sp.done(false, "")
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "starting the tunnel: %v\n", err)
 		return ExitFailure
 	}
 	defer tunnel.Stop(3 * time.Second)
 	err = waitForTunnel(tunnel, plan.port, tunnelReadyTimeout)
-	sp.Stop()
+	sp.done(err == nil, fmt.Sprintf("tunnel open on 127.0.0.1:%d", plan.port))
 	if err != nil {
 		tunnel.Stop(3 * time.Second)
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)

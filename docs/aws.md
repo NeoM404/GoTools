@@ -311,6 +311,12 @@ tunnel. Its output goes to `~/.local/state/nedctl/tunnels/<cluster>.log`.
 Nothing starts until the tunnel actually accepts connections. If it fails,
 you see why, and no shell opens.
 
+While it opens, the route is drawn, with a packet travelling along it:
+`you ──●──▶ payments-devops ────────▶ ⎈ payments-eks-prod`. Once the
+tunnel is up, the line turns solid green with its local port. A reused
+tunnel and a direct connection are drawn too, so you always see which
+way you are connected.
+
 **How it reaches the cluster:** `--via auto` (the default) connects
 **directly** when the endpoint answers from your machine, for example on the
 VPN, or for a public endpoint open to your address. Otherwise it tunnels
