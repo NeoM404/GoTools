@@ -77,3 +77,20 @@ one SSH connection.
 
 Clusters that can't be reached are listed as warnings, so a missing row is
 never silent. Use `-o json` for release tooling.
+
+## Every pod's logs at once: `nedctl logs`
+
+```bash
+nedctl logs payments-api -n payments                 # every pod and container of the deployment
+nedctl logs payments-api -n payments -f --grep error # follow, only lines with "error"
+nedctl logs payments-api-7f9c-x2x4z -n payments -c api --since 10m
+```
+
+Each line starts with its pod and container, coloured per pod, so you can
+follow several replicas in one stream (like `stern`). It reads from
+`--since 1h` by default, with at most `--tail 200` lines per container to
+start. `-f` keeps following until you press Ctrl-C.
+
+On AKS this runs on the bastion, so you don't need a shell there. Reading
+logs is recorded in the audit trail (`logs-read`), because production logs
+can hold customer data.
