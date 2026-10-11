@@ -124,6 +124,8 @@ production database longer than you need.
 ```bash
 nedctl cp payments-api-7f9c:/tmp/heap.hprof . -n payments          # a heap dump to this folder
 nedctl cp payments-api-7f9c:/var/log/app ./logs -n payments -c api # a whole directory
+nedctl cp payments-api-7f9c:/tmp/heap.hprof --save -n payments     # into your Downloads folder
+nedctl cp node/aks-pool1-000001:/var/log/syslog --save --cluster acm-k8s-qa-cluster  # a node's own file
 nedctl cp ./config.yaml payments-api-7f9c:/tmp/config.yaml -n payments
 ```
 
@@ -135,6 +137,20 @@ there. nedctl unpacks it here itself and:
 - skips links and devices;
 - stops above 2 GB.
 
+**`--save`** puts the copy in your Downloads folder instead of a path you
+name. On macOS and Linux that's `~/Downloads`. On Windows it's your
+`Downloads`. In WSL it's **Windows'** Downloads folder, so the file opens in
+Explorer, and nedctl prints its `C:\Users\…` path. A name that's already
+taken gets `-1`, `-2` and so on, so nothing is overwritten.
+
+**From a node** (`node/NODE:/path`), nedctl uses a short-lived helper pod on
+that node. The pod mounts the node's files **read-only** at `/host`, with no
+host network, no host processes and no privileges. Like every deployment,
+it is shown first, checked by the cluster (server-side dry run) and created
+only when you approve. `--dry-run` stops after the check. The copy is
+recorded as `cp-node`, and the pod is removed afterwards. Copying *onto* a
+node isn't supported. Use `nedctl debug node` for that.
+
 **Copying into a container** shows what will be copied (files and size),
 asks first, and is recorded. Both directions need `tar` in the container.
 For distroless images, `nedctl debug attach` gives you a shell beside the
@@ -144,6 +160,7 @@ container instead.
 
 ```bash
 nedctl azure cp qa:/tmp/capture.pcap .        # from the QA bastion
+nedctl azure cp qa:/tmp/capture.pcap --save   # into your Downloads folder (Windows' from WSL)
 nedctl azure cp ./script.sh jenkins-dev:/tmp/ # to a machine from azure hosts
 ```
 

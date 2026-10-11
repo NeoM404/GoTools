@@ -64,7 +64,7 @@ check "fleet run is read-only" 2 'read-only' -- fleet run --env qa -- kubectl de
 check "built-in runbooks load" 0 'restart-deployment' -- run ls
 check "runbook parameters are checked" 2 'is not allowed' -- --config "$root/configs/nedctl.aws.example.json" run restart-deployment 'deployment=x;rm'
 check "node needs an action" 2 'usage: nedctl node' -- node reboot n1
-check "cp needs an absolute pod path" 2 'POD:/absolute/path' -- cp api-1:relative .
+check "cp needs an absolute pod path" 2 'remote path as an absolute path' -- cp api-1:relative .
 check "posture validates --fail-on" 2 'usage: nedctl posture' -- posture --fail-on never
 check "images validates the format" 2 'table|json|csv' -- images -o xml
 check "access needs review" 2 'nedctl access <review>' -- access

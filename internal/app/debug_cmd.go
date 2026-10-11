@@ -57,6 +57,7 @@ func (p debugPod) manifest() string {
 	q := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 	secs := int(p.TTL.Seconds())
 	onNode := p.Kind == "node"
+	hostFiles := onNode || p.Kind == "cp" // cp: the node's files, read-only, and nothing else of the host
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format+"\n", a...) }
 	w("apiVersion: v1")
@@ -81,6 +82,8 @@ func (p debugPod) manifest() string {
 		w("  hostPID: true")
 		w("  hostNetwork: true")
 		w("  hostIPC: true")
+	}
+	if hostFiles {
 		w("  tolerations:")
 		w("  - operator: Exists")
 	}
@@ -106,10 +109,13 @@ func (p debugPod) manifest() string {
 		w("      seccompProfile:")
 		w("        type: RuntimeDefault")
 	}
-	if onNode {
+	if hostFiles {
 		w("    volumeMounts:")
 		w("    - name: host-root")
 		w("      mountPath: /host")
+		if !onNode {
+			w("      readOnly: true")
+		}
 		w("  volumes:")
 		w("  - name: host-root")
 		w("    hostPath:")

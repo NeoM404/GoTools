@@ -64,7 +64,7 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
   `legacy-ssm-tool`, `aws-export-credentials`, `ec2-start`/`ec2-stop`,
   `aks-session`, `ssh-session`, `debug-pod`, `debug-node`, `debug-attach`,
   `debug-net`, `debug-clean`, `logs-read`, `port-forward`, `runbook`,
-  `node-drain`, `node-cordon`, `node-uncordon`, `cp-download`, `cp-upload`,
+  `node-drain`, `node-cordon`, `node-uncordon`, `cp-download`, `cp-upload`, `cp-node`,
   `scp-download`, `scp-upload`, and
   the cluster credential commands) writes a start event **before** acting.
   If the event cannot be written, the action does not happen.
