@@ -22,6 +22,9 @@ GOVULNCHECK_VERSION := v1.8.0
 export GOTOOLCHAIN := local
 
 GOBIN ?= $(shell go env GOPATH)/bin
+# `make tools` installs staticcheck and govulncheck into $(GOBIN), which CI
+# agents (and many laptops) do not have on PATH: lint and vuln look there too.
+tool = $$(command -v $(1) || echo "$(GOBIN)/$(1)")
 SHA256 := $(shell command -v sha256sum 2>/dev/null || echo "shasum -a 256")
 
 .PHONY: all build install test e2e vet fmt fmt-check lint vuln deps-check ci cross checksums release repro tools clean
@@ -58,14 +61,14 @@ fmt-check:
 	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 lint:
-	@command -v staticcheck >/dev/null || { echo "staticcheck missing — run: make tools"; exit 1; }
-	staticcheck ./...
+	@t="$(call tool,staticcheck)"; [ -x "$$t" ] || { echo "staticcheck missing — run: make tools"; exit 1; }; \
+	echo "staticcheck ./..."; "$$t" ./...
 
 # Scans our code AND the standard library it links: zero third-party
 # dependencies is not zero CVEs.
 vuln:
-	@command -v govulncheck >/dev/null || { echo "govulncheck missing — run: make tools"; exit 1; }
-	govulncheck ./...
+	@t="$(call tool,govulncheck)"; [ -x "$$t" ] || { echo "govulncheck missing — run: make tools"; exit 1; }; \
+	echo "govulncheck ./..."; "$$t" ./...
 
 # Enforces the zero-dependency policy (see go.mod): the build graph must
 # contain only this module.
