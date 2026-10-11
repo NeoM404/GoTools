@@ -58,6 +58,22 @@ var helpGroups = []helpGroup{
 		{"azure clusters", "[env]", "The AKS clusters on each bastion", "Uses what nedctl remembers; --refresh asks the bastions again.", []string{"nedctl azure clusters", "nedctl azure clusters qa --refresh"}},
 		{"azure hosts", "", "The bastions and machines azure shell reaches", "", []string{"nedctl azure hosts"}},
 	}},
+	{"Debugging on a cluster (EKS or AKS)", []cmdHelp{
+		{"debug pod", "", "A debug pod (netshoot by default) with a shell; removed when you exit",
+			"Shows the pod it will deploy, has the cluster check it (server-side dry run), and deploys it only when you approve. It goes in the default namespace unless you give -n, never gets a service-account token, and is removed when you exit (or at its time limit, 2h). --image takes a short name (netshoot, busybox, alpine, ubuntu, curl) or any image. Profiles: general (default), netadmin (tcpdump), sysadmin (privileged), restricted (non-root).",
+			[]string{"nedctl debug pod", "nedctl debug pod --image busybox -n payments", "nedctl debug pod --cluster acm-k8s-qa-cluster --profile netadmin", "nedctl debug pod --dry-run"}},
+		{"debug node", "[NODE]", "A shell on a node: its processes, network and files at /host",
+			"Picks a node (status, pool, zone, version) and deploys a pod on it with the node's process, network and IPC namespaces and its filesystem at /host; chroot /host runs the node's own tools. Profile general by default; netadmin for packet capture; sysadmin for full (privileged) access. Shown, dry-run and approved first; removed when you exit.",
+			[]string{"nedctl debug node", "nedctl debug node aks-pool1-123 --profile sysadmin", "nedctl debug node --cluster payments-eks-dev"}},
+		{"debug attach", "<pod>", "A debug container beside a running pod, sharing its processes",
+			"Adds an ephemeral container (kubectl debug --target) to a pod whose image has no shell, or that keeps crashing. Shown and approved first. Needs kubectl 1.27 or newer where it runs.",
+			[]string{"nedctl debug attach payments-api-7f9c -n payments", "nedctl debug attach payments-api-7f9c -n payments -c api --image busybox"}},
+		{"debug net", "<host[:port]>", "Can pods reach it? DNS, TCP, TLS and HTTP from inside the cluster",
+			"Runs a short-lived pod that resolves the host, connects to the port, and for web ports shows the certificate and the HTTP status; then removes it.",
+			[]string{"nedctl debug net payments-db.internal:5432", "nedctl debug net api.example.com:443 --cluster acm-k8s-qa-cluster"}},
+		{"debug ls", "", "Debug pods on a cluster: whose, where, how old", "", []string{"nedctl debug ls --cluster acm-k8s-qa-cluster"}},
+		{"debug clean", "", "Remove your leftover debug pods (--all: everyone's)", "Shows what it will remove and asks first.", []string{"nedctl debug clean", "nedctl debug clean --all --dry-run"}},
+	}},
 	{"Instances and clusters", []cmdHelp{
 		{"ec2", "<start|stop> <instance>", "Start or stop an instance, recorded", "In production you confirm by typing the instance ID.", []string{"nedctl ec2 start payments-batch"}},
 		{"clusters list", "", "The fleet's clusters, or the signed-in account's EKS clusters", "", []string{"nedctl clusters list", "nedctl clusters list --env prod -o json"}},
@@ -314,7 +330,7 @@ func (d flagDef) spelling() string {
 
 // placeholders name a flag's value better than its Go type does.
 var placeholders = map[string]string{
-	"profile": "NAME", "region": "REGION", "via": "MODE", "via-instance": "INSTANCE", "instance": "INSTANCE",
+	"profile": "NAME", "aws-profile": "PROFILE", "cluster": "CLUSTER", "image": "IMAGE", "n": "NAMESPACE", "namespace": "NAMESPACE", "on-node": "NODE", "c": "CONTAINER", "container": "CONTAINER", "region": "REGION", "via": "MODE", "via-instance": "INSTANCE", "instance": "INSTANCE",
 	"port": "PORT", "change-record": "CHG", "break-glass": "REASON", "o": "FORMAT", "output": "FORMAT",
 	"format": "FORMAT", "account": "ACCOUNT", "role": "ROLE", "shell": "SHELL", "env": "ENV", "cloud": "CLOUD",
 	"start-url": "URL", "sso-region": "REGION", "mode": "MODE", "context": "NAME", "owner": "NAME", "period": "QUARTER",

@@ -102,6 +102,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdKube(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "azure":
 		return cmdAzure(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "debug":
+		return cmdDebug(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":
 		return cmdEKS(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "prompt":

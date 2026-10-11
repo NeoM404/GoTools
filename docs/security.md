@@ -49,11 +49,21 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
   (per-person) authentication would close this gap; nedctl would then not
   need to change how engineers start a session.
 
+- **Debug pods** (`nedctl debug`) are shown in full, checked by a
+  server-side dry run (so admission policies apply first) and deployed only
+  after the engineer approves. They never mount a service-account token,
+  carry the engineer's name as a label, end at a hard time limit
+  (`activeDeadlineSeconds`, default 2h) and are removed when the session
+  ends. Privileged profiles are whatever the cluster's admission policies
+  allow: nedctl adds no privilege the engineer's cluster access does not
+  already grant.
+
 ## Audit trail
 
 - Every access (`aws-login`, `ssm-session`, `eks-connect`,
   `legacy-ssm-tool`, `aws-export-credentials`, `ec2-start`/`ec2-stop`,
-  `aks-session`, `ssh-session`, and
+  `aks-session`, `ssh-session`, `debug-pod`, `debug-node`, `debug-attach`,
+  `debug-net`, `debug-clean`, and
   the cluster credential commands) writes a start event **before** acting.
   If the event cannot be written, the action does not happen.
 - The log is hash-chained and file-locked. `nedctl audit verify` detects any

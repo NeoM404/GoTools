@@ -146,6 +146,8 @@ as shown in [Azure access](azure.md#2-the-bastions).
 | Keys for a tool that needs them | `eval "$(nedctl aws env)"` |
 | kubectl on an AKS cluster (on its bastion) | `nedctl azure kube` or `nedctl azure kube qa payments` |
 | A shell on an Azure bastion or machine | `nedctl azure shell qa` |
+| A debug pod, or a shell on a node (shown and approved first) | `nedctl debug pod` · `nedctl debug node` |
+| Can pods reach a host? | `nedctl debug net db.internal:5432` |
 | Check your machine | `nedctl doctor` |
 
 Press **Tab** to complete commands, cluster names, instance names and the

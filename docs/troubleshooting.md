@@ -120,6 +120,26 @@ nedctl starts bash with your own `~/.bashrc`, then adds the label. For a
 machine without bash, or to keep the prompt untouched, use
 `nedctl azure shell <name> --plain`.
 
+## Debugging (`nedctl debug`)
+
+**`The cluster refuses it (server-side dry run)`**
+An admission policy (Pod Security, Gatekeeper, Azure Policy) does not allow
+that pod there. Try a smaller `--profile`, or another namespace with `-n`;
+nothing was created.
+
+**`the debug pod did not start: … ErrImagePull`**
+The cluster cannot pull the image, usually because it may only use an
+internal registry. Map the short names to it under `debug.images` — see
+[Debugging](debug.md#images).
+
+**`kubectl debug: … it needs kubectl 1.27 or newer`**
+`debug attach` uses `kubectl debug --profile`. Update kubectl on your
+machine (EKS) or ask for it on the bastion (AKS).
+
+**A debug pod was left behind**
+It ends by itself at its time limit (2h). `nedctl debug ls` shows it;
+`nedctl debug clean` removes it now.
+
 ## Terminal tabs, the console and sm
 
 **`--tab`: `wt.exe not found`**

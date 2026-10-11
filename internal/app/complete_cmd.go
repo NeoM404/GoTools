@@ -25,6 +25,7 @@ import (
 var subcommands = map[string][]string{
 	"aws":       {"login", "whoami", "env"},
 	"azure":     {"kube", "shell", "clusters", "hosts"},
+	"debug":     {"pod", "node", "attach", "net", "ls", "clean"},
 	"eks":       {"auth", "access"},
 	"ec2":       {"start", "stop"},
 	"clusters":  {"list"},
@@ -35,7 +36,7 @@ var subcommands = map[string][]string{
 }
 
 var commandNames = []string{
-	"setup", "status", "aws", "shell", "kube", "connect", "console", "azure", "eks", "ec2", "clusters", "kubeconfig", "login",
+	"setup", "status", "aws", "shell", "kube", "connect", "console", "azure", "debug", "eks", "ec2", "clusters", "kubeconfig", "login",
 	"fleet", "inventory", "sweep", "audit", "evidence", "guard", "current", "prompt", "doctor", "init", "version", "help",
 }
 
@@ -194,7 +195,15 @@ func flagValues(cfg config.Config, path []string, flag string) []string {
 		return []string{config.ModeWorkstation, config.ModeBastion}
 	case flag == "cloud":
 		return []string{"aws", "azure"}
-	case flag == "env" && path[0] == "azure":
+	case path[0] == "debug" && flag == "image":
+		return cfg.Debug.ImageNames()
+	case path[0] == "debug" && flag == "profile":
+		return []string{"general", "netadmin", "sysadmin", "restricted"}
+	case path[0] == "debug" && flag == "aws-profile":
+		return managedProfiles()
+	case path[0] == "debug" && flag == "cluster":
+		return append(currentNames(cfg, "eks"), knownAKS(cfg)...)
+	case flag == "env" && (path[0] == "azure" || path[0] == "debug"):
 		return azureEnvs(cfg)
 	case flag == "env":
 		return cfg.Environments

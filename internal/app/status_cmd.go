@@ -79,7 +79,8 @@ func cmdStatus(cfgPath string, w io.Writer) int {
 		rows = append(rows, [2]string{"nedctl azure kube", "kubectl on an AKS cluster, on its bastion"},
 			[2]string{"nedctl azure shell", "SSH to an AKS bastion or Azure machine"})
 	}
-	rows = append(rows, [2]string{"nedctl help", "everything else"})
+	rows = append(rows, [2]string{"nedctl debug pod", "a debug pod or node shell (shown and approved first)"},
+		[2]string{"nedctl help", "everything else"})
 	for _, r := range rows {
 		fmt.Fprintf(w, "  %s  %s\n", ui.Pad(s.Bold(r[0]), 19), r[1])
 	}

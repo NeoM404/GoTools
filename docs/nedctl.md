@@ -130,6 +130,7 @@ work). Example — copy [`configs/nedctl.example.json`](../configs/nedctl.exampl
 | `discovery` | The cloud scope `inventory diff` / `inventory sync` scan — see [Discovery](#discovery). |
 | `aws` | IAM Identity Center sign-in and the EC2/EKS access commands (`aws`, `shell`, `connect`, `eks`) — see [aws.md](aws.md). |
 | `azure` | AKS clusters and Azure machines over SSH through each environment's bastion (`azure kube`, `azure shell`): `bastions`, `user`, `hosts` — see [azure.md](azure.md). |
+| `debug` | `nedctl debug`: default `namespace`, `image`, short-name `images` (e.g. an internal registry) and `ttl` — see [debug.md](debug.md). |
 | `confirmProduction` | `true` makes `shell`, `kube`, `connect`, `console`, `azure kube` and `azure shell` ask you to type the environment's name before a production session; `--yes` confirms without asking (needed without a terminal). Off by default. |
 | `releaseUrl` | HTTPS address of the `latest.json` the release pipeline publishes; `nedctl version --check` compares against it. Usually built in. |
 | `windowsTerminal` | Path to `wt.exe` for `--tab` when it is not on PATH (WSL); a `C:\` path works. |
@@ -340,6 +341,13 @@ reviewers in **[security.md](security.md)**.
 clusters and Azure machines over SSH through each environment's bastion,
 with the cluster selected for that session only and nothing copied to the
 workstation. They are documented in **[azure.md](azure.md)**.
+
+## Debugging
+
+`debug pod`, `debug node`, `debug attach`, `debug net`, `debug ls` and
+`debug clean` deploy debugging containers on EKS or AKS — always shown,
+checked by a server-side dry run and approved first — and are documented in
+**[debug.md](debug.md)**.
 
 ## Commands
 

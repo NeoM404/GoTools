@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -117,6 +118,10 @@ type Config struct {
 	// reached over SSH through each environment's bastion.
 	Azure Azure `json:"azure"`
 
+	// Debug configures `nedctl debug`: debug pods, node debugging and
+	// ephemeral containers.
+	Debug Debug `json:"debug"`
+
 	// EnvironmentColors maps an environment to a #rrggbb colour for pickers,
 	// terminal tabs and the prompt. Defaults: dev green, ete orange, qa blue,
 	// prod red.
@@ -202,6 +207,121 @@ type AWS struct {
 	// DevopsInstance is matched against instance names to find the hop for
 	// `nedctl connect` (default "devops").
 	DevopsInstance string `json:"devopsInstance"`
+}
+
+// Debug configures `nedctl debug`.
+type Debug struct {
+	// Namespace debug pods go in when -n is not given (default "default").
+	Namespace string `json:"namespace"`
+	// Image is the image used when --image is not given: a short name from
+	// Images or a full reference (default "netshoot").
+	Image string `json:"image"`
+	// Images maps short names to image references, e.g. an internal
+	// registry's mirror: {"netshoot": "myacr.azurecr.io/tools/netshoot:v0.13"}.
+	// Added to (and overriding) DefaultDebugImages.
+	Images map[string]string `json:"images"`
+	// TTL is the most a debug pod lives, however the session ends (a Go
+	// duration, default "2h").
+	TTL string `json:"ttl"`
+}
+
+// DefaultDebugImages are the short names --image accepts out of the box.
+var DefaultDebugImages = map[string]string{
+	"netshoot": "docker.io/nicolaka/netshoot:v0.13",
+	"busybox":  "docker.io/library/busybox:1.36",
+	"alpine":   "docker.io/library/alpine:3.20",
+	"ubuntu":   "docker.io/library/ubuntu:24.04",
+	"curl":     "docker.io/curlimages/curl:8.10.1",
+}
+
+// DefaultDebugTTL bounds a debug pod's life.
+const DefaultDebugTTL = 2 * time.Hour
+
+var (
+	imageRefRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$`)
+	namespaceRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+)
+
+// ValidImageRef reports a plausible image reference (no spaces, quotes
+// or shell characters).
+func ValidImageRef(s string) bool { return imageRefRe.MatchString(s) }
+
+// ValidNamespace reports a Kubernetes namespace name.
+func ValidNamespace(s string) bool { return namespaceRe.MatchString(s) }
+
+// DebugNamespace returns the default namespace for debug pods.
+func (d Debug) DebugNamespace() string {
+	if d.Namespace == "" {
+		return "default"
+	}
+	return d.Namespace
+}
+
+// DefaultImage returns the image name used without --image.
+func (d Debug) DefaultImage() string {
+	if d.Image == "" {
+		return "netshoot"
+	}
+	return d.Image
+}
+
+// ImageFor resolves a short name to its reference; anything else is taken
+// as a reference itself.
+func (d Debug) ImageFor(name string) string {
+	for k, v := range d.Images {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	if v, ok := DefaultDebugImages[strings.ToLower(name)]; ok {
+		return v
+	}
+	return name
+}
+
+// ImageNames are the short names, sorted.
+func (d Debug) ImageNames() []string {
+	set := map[string]bool{}
+	for k := range DefaultDebugImages {
+		set[k] = true
+	}
+	for k := range d.Images {
+		set[strings.ToLower(k)] = true
+	}
+	names := make([]string, 0, len(set))
+	for k := range set {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// DebugTTL returns how long a debug pod may live.
+func (d Debug) DebugTTL() time.Duration {
+	t, err := parsePositive("debug.ttl", d.TTL, DefaultDebugTTL)
+	if err != nil {
+		return DefaultDebugTTL
+	}
+	return t
+}
+
+func (d Debug) validate() error {
+	var errs []error
+	if d.Namespace != "" && !ValidNamespace(d.Namespace) {
+		errs = append(errs, fmt.Errorf("debug.namespace %q is not a namespace name", d.Namespace))
+	}
+	if d.Image != "" && !ValidImageRef(d.Image) {
+		errs = append(errs, fmt.Errorf("debug.image %q is not an image reference", d.Image))
+	}
+	for k, v := range d.Images {
+		if !hostNameRe.MatchString(k) || !ValidImageRef(v) {
+			errs = append(errs, fmt.Errorf("debug.images[%q] %q: want a short name and an image reference", k, v))
+		}
+	}
+	if _, err := parsePositive("debug.ttl", d.TTL, DefaultDebugTTL); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // Azure is SSH access to AKS clusters and Azure machines. Clusters are
@@ -956,7 +1076,7 @@ func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
 	return errors.Join(c.validateMode(), errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
-		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl(), c.validateAWS(), c.validateAzure())
+		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl(), c.validateAWS(), c.validateAzure(), c.Debug.validate())
 }
 
 var minorRe = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?$`)

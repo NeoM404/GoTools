@@ -17,6 +17,7 @@ beside `sm`, SSMshell and your SSH setup.
 | Install nedctl and use it today | **[Getting started](getting-started.md)** |
 | Learn every AWS command and option | [AWS access](aws.md) |
 | Use AKS clusters and Azure machines | [Azure access](azure.md) |
+| Debug pods, nodes and network on a cluster | [Debugging](debug.md) |
 | Fix something that is not working | [Troubleshooting](troubleshooting.md) |
 | Understand the security model | [Security](security.md) |
 | Look up any command, flag or setting | [Reference](nedctl.md) |
@@ -32,6 +33,7 @@ nedctl shell                # AWS: a shell on an instance (Session Manager)
 nedctl console eks          # AWS: the console, same account and role
 nedctl azure kube qa        # Azure: kubectl on an AKS cluster, on the QA bastion
 nedctl azure shell qa       # Azure: a shell on the QA bastion
+nedctl debug pod            # a netshoot pod to debug from (shown and approved first)
 nedctl                      # where am I signed in, and the commands above
 ```
 
