@@ -53,10 +53,41 @@ Then in Azure DevOps: **Repos → Pull requests → New**, `claude/<topic>` →
 Always use the full names `refs/remotes/ado/…` and `refs/remotes/github/…`:
 short names can be ambiguous.
 
-### B. Something fails
+### B. Something fails: send the log through GitHub
 
-Paste the redacted error lines into the chat with Claude (rules above). The
-fix arrives as a new commit on the same `claude/<topic>` branch: repeat A.
+Logs go in their own file under `logs/` on the `bridge` branch (never in
+this file, so your logs and Claude's edits never conflict). Only `bridge`
+is pushed to GitHub — never `main`.
+
+**Once per session — give git your GitHub token without the hidden prompt:**
+
+```bash
+git config --global credential.helper 'cache --timeout=3600'
+read -rsp "GitHub token: " GH_TOKEN; echo          # paste with right-click; nothing shows
+echo "length ${#GH_TOKEN}, starts ${GH_TOKEN:0:11}"  # expect about 93, github_pat_
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/NeoM404/GoTools   # 200 = good
+printf 'protocol=https\nhost=github.com\nusername=NeoM404\npassword=%s\n\n' "$GH_TOKEN" | git credential approve
+unset GH_TOKEN
+```
+
+The token never appears on screen, in a file or in shell history. A 401
+from curl means the token is wrong or expired: make a new one (Contents:
+Read and write on NeoM404/GoTools).
+
+**Each log:**
+
+```bash
+git fetch github
+git switch -C bridge refs/remotes/github/bridge
+mkdir -p logs
+nano logs/$(date +%F)-<topic>.md                    # paste the REDACTED log, save
+git add logs && git commit -m "log: <topic> — <step that failed>"
+git push github bridge
+git switch main
+```
+
+Then tell Claude "log pushed". The fix arrives as a new commit on the same
+`claude/<topic>` branch: repeat A.
 
 ### C. After a merge
 
