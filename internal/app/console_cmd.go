@@ -56,7 +56,7 @@ func cmdConsole(ctx context.Context, cfgPath string, args []string, stdout, stde
 		return ExitFailure
 	}
 	r := firstNonBlank(*region, consoleRegion(cfg, pc, service))
-	link := consoleLink(cfg.AWS.StartURL, pc.AccountID, pc.Role, service, r)
+	link := consoleLink(portalURL(cfg.AWS), pc.AccountID, pc.Role, service, r)
 
 	if !confirmProduction(cfg, pc, "the AWS console", *yes, stderr) {
 		return ExitFailure
@@ -110,8 +110,25 @@ var consoleDestinations = map[string]string{
 	"vpc":        "https://console.aws.amazon.com/vpc/home?region=%s",
 }
 
-func consoleLink(startURL, account, role, service, region string) string {
-	portal := strings.TrimRight(strings.SplitN(startURL, "#", 2)[0], "/")
+var issuerStartRe = regexp.MustCompile(`^https://identitycenter\.amazonaws\.com/(ssoins-[0-9a-f]+)/?$`)
+
+// portalURL is the AWS access portal shortcut links are made on. A
+// d-xxxxxxxxxx.awsapps.com/start URL is the portal itself; an instance
+// that signs in with https://identitycenter.amazonaws.com/ssoins-… has its
+// portal at https://ssoins-….portal.<region>.app.aws. aws.portalUrl
+// overrides both.
+func portalURL(a config.AWS) string {
+	if a.PortalURL != "" {
+		return a.PortalURL
+	}
+	if m := issuerStartRe.FindStringSubmatch(a.StartURL); m != nil {
+		return "https://" + m[1] + ".portal." + a.SSORegion + ".app.aws"
+	}
+	return a.StartURL
+}
+
+func consoleLink(portalURL, account, role, service, region string) string {
+	portal := strings.TrimRight(strings.SplitN(portalURL, "#", 2)[0], "/")
 	q := url.Values{}
 	q.Set("account_id", account)
 	q.Set("role_name", role)

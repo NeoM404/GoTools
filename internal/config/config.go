@@ -186,6 +186,11 @@ type AWS struct {
 	// LegacyTool is the existing SSM tool `shell --via legacy` launches
 	// already signed in (default "sm"; e.g. "AWS-EC2-SSMshell.exe").
 	LegacyTool string `json:"legacyTool"`
+	// PortalURL is the AWS access portal in a browser, for `nedctl console`.
+	// Default: derived from StartURL (the awsapps.com URL itself, or
+	// https://ssoins-….portal.<ssoRegion>.app.aws for an instance signing in
+	// through identitycenter.amazonaws.com).
+	PortalURL string `json:"portalUrl"`
 	// ElevatedRolePattern marks roles (permission sets) that can change
 	// resources, so engineers see when they hold one. Default:
 	// DefaultElevatedRolePattern.
@@ -413,6 +418,9 @@ func (c Config) validateAWS() error {
 	}
 	if strings.ContainsAny(c.WindowsTerminal, "\r\n") || strings.HasPrefix(c.WindowsTerminal, "-") {
 		errs = append(errs, fmt.Errorf("windowsTerminal: invalid value"))
+	}
+	if a.PortalURL != "" && !strings.HasPrefix(a.PortalURL, "https://") {
+		errs = append(errs, fmt.Errorf("aws.portalUrl must be https://"))
 	}
 	if strings.ContainsAny(a.AccessLevelTag+a.LegacyTool, "\r\n") || strings.HasPrefix(a.LegacyTool, "-") {
 		errs = append(errs, fmt.Errorf("aws.accessLevelTag / aws.legacyTool: invalid value"))
@@ -979,7 +987,7 @@ func Load(explicitPath string) (Config, string, error) {
 var settingHome = map[string]string{
 	"startUrl": "aws", "ssoRegion": "aws", "ssoSession": "aws", "region": "aws", "regions": "aws",
 	"accountNamePattern": "aws", "accounts": "aws", "breakGlassRoles": "aws", "elevatedRolePattern": "aws",
-	"accessLevelTag": "aws", "legacyTool": "aws", "devopsInstance": "aws", "profilePrefix": "aws", "sessionTimeout": "aws",
+	"accessLevelTag": "aws", "legacyTool": "aws", "portalUrl": "aws", "devopsInstance": "aws", "profilePrefix": "aws", "sessionTimeout": "aws",
 	"requireFor": "changeControl", "enabled": "changeControl", "instanceUrl": "changeControl.serviceNow",
 	"tokenEnv": "changeControl.serviceNow or audit.forward", "logPath": "audit", "forward": "audit",
 	"profile": "discovery.aws[]", "account": "discovery.aws[]", "subscription": "discovery.azure[]",

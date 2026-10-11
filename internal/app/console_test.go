@@ -2,6 +2,8 @@ package app
 
 import (
 	"net/url"
+
+	"nedctl/internal/config"
 	"os"
 	"strings"
 	"testing"
@@ -18,9 +20,20 @@ func TestConsoleLink(t *testing.T) {
 		q.Get("destination") != "https://console.aws.amazon.com/eks/home?region=af-south-1#/clusters" {
 		t.Fatalf("query: %v", q)
 	}
-	// The instance-ARN form of the start URL works the same way.
-	if l := consoleLink("https://identitycenter.amazonaws.com/ssoins-0123456789abcdef", "1", "R", "", "eu-west-1"); !strings.HasPrefix(l, "https://identitycenter.amazonaws.com/ssoins-0123456789abcdef/#/console?") {
-		t.Fatal(l)
+	// The portal: the awsapps.com start URL itself; for an instance signing
+	// in through identitycenter.amazonaws.com, its app.aws portal (the
+	// identitycenter.amazonaws.com address is not a web page); or portalUrl.
+	for _, c := range []struct {
+		a    config.AWS
+		want string
+	}{
+		{config.AWS{StartURL: "https://d-1234567890.awsapps.com/start", SSORegion: "eu-west-1"}, "https://d-1234567890.awsapps.com/start"},
+		{config.AWS{StartURL: "https://identitycenter.amazonaws.com/ssoins-68042455842cfa84", SSORegion: "eu-west-1"}, "https://ssoins-68042455842cfa84.portal.eu-west-1.app.aws"},
+		{config.AWS{StartURL: "https://identitycenter.amazonaws.com/ssoins-68042455842cfa84", SSORegion: "eu-west-1", PortalURL: "https://bank.awsapps.com/start"}, "https://bank.awsapps.com/start"},
+	} {
+		if got := portalURL(c.a); got != c.want {
+			t.Errorf("portalURL(%s) = %s, want %s", c.a.StartURL, got, c.want)
+		}
 	}
 }
 

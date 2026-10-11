@@ -95,6 +95,7 @@ block to your config (`nedctl init` writes the rest). A complete example is
 | `elevatedRolePattern` | Which roles count as elevated (able to change resources). Default: names containing devops, admin, poweruser, breakglass, fullaccess, owner or deploy. |
 | `accessLevelTag` | EC2 tag shown as the instance's access level (default `AccessLevel`). |
 | `devopsInstance` | Name match for the devops instance `connect` tunnels through (default `devops`). |
+| `portalUrl` | The AWS access portal for `nedctl console`. Normally worked out from `startUrl`: an `awsapps.com/start` URL is the portal itself, and an `identitycenter.amazonaws.com/ssoins-…` start URL has its portal at `https://ssoins-….portal.<ssoRegion>.app.aws`. Set it only if your portal lives elsewhere. |
 | `legacyTool` | What `shell --via legacy` launches (default `sm`). A name on PATH or a full path; from WSL a Windows path such as `C:\\Tools\\AWS-EC2-SSMshell.exe` works, and the credentials are passed to the Windows program through `WSLENV`. |
 | `sessionTimeout` | Longest an interactive session may run (default `12h`). |
 
