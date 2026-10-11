@@ -233,6 +233,7 @@ Prints the profile's short-term credentials as environment variables:
 ```bash
 nedctl shell                     # picker: NAME, INSTANCE, PRIVATE IP, STATE, TYPE, ZONE, LEVEL
 nedctl shell devops              # filter; one match goes straight in
+nedctl shell --level 3           # only instances tagged "Access Level" 3 (several: --level 2,3)
 nedctl shell --instance i-0abc…  # by ID or Name tag
 nedctl shell devops --tab        # in a new Windows Terminal tab coloured by environment
 nedctl shell --via legacy        # launch sm / SSMshell already signed in
@@ -330,6 +331,27 @@ cluster's kubeconfig, and says so if a startup file had changed it. It also
 prefixes the prompt with `⎈ <cluster> <ENV>` in the environment's colour.
 Other shells start unchanged, with `KUBECONFIG` and `NEDCTL_KUBE` set. The
 ready message prints the `export KUBECONFIG=…` line for other terminals.
+
+### One tunnel per cluster
+
+nedctl doesn't open a second tunnel to a cluster when one is already open
+on your machine. Every later command uses the open tunnel: another `kube`,
+`connect`, `health`, `explain`, `logs` or `debug`. It says
+`Using the tunnel already open through <instance>`.
+
+- `kube` and `connect` publish the tunnel they hold, next to the
+  kubeconfigs in `~/.kube/nedctl/<cluster>.tunnel.json`. The record holds
+  the port, the instance and the process ID. A record whose process has
+  gone is removed, and a new tunnel opens.
+- When the `kube` that holds the tunnel exits while others still use it,
+  it waits for them and shows a spinner. Ctrl-C closes it anyway.
+- A `connect` that holds the tunnel ends on Ctrl-C, and warns how many
+  sessions lose the tunnel.
+- To keep one tunnel for the whole day, run `nedctl connect <cluster> --tab`
+  and leave the tab open. Everything else then reuses it.
+- A tunnel is shared only for the same cluster endpoint, so a cluster with
+  the same name in another account gets its own tunnel. `--port` or
+  `--via-instance` values that differ from the open tunnel also get a new one.
 
 ## Moving clusters to access entries: `nedctl eks`
 

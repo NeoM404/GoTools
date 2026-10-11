@@ -170,6 +170,11 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	}
 	cluster, hop, kc := plan.cluster, plan.hop, plan.kubeconfig
 	*port = plan.port
+	if plan.shared {
+		fmt.Fprintf(stderr, "A tunnel to %s is already open through %s (127.0.0.1:%d) — using it, not opening another.\nexport KUBECONFIG=%s   (PowerShell: $env:KUBECONFIG = '%s')\n",
+			cluster.Name, firstNonBlank(hop.Name, hop.ID), *port, kc, kc)
+		return ExitOK
+	}
 	if *tab {
 		return openTunnelTab(cfg, pc, cluster, hop, *port, kc, *crFlag, *glassFlag, stderr)
 	}
@@ -191,7 +196,12 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	}
 	banner(cfg, pc, cluster.Name, stderr)
 	fmt.Fprintf(stderr, "kubeconfig: %s\nIn another terminal:  export KUBECONFIG=%s   (PowerShell: $env:KUBECONFIG = '%s')\nTunnel open until you press Ctrl-C.\n", kc, kc, kc)
+	unpublish := publishTunnel(cfg, plan, pc.Name)
 	err = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "aws", Args: portForwardArgs(plan, pc.Name), Stdout: stderr, Timeout: cfg.AWS.Timeout()})
+	unpublish()
+	if n := tunnelUsers(cfg, cluster.Name); n > 0 {
+		fmt.Fprintf(stderr, "warning: %d other session(s) were using this tunnel and lose it now\n", n)
+	}
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "tunnel failed: %v\n", err)
@@ -232,6 +242,7 @@ type tunnelPlan struct {
 	hop        ec2Instance
 	port       int
 	kubeconfig string
+	shared     bool // a tunnel another nedctl already holds open; do not open or close it
 }
 
 // How a cluster is reached.
@@ -292,6 +303,17 @@ func planTunnel(ctx context.Context, cfg config.Config, pc profileContext, rs re
 	if err != nil {
 		fmt.Fprintf(stderr, "looking up %s with %s: %v\n", name, pc.Name, err)
 		return tunnelPlan{}, ExitFailure
+	}
+	// A tunnel to this cluster already open on this machine is used again.
+	if mode != viaDirect {
+		if r, ok := openTunnel(cfg, cluster); ok && (port == 0 || port == r.Port) && (via == "" || via == r.Hop || via == r.HopName) {
+			plan, err := sharedPlan(cfg, cluster, r, pc.Name)
+			if err != nil {
+				fmt.Fprintf(stderr, "writing the kubeconfig: %v\n", err)
+				return tunnelPlan{}, ExitFailure
+			}
+			return plan, ExitOK
+		}
 	}
 	var directErr error
 	if mode == viaAuto || mode == viaDirect {

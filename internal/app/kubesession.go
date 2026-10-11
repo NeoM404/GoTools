@@ -152,7 +152,10 @@ func openEKSSession(ctx context.Context, cfg config.Config, f sessionFlags, stde
 	}
 	saveLastCluster(cfg, pc, name)
 	s := &kubeSession{cloud: "aws", cluster: plan.cluster.Name, env: pc.Environment, pc: pc, where: "directly", close: func() {}}
-	if !plan.direct {
+	if plan.shared {
+		s.where = "through the open tunnel via " + firstNonBlank(plan.hop.Name, plan.hop.ID)
+		s.close = leaseTunnel(cfg, plan.cluster.Name)
+	} else if !plan.direct {
 		logPath, logFile, err := tunnelLog(cfg, plan.cluster.Name)
 		if err != nil {
 			fmt.Fprintf(stderr, "opening the tunnel log: %v\n", err)
