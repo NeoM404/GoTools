@@ -1,0 +1,20 @@
+{
+  "rules": [
+    {
+      "subject": "Group:platform-admins",
+      "roles": ["cluster-admin"],
+      "note": "The platform team. Replace with the real Entra ID / IAM group names before the first review."
+    },
+    {
+      "subject": "ServiceAccount:argocd/argocd-application-controller",
+      "roles": ["cluster-admin"],
+      "note": "GitOps controller deploys everything."
+    },
+    {
+      "subject": "Group:.*-developers",
+      "roles": ["edit"],
+      "clusters": ".*-(dev|ete)-.*",
+      "note": "Squads may edit in dev and ete only."
+    }
+  ]
+}

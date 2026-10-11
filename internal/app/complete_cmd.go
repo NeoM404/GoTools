@@ -25,6 +25,7 @@ import (
 var subcommands = map[string][]string{
 	"aws":       {"login", "whoami", "env"},
 	"azure":     {"kube", "shell", "clusters", "hosts", "cp"},
+	"access":    {"review"},
 	"node":      {"cordon", "uncordon", "drain"},
 	"debug":     {"pod", "node", "attach", "net", "ls", "clean"},
 	"eks":       {"auth", "access"},
@@ -37,7 +38,7 @@ var subcommands = map[string][]string{
 }
 
 var commandNames = []string{
-	"setup", "status", "aws", "shell", "kube", "connect", "console", "azure", "debug", "explain", "app", "logs", "forward", "health", "run", "node", "cp", "posture", "images", "eks", "ec2", "clusters", "kubeconfig", "login",
+	"setup", "status", "aws", "shell", "kube", "connect", "console", "azure", "debug", "explain", "app", "logs", "forward", "health", "run", "node", "cp", "posture", "images", "access", "eks", "ec2", "clusters", "kubeconfig", "login",
 	"fleet", "inventory", "sweep", "audit", "evidence", "guard", "current", "prompt", "doctor", "init", "version", "help",
 }
 

@@ -87,3 +87,60 @@ each image reference it shows:
 containers, flags`, one image per row, ready for a scanner. Scanning by
 digest checks exactly what runs. `--registry` and `--flagged` narrow the
 list.
+
+## Who can do what: `nedctl access review`
+
+```bash
+nedctl access review --env prod
+nedctl access review --env qa,prod -o json > access-review-2026-Q4.json
+nedctl access review --cluster acm-k8s-qa-cluster --roles '*'
+```
+
+```
+CLUSTER               SUBJECT                  ROLE           SCOPE          STATUS
+pay-k8s-prod-cluster  Group:platform-admins    cluster-admin  cluster-wide   approved
+pay-k8s-prod-cluster  User:alice@bank.example  cluster-admin  cluster-wide   unapproved
+pay-k8s-prod-cluster  ServiceAccount:pay/ci    edit           namespace:pay  unapproved
+
+✖ 2 grant(s) not on the approved list (access/approved.json)
+• approval no longer used: Group:old-team → admin on .* — remove it?
+```
+
+This lists every subject bound to a **reviewed role** (default
+`cluster-admin`, `admin` and `edit`; `--roles '*'` for all), through
+ClusterRoleBindings and RoleBindings. Each grant is checked against the
+**approved list**, `access/approved.json` in the repository (or
+`security.approvedAccess`). Changing that list goes through a pull
+request, so every approval has a reviewer and a date.
+
+```json
+{
+  "rules": [
+    {"subject": "Group:platform-admins", "roles": ["cluster-admin"]},
+    {"subject": "ServiceAccount:argocd/argocd-application-controller", "roles": ["cluster-admin"]},
+    {"subject": "Group:.*-developers", "roles": ["edit"], "clusters": ".*-(dev|ete)-.*",
+     "note": "Squads may edit in dev and ete only"}
+  ]
+}
+```
+
+- `subject` is a regular expression over `Group:name`, `User:name` or
+  `ServiceAccount:namespace/name`, matched in full.
+- `clusters` is a regular expression over cluster names. Without one, it
+  matches every cluster.
+- `roles` lists role names. `*` means any role.
+- An **approval no longer used** (it matches no grant on any reachable
+  cluster) is listed so it can be removed.
+
+Kubernetes' own subjects (`system:*`, `kube-system` service accounts) are
+left out unless you pass `--include-system`. `system:masters` is always
+listed. The command exits 1 on an unapproved grant or an unreachable
+cluster, and `-o json` is the dated evidence.
+
+**What it doesn't cover:**
+
+- **EKS access entries.** They aren't RBAC bindings; review them with
+  `nedctl eks access <cluster>`.
+- **The AKS shared local account (`clusterUser`).** It's admitted through
+  `system:masters` by certificate, not by a binding; see
+  [`nedctl azure auth`](#aks-local-accounts-versus-entra-id-nedctl-azure-auth).

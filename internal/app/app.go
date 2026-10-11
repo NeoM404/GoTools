@@ -122,6 +122,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdPosture(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "images":
 		return cmdImages(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "access":
+		return cmdAccess(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "explain":
 		return cmdExplain(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":
