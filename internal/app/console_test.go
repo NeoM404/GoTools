@@ -32,8 +32,8 @@ func TestConsoleLink(t *testing.T) {
 		want string
 	}{
 		{config.AWS{StartURL: "https://d-1234567890.awsapps.com/start", SSORegion: "eu-west-1"}, "https://d-1234567890.awsapps.com/start"},
-		{config.AWS{StartURL: "https://identitycenter.amazonaws.com/ssoins-68042455842cfa84", SSORegion: "eu-west-1"}, "https://ssoins-68042455842cfa84.portal.eu-west-1.app.aws"},
-		{config.AWS{StartURL: "https://identitycenter.amazonaws.com/ssoins-68042455842cfa84", SSORegion: "eu-west-1", PortalURL: "https://bank.awsapps.com/start"}, "https://bank.awsapps.com/start"},
+		{config.AWS{StartURL: "https://identitycenter.amazonaws.com/ssoins-0123456789abcdef", SSORegion: "eu-west-1"}, "https://ssoins-0123456789abcdef.portal.eu-west-1.app.aws"},
+		{config.AWS{StartURL: "https://identitycenter.amazonaws.com/ssoins-0123456789abcdef", SSORegion: "eu-west-1", PortalURL: "https://bank.awsapps.com/start"}, "https://bank.awsapps.com/start"},
 	} {
 		if got := portalURL(c.a); got != c.want {
 			t.Errorf("portalURL(%s) = %s, want %s", c.a.StartURL, got, c.want)
