@@ -19,6 +19,7 @@ beside `sm`, SSMshell and your SSH setup.
 | Use AKS clusters and Azure machines | [Azure access](azure.md) |
 | See why my app is failing, read its logs, reach it from my laptop | [For developers](developers.md) |
 | Check the fleet's health, run commands across clusters, runbooks, drain nodes | [For DevOps](operations.md) |
+| Check posture, images and access; evidence for reviews | [For DevSecOps](security-checks.md) |
 | Debug pods, nodes and network on a cluster | [Debugging](debug.md) |
 | Fix something that is not working | [Troubleshooting](troubleshooting.md) |
 | Understand the security model | [Security](security.md) |

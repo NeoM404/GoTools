@@ -130,6 +130,7 @@ work). Example — copy [`configs/nedctl.example.json`](../configs/nedctl.exampl
 | `discovery` | The cloud scope `inventory diff` / `inventory sync` scan — see [Discovery](#discovery). |
 | `aws` | IAM Identity Center sign-in and the EC2/EKS access commands (`aws`, `shell`, `connect`, `eks`) — see [aws.md](aws.md). |
 | `azure` | AKS clusters and Azure machines over SSH through each environment's bastion (`azure kube`, `azure shell`): `bastions`, `user`, `hosts` — see [azure.md](azure.md). |
+| `security` | DevSecOps checks: `approvedRegistries` (images must come from these), `ignoreNamespaces` (platform namespaces posture skips), `approvedAccess` (the approved-access file for `access review`). See [security-checks.md](security-checks.md). |
 | `runbooksDir` | Directory of the team's runbooks (`*.json`) for `nedctl run`, added to the built-in ones. Default `./runbooks`. See [operations.md](operations.md#runbooks-nedctl-run). |
 | `debug` | `nedctl debug`: default `namespace`, `image`, short-name `images` (e.g. an internal registry) and `ttl` — see [debug.md](debug.md). |
 | `confirmProduction` | `true` makes `shell`, `kube`, `connect`, `console`, `azure kube` and `azure shell` ask you to type the environment's name before a production session; `--yes` confirms without asking (needed without a terminal). Off by default. |

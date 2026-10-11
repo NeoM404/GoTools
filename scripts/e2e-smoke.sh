@@ -65,6 +65,7 @@ check "built-in runbooks load" 0 'restart-deployment' -- run ls
 check "runbook parameters are checked" 2 'is not allowed' -- --config "$root/configs/nedctl.aws.example.json" run restart-deployment 'deployment=x;rm'
 check "node needs an action" 2 'usage: nedctl node' -- node reboot n1
 check "cp needs an absolute pod path" 2 'POD:/absolute/path' -- cp api-1:relative .
+check "posture validates --fail-on" 2 'usage: nedctl posture' -- posture --fail-on never
 check "prompt never fails" 0 - -- prompt --shell bash
 check "guard without a kubeconfig fails clearly" 1 'current kube-context' -- guard
 check "doctor -o json is machine readable" 0 '"healthy"' -- --config "$root/configs/nedctl.bastion.example.json" doctor -o json

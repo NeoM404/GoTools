@@ -93,6 +93,11 @@ var helpGroups = []helpGroup{
 			"Runs a read-only kubectl command (get, describe, logs, top, events, auth can-i, …) on every cluster selected — --env qa runs it on every QA cluster in one SSH connection per bastion — and shows the answers per cluster. Write commands, --context/--kubeconfig and -f/--watch are refused.",
 			[]string{"nedctl fleet run --env qa -- kubectl get nodes", "nedctl fleet run --env dev,qa,prod --prefix -- kubectl get deploy -A | grep payments-api", "nedctl fleet run --aws -- kubectl get --raw /version"}},
 	}},
+	{"For DevSecOps: checks and evidence", []cmdHelp{
+		{"posture", "", "Risky settings in what runs: privileged, host access, root, secrets in env, public LBs…",
+			"Checks every pod and service for privileged containers, host namespaces and paths, root, dangerous capabilities, missing memory limits, latest tags, unapproved registries (security.approvedRegistries), secrets written into environment variables (names only — values are never read) and public load balancers. Platform namespaces are skipped (security.ignoreNamespaces). Exits 1 on a failing cluster; -o json is the evidence.",
+			[]string{"nedctl posture --env prod", "nedctl posture --cluster acm-k8s-qa-cluster", "nedctl posture --env qa,prod -o json > posture-2026-10.json"}},
+	}},
 	{"Debugging on a cluster (EKS or AKS)", []cmdHelp{
 		{"debug pod", "", "A debug pod (netshoot by default) with a shell; removed when you exit",
 			"Shows the pod it will deploy, has the cluster check it (server-side dry run), and deploys it only when you approve. It goes in the default namespace unless you give -n, never gets a service-account token, and is removed when you exit (or at its time limit, 2h). --image takes a short name (netshoot, busybox, alpine, ubuntu, curl) or any image. Profiles: general (default), netadmin (tcpdump), sysadmin (privileged), restricted (non-root).",

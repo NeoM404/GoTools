@@ -118,6 +118,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdNode(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "cp":
 		return cmdCp(ctx, cfgPath, cmdArgs, stderr)
+	case "posture":
+		return cmdPosture(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "explain":
 		return cmdExplain(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":

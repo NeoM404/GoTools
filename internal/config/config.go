@@ -118,6 +118,10 @@ type Config struct {
 	// reached over SSH through each environment's bastion.
 	Azure Azure `json:"azure"`
 
+	// Security configures the DevSecOps checks: posture, images, access
+	// review.
+	Security Security `json:"security"`
+
 	// RunbooksDir holds the team's runbooks (*.json) for `nedctl run`, in
 	// addition to the built-in ones. Default: ./runbooks.
 	RunbooksDir string `json:"runbooksDir"`
@@ -211,6 +215,52 @@ type AWS struct {
 	// DevopsInstance is matched against instance names to find the hop for
 	// `nedctl connect` (default "devops").
 	DevopsInstance string `json:"devopsInstance"`
+}
+
+// Security configures `nedctl posture`, `images` and `access review`.
+type Security struct {
+	// ApprovedRegistries are the registries images may come from, e.g.
+	// ["myacr.azurecr.io", "123456789012.dkr.ecr.af-south-1.amazonaws.com"].
+	// Empty: registries are listed, not judged.
+	ApprovedRegistries []string `json:"approvedRegistries"`
+	// IgnoreNamespaces are left out of posture (platform namespaces that
+	// need privileges by design). Default: kube-system, kube-public,
+	// kube-node-lease, gatekeeper-system, calico-system, tigera-operator.
+	IgnoreNamespaces []string `json:"ignoreNamespaces"`
+	// ApprovedAccess is the file of approved cluster access for `access
+	// review` (default ./access/approved.json).
+	ApprovedAccess string `json:"approvedAccess"`
+}
+
+// DefaultIgnoreNamespaces are the platform namespaces posture skips.
+var DefaultIgnoreNamespaces = []string{"kube-system", "kube-public", "kube-node-lease", "gatekeeper-system", "calico-system", "tigera-operator"}
+
+// Ignored reports whether posture leaves namespace ns out.
+func (s Security) Ignored(ns string) bool {
+	list := s.IgnoreNamespaces
+	if list == nil {
+		list = DefaultIgnoreNamespaces
+	}
+	for _, n := range list {
+		if n == ns {
+			return true
+		}
+	}
+	return false
+}
+
+// RegistryApproved reports whether image comes from an approved registry;
+// true when none are configured.
+func (s Security) RegistryApproved(registry string) bool {
+	if len(s.ApprovedRegistries) == 0 {
+		return true
+	}
+	for _, r := range s.ApprovedRegistries {
+		if strings.EqualFold(strings.TrimSuffix(r, "/"), registry) || strings.HasPrefix(strings.ToLower(registry+"/"), strings.ToLower(strings.TrimSuffix(r, "/")+"/")) {
+			return true
+		}
+	}
+	return false
 }
 
 // Debug configures `nedctl debug`.
@@ -1225,7 +1275,7 @@ var settingHome = map[string]string{
 	"tokenEnv": "changeControl.serviceNow or audit.forward", "logPath": "audit", "forward": "audit",
 	"profile": "discovery.aws[]", "account": "discovery.aws[]", "subscription": "discovery.azure[]",
 	"tagKeys": "discovery", "nameEnvironmentPattern": "discovery",
-	"bastions": "azure", "hosts": "azure", "images": "debug", "ttl": "debug",
+	"bastions": "azure", "hosts": "azure", "approvedRegistries": "security", "ignoreNamespaces": "security", "approvedAccess": "security", "images": "debug", "ttl": "debug",
 }
 
 var unknownFieldRe = regexp.MustCompile(`unknown field "([^"]+)"`)
