@@ -180,7 +180,7 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	}
 
 	cr, glass := strings.TrimSpace(*crFlag), strings.TrimSpace(*glassFlag)
-	if !confirmProduction(cfg, pc, cluster.Name, *yes, stderr) {
+	if !confirmProduction(cfg, pc, cluster.Name, *yes, stderr) || !productionPause(ctx, cfg, pc.Production, cluster.Name, *yes, stderr) {
 		return ExitFailure
 	}
 	base := audit.Event{Action: "eks-connect", Cloud: "aws", Cluster: cluster.Name, Account: pc.AccountID, Environment: pc.Environment,

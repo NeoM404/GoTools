@@ -89,7 +89,7 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		what = "command " + command[0]
 	}
 	cr, glass := strings.TrimSpace(*crFlag), strings.TrimSpace(*glassFlag)
-	if !confirmProduction(cfg, pc, plan.cluster.Name, *yes, stderr) {
+	if !confirmProduction(cfg, pc, plan.cluster.Name, *yes, stderr) || !productionPause(ctx, cfg, pc.Production, plan.cluster.Name, *yes, stderr) {
 		return ExitFailure
 	}
 	base := audit.Event{Action: "eks-connect", Cloud: "aws", Cluster: plan.cluster.Name, Account: pc.AccountID, Environment: pc.Environment,

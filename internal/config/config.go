@@ -148,6 +148,20 @@ type Config struct {
 	// engineer to type the environment's name before a production session
 	// (--yes confirms without asking). Off by default.
 	ConfirmProduction bool `json:"confirmProduction"`
+
+	// ProductionPause is how many seconds a production session (kube,
+	// shell, connect, console, azure kube/shell) counts down in red before
+	// it opens, so "this is prod" registers; Ctrl-C cancels. Default 3, 0
+	// turns it off, at most 10. --yes and scripts skip it.
+	ProductionPause *int `json:"productionPause"`
+}
+
+// PauseSeconds is ProductionPause with its default.
+func (c Config) PauseSeconds() int {
+	if c.ProductionPause == nil {
+		return 3
+	}
+	return *c.ProductionPause
 }
 
 // DefaultEnvironmentColors matches the colours engineers already know from
@@ -1141,7 +1155,15 @@ func (c Config) validate() error {
 	_, errTimeout := c.parseTimeout()
 	_, errTTL := parsePositive("inventoryCacheTTL", c.InventoryCacheTTL, DefaultInventoryCacheTTL)
 	return errors.Join(c.validateMode(), errTimeout, errTTL, c.validateEnvironments(), c.validateTargets(),
-		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl(), c.validateAWS(), c.validateAzure(), c.Debug.validate())
+		c.Discovery.validate(), c.SupportCalendar.Validate(), c.CostRates.Validate(), c.Audit.validate(), c.validateChangeControl(), c.validateAWS(), c.validateAzure(), c.Debug.validate(),
+		c.validatePause())
+}
+
+func (c Config) validatePause() error {
+	if p := c.PauseSeconds(); p < 0 || p > 10 {
+		return fmt.Errorf("productionPause %d: want 0 to 10 seconds", p)
+	}
+	return nil
 }
 
 var minorRe = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?$`)

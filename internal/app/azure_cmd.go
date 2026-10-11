@@ -430,7 +430,7 @@ func azureKube(ctx context.Context, cfgPath string, args []string, stderr io.Wri
 		tabArgs = appendControl(tabArgs, cr, glass)
 		return openTabFor(cfg, env, strings.ToUpper(env)+" · "+name, tabArgs, stderr)
 	}
-	if !confirmProduction(cfg, pc, name, *yes, stderr) {
+	if !confirmProduction(cfg, pc, name, *yes, stderr) || !productionPause(ctx, cfg, pc.Production, name, *yes, stderr) {
 		return ExitFailure
 	}
 	what := "interactive shell"
@@ -552,7 +552,7 @@ func azureShell(ctx context.Context, cfgPath string, args []string, stderr io.Wr
 		}
 		return openTabFor(cfg, t.Env, strings.TrimLeft(strings.ToUpper(t.Env)+" · "+t.Name, " ·"), appendControl(tabArgs, cr, glass), stderr)
 	}
-	if !confirmProduction(cfg, pc, t.Name, *yes, stderr) {
+	if !confirmProduction(cfg, pc, t.Name, *yes, stderr) || !productionPause(ctx, cfg, pc.Production, t.Name, *yes, stderr) {
 		return ExitFailure
 	}
 	kind := "host"

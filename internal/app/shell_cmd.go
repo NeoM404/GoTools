@@ -338,7 +338,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return openTab(cfg, pc, in, *crFlag, *glassFlag, stderr)
 	}
 
-	if !confirmProduction(cfg, pc, firstNonBlank(in.Name, in.ID), *yes, stderr) {
+	if !confirmProduction(cfg, pc, firstNonBlank(in.Name, in.ID), *yes, stderr) || !productionPause(ctx, cfg, pc.Production, firstNonBlank(in.Name, in.ID), *yes, stderr) {
 		return ExitFailure
 	}
 	cr, glass := strings.TrimSpace(*crFlag), strings.TrimSpace(*glassFlag)

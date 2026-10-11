@@ -57,7 +57,7 @@ func cmdConsole(ctx context.Context, cfgPath string, args []string, stdout, stde
 	r := firstNonBlank(*region, consoleRegion(cfg, pc, service))
 	link := consoleLink(portalURL(cfg.AWS), pc.AccountID, pc.Role, service, r)
 
-	if !confirmProduction(cfg, pc, "the AWS console", *yes, stderr) {
+	if !confirmProduction(cfg, pc, "the AWS console", *yes, stderr) || !productionPause(ctx, cfg, pc.Production, "the AWS console", *yes, stderr) {
 		return ExitFailure
 	}
 	base := audit.Event{Action: "aws-console", Cloud: "aws", Account: pc.AccountID, Environment: pc.Environment,
