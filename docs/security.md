@@ -137,6 +137,14 @@ and cluster pickers, `azure auth` and `debug net`. nedctl's own colours are
 added after cleaning. Interactive shells (`kube`, `azure shell`,
 `debug pod`) remain a real terminal, as they must.
 
+## Secrets and personal data in logs are hidden
+
+`nedctl logs` and the log lines `explain` shows mask secrets and personal
+data before display: passwords, tokens, keys, connection-string passwords,
+private keys, card numbers (Luhn-checked) and South African ID numbers
+(date- and Luhn-checked). It's on by default. `--no-redact` is refused on
+production clusters, and a raw read anywhere is flagged in the audit trail.
+
 ## Supply chain
 
 | Control | Status |

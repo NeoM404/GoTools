@@ -95,6 +95,24 @@ On AKS this runs on the bastion, so you don't need a shell there. Reading
 logs is recorded in the audit trail (`logs-read`), because production logs
 can hold customer data.
 
+**Secrets and personal data are hidden as lines arrive.** This covers:
+
+- passwords, secrets and API keys written as `key=value` or JSON;
+- bearer tokens and JWTs;
+- AWS, GitHub, Slack and Azure keys;
+- passwords inside connection strings;
+- private keys;
+- payment card numbers (Luhn-checked, last four kept);
+- South African ID numbers (date- and Luhn-checked).
+
+You see `password=‹redacted›` and `‹card ****1111›`, and a count of the lines
+that had something hidden, which is safe on a shared screen.
+
+`--no-redact` shows the raw values, but only outside production: on a
+production cluster (QA counts, as configured) it is refused. A raw read is
+marked `NOT redacted` in the audit trail. `explain` hides them in the log
+lines it shows too.
+
 ## Reach a service from your laptop: `nedctl forward`
 
 ```bash

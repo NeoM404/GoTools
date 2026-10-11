@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"nedctl/internal/config"
+	"nedctl/internal/redact"
 	"nedctl/internal/ui"
 )
 
@@ -307,6 +308,7 @@ func lastLogs(ctx context.Context, s *kubeSession, ns, pod, container string) []
 	var lines []string
 	for _, l := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
 		if l = strings.TrimRight(l, "\r"); l != "" {
+			l, _ = redact.Line(l) // before shortening, so no secret is cut in half and missed
 			if len(l) > 200 {
 				l = l[:200] + "…"
 			}
