@@ -259,3 +259,32 @@ func TestShellNothingFoundNamesTheRegionsSearched(t *testing.T) {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 }
+
+func TestShellPickerPutsTheLastInstanceFirst(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	fakeCLI(t, "wt.exe", "exit 0")
+	t.Setenv("WT_SESSION", "x")
+	// Pick the second instance (opened in a tab, so no session runs here).
+	answer(t, "2\n")
+	_, _, errb := run("--config", w.cfg, "shell", "--tab")
+	first := ""
+	for _, l := range strings.Split(errb, "\n") {
+		if strings.Contains(l, "  2  ") {
+			first = strings.Fields(l)[1]
+		}
+	}
+	if first == "" {
+		t.Fatalf("no second row:\n%s", errb)
+	}
+	answer(t, "q\n")
+	_, _, errb = run("--config", w.cfg, "shell")
+	for _, l := range strings.Split(errb, "\n") {
+		if strings.Contains(l, "  1  ") {
+			if !strings.Contains(l, first) || !strings.Contains(l, "last used") {
+				t.Fatalf("row 1 must be %s, last used: %q\n%s", first, l, errb)
+			}
+			return
+		}
+	}
+	t.Fatalf("no rows:\n%s", errb)
+}

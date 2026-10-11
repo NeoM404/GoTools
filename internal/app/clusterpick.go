@@ -68,17 +68,19 @@ func resolveClusterArg(ctx context.Context, cfg config.Config, pc profileContext
 	return all[idx].Name, regionSearch{Flag: all[idx].Region}, ExitOK
 }
 
-func lastClusterPath(cfg config.Config, pc profileContext) (string, error) {
+// lastPath is where the last cluster or instance used in an account is
+// remembered: <state>/last-<kind>/<account>.
+func lastPath(cfg config.Config, pc profileContext, kind string) (string, error) {
 	log, err := cfg.AuditLogPath()
 	if err != nil {
 		return "", err
 	}
 	key := firstNonBlank(pc.AccountID, strings.NewReplacer("/", "_", "\\", "_").Replace(pc.Name))
-	return filepath.Join(filepath.Dir(log), "last-cluster", key), nil
+	return filepath.Join(filepath.Dir(log), "last-"+kind, key), nil
 }
 
-func loadLastCluster(cfg config.Config, pc profileContext) string {
-	p, err := lastClusterPath(cfg, pc)
+func loadLast(cfg config.Config, pc profileContext, kind string, valid func(string) bool) string {
+	p, err := lastPath(cfg, pc, kind)
 	if err != nil {
 		return ""
 	}
@@ -86,18 +88,26 @@ func loadLastCluster(cfg config.Config, pc profileContext) string {
 	if err != nil {
 		return ""
 	}
-	if name := strings.TrimSpace(string(data)); eksNameRe.MatchString(name) {
+	if name := strings.TrimSpace(string(data)); valid(name) {
 		return name
 	}
 	return ""
 }
 
-func saveLastCluster(cfg config.Config, pc profileContext, name string) {
-	p, err := lastClusterPath(cfg, pc)
+func saveLast(cfg config.Config, pc profileContext, kind, name string) {
+	p, err := lastPath(cfg, pc, kind)
 	if err != nil {
 		return
 	}
 	if os.MkdirAll(filepath.Dir(p), 0o700) == nil {
 		_ = writeFileAtomic(p, []byte(name+"\n"), 0o600)
 	}
+}
+
+func loadLastCluster(cfg config.Config, pc profileContext) string {
+	return loadLast(cfg, pc, "cluster", eksNameRe.MatchString)
+}
+
+func saveLastCluster(cfg config.Config, pc profileContext, name string) {
+	saveLast(cfg, pc, "cluster", name)
 }

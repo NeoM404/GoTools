@@ -114,6 +114,15 @@ func completions(ctx context.Context, cfgPath string, done []string, cur string)
 		return assignmentWords(cfg)
 	case "prompt init":
 		return []string{"bash", "zsh"}
+	case "console":
+		if positionals(rest, flags) == 0 {
+			out := make([]string, 0, len(consoleDestinations))
+			for k := range consoleDestinations {
+				out = append(out, k)
+			}
+			sort.Strings(out)
+			return out
+		}
 	}
 	return nil
 }

@@ -211,22 +211,31 @@ func chooseInstance(cfg config.Config, pc profileContext, list []ec2Instance, in
 		fmt.Fprintf(stderr, "no instance matches %q in %s\n", strings.Join(terms, " "), pc.label())
 		return ec2Instance{}, ExitFailure
 	case len(cands) == 1:
+		saveLast(cfg, pc, "instance", cands[0].ID)
 		return cands[0], ExitOK
 	case !stdinIsTerminal():
 		fmt.Fprintf(stderr, "%d instances match — narrow the filter or pass --instance\n", len(cands))
 		return ec2Instance{}, ExitUsage
 	}
+	// The instance used last in this account comes first.
+	last := loadLast(cfg, pc, "instance", instanceIDRe.MatchString)
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].ID == last && cands[j].ID != last })
 	color := cfg.ColorFor(pc.Environment)
 	rows := make([]picker.Row, len(cands))
 	for i, in := range cands {
-		rows[i] = picker.Row{Cells: []string{in.Name, in.ID, in.PrivateIP, in.State, in.Type, in.Zone, in.AccessLevel}, Color: color}
+		mark := ""
+		if in.ID == last {
+			mark = "last used"
+		}
+		rows[i] = picker.Row{Cells: []string{in.Name, in.ID, in.PrivateIP, in.State, in.Type, in.Zone, in.AccessLevel, mark}, Color: color}
 	}
-	idx, err := picker.Picker{Title: "Instances in " + pc.label(), Header: []string{"NAME", "INSTANCE", "PRIVATE IP", "STATE", "TYPE", "ZONE", "LEVEL"},
+	idx, err := picker.Picker{Title: "Instances in " + pc.label(), Header: []string{"NAME", "INSTANCE", "PRIVATE IP", "STATE", "TYPE", "ZONE", "LEVEL", ""},
 		Rows: rows, In: stdin, Out: stderr, Color: colorOn(stderr)}.Pick()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return ec2Instance{}, ExitFailure
 	}
+	saveLast(cfg, pc, "instance", cands[idx].ID)
 	return cands[idx], ExitOK
 }
 

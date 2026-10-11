@@ -31,7 +31,8 @@ no config at all ([nedctl.md, First run](nedctl.md#first-run)).
 ```bash
 nedctl aws login lms dev        # one approval; "lms dev" narrows the picker, one match goes straight in
 nedctl kube                     # pick a cluster (last used first): tunnel + shell with kubectl ready
-nedctl shell <TAB>              # the account's instances; Enter opens a Session Manager shell
+nedctl shell <TAB>              # the account's instances; the one you used last is listed first
+nedctl console eks              # the AWS console on EKS, same account and role
 nedctl aws login lms qa         # switch account: the prompt and the tab colour follow
 nedctl version --check          # is a newer release out?
 ```
@@ -209,6 +210,20 @@ recorded. `--tab` works from Windows and from WSL: the tab re-enters the same
 distribution through your login shell, with this terminal's proxy and CA
 settings carried over, so the AWS CLI in the tab reaches AWS the same way
 this terminal does.
+
+## The AWS console: `nedctl console`
+
+```bash
+nedctl console              # the console home, as your current account and role
+nedctl console eks          # straight to EKS clusters (also ec2, ssm, logs, cloudtrail, s3, iam, vpc, …)
+nedctl console --print      # print the link instead of opening a browser
+```
+
+It opens an IAM Identity Center shortcut link in your browser (the Windows
+browser from WSL), so the browser signs in through Identity Center and no
+credentials pass through nedctl. The region is where nedctl last found
+clusters or instances in the account, unless you pass `--region`. Opening
+the console is recorded like any other access (`aws-console`).
 
 ## Straight to a cluster: `nedctl connect`
 
