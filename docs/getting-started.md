@@ -139,7 +139,7 @@ as shown in [Azure access](azure.md#2-the-bastions).
 
 | Do this | Command |
 |---|---|
-| See who you are signed in as, and for how long | `nedctl` |
+| Your home screen: who you're signed in as and for how long, open tunnels, your last few actions, risky leftovers on this machine, a tip | `nedctl` |
 | Switch account or role | `nedctl aws login <words>` |
 | kubectl on a cluster (pick one; `exit` closes the tunnel) | `nedctl kube` |
 | One kubectl command, no shell | `nedctl kube <cluster> -- kubectl get pods -A` |
@@ -162,10 +162,21 @@ is recorded in an audit trail, and production sessions say so.
 
 ## 6. Updating
 
-When a new version is announced (or `nedctl version --check` says so),
-download the new file as in step 2 and run its `setup` again — it replaces
-the installed copy and refreshes the shell block. `nedctl version` shows what
-you have.
+When a new version is out (`nedctl version --check` says so), run:
+
+```bash
+nedctl update
+```
+
+It downloads the release, checks that it is **signed by the bank's release
+key** and matches its checksum, confirms that it runs as the announced
+version, and only then replaces your copy. Anything that fails a check is
+refused, and nothing changes.
+
+You can still update by hand: download the new file, together with
+`SHA256SUMS` and `SHA256SUMS.sig`, as in step 2. Then run `nedctl verify
+<file>` and the new file's `setup`. `setup` checks the signature itself
+when those two files sit next to it.
 
 ## 7. Uninstalling
 
