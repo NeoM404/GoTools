@@ -68,6 +68,7 @@ check "cp needs an absolute pod path" 2 'POD:/absolute/path' -- cp api-1:relativ
 check "posture validates --fail-on" 2 'usage: nedctl posture' -- posture --fail-on never
 check "images validates the format" 2 'table|json|csv' -- images -o xml
 check "access needs review" 2 'nedctl access <review>' -- access
+check "doctor --hygiene on a clean home" 0 'nothing found' -- doctor --hygiene
 check "prompt never fails" 0 - -- prompt --shell bash
 check "guard without a kubeconfig fails clearly" 1 'current kube-context' -- guard
 check "doctor -o json is machine readable" 0 '"healthy"' -- --config "$root/configs/nedctl.bastion.example.json" doctor -o json

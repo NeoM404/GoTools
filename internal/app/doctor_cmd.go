@@ -137,12 +137,16 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	strict := fs.Bool("strict", false, "exit 1 if any tool with a floor is below it (for CI)")
 	offline := fs.Bool("offline", false, "skip the network check")
 	all := fs.Bool("all", false, "list every optional tool, not only required ones and problems")
+	hygiene := fs.Bool("hygiene", false, "check this machine for risky leftovers: AWS keys, static kubeconfig credentials, unprotected SSH keys, secrets in shell history")
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
 	if *output != "table" && *output != "json" {
 		return badOutput(stderr, *output)
+	}
+	if *hygiene {
+		return doctorHygiene(stdout, stderr, *output)
 	}
 
 	// Config is optional; used only for minVersions overrides. Ignore errors so
@@ -265,5 +269,35 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 		}
 	}
 	tw.Flush()
+	return code
+}
+
+// doctorHygiene is `doctor --hygiene`: local checks only.
+func doctorHygiene(stdout, stderr io.Writer, output string) int {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "finding your home directory: %v\n", err)
+		return ExitFailure
+	}
+	checks := hygieneChecks(home)
+	code := ExitOK
+	for _, c := range checks {
+		if c.Status == "fail" {
+			code = ExitFailure
+		}
+	}
+	if output == "json" {
+		if rc := writeJSON(stdout, stderr, map[string]any{"healthy": code == ExitOK, "checks": checks}); rc != ExitOK {
+			return rc
+		}
+		return code
+	}
+	tw := newTable(stdout)
+	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
+	for _, c := range checks {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", c.Name, strings.ToUpper(c.Status), c.Detail)
+	}
+	tw.Flush()
+	fmt.Fprintln(stdout, "\n"+ui.Style{Color: colorOn(stdout)}.Hint("nothing secret is printed or sent anywhere: only where it is, and how to fix it"))
 	return code
 }

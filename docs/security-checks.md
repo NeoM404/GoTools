@@ -144,3 +144,35 @@ cluster, and `-o json` is the dated evidence.
 - **The AKS shared local account (`clusterUser`).** It's admitted through
   `system:masters` by certificate, not by a binding; see
   [`nedctl azure auth`](#aks-local-accounts-versus-entra-id-nedctl-azure-auth).
+
+## Your own machine: `nedctl doctor --hygiene`
+
+```bash
+nedctl doctor --hygiene
+```
+
+```
+CHECK                     STATUS  DETAIL
+aws keys on disk          FAIL    long-term access keys in ~/.aws/credentials (profiles: default) — delete them, use `nedctl aws login`, …
+file permissions          WARN    ~/.aws/credentials is readable by others (-rw-r--r--) — chmod 600 ~/.aws/credentials
+kubeconfig credentials    WARN    ~/.kube/config holds 3 static credential(s) (client keys, tokens or passwords) — …
+ssh key passphrase        WARN    ~/.ssh/id_rsa has no passphrase — add one: ssh-keygen -p -f ~/.ssh/id_rsa
+secrets in shell history  WARN    ~/.bash_history has 2 line(s) that look like secrets — remove those lines and rotate what they hold
+```
+
+This finds what turns a lost laptop or a shared screen into an incident:
+
+| Check | Finds |
+|---|---|
+| AWS keys on disk | Long-term `AKIA…` keys in `~/.aws/credentials` (a failure), or leftover short-term `ASIA…` keys |
+| AWS keys in environment | `AWS_ACCESS_KEY_ID` exported in this shell, which reaches every program you start |
+| Kubeconfig credentials | Kubeconfigs (in `~/.kube` and `$KUBECONFIG`) holding client keys, tokens or passwords. Exec-based ones (`aws eks get-token`, kubelogin) are fine |
+| SSH keys | Private keys without a passphrase (OpenSSH and PEM formats), or readable by others |
+| Plain-text credentials | `~/.git-credentials`, `~/.netrc` |
+| Secrets in shell history | bash, zsh and fish history, and PowerShell's history on Windows: secret keys, GitHub and Slack tokens, `password=…`, pasted private keys |
+| File permissions | Credential files others can read (not on Windows) |
+
+It runs locally and sends nothing anywhere. **It never prints a secret**:
+only where it is and how to fix it (tests enforce this). It exits 1 when
+long-term AWS keys are found. Run it once after `setup`, and whenever a
+laptop changes hands.

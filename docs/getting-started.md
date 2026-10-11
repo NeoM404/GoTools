@@ -101,6 +101,10 @@ again:
 
 Then **open a new terminal** (or run `exec bash`).
 
+Optionally, run `nedctl doctor --hygiene` once. It looks for risky
+leftovers on your machine, such as old AWS keys or SSH keys without a
+passphrase, and says how to fix them.
+
 ## 4. Sign in
 
 ```bash
