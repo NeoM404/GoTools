@@ -78,6 +78,26 @@ one SSH connection.
 Clusters that can't be reached are listed as warnings, so a missing row is
 never silent. Use `-o json` for release tooling.
 
+## Works in QA, fails in prod: `nedctl diff`
+
+```bash
+nedctl diff payments-api --env qa,prod
+nedctl diff payments-api --env dev,qa -n payments --all
+```
+
+This shows the same deployment or statefulset side by side wherever it
+runs, marking each difference with `≠`:
+
+- images, replicas and update strategy;
+- service account, node selector and tolerations;
+- per container: resources, readiness and liveness probes, environment
+  variable **names**, and the ConfigMaps and Secrets it loads.
+
+Long lists show only what each place adds (`+FEATURE_X`) or lacks
+(`−DB_PASSWORD`) compared with the first. Values are never read, so it is
+safe on production. When nothing differs, the cause is outside the workload:
+data, network or a dependency.
+
 ## Every pod's logs at once: `nedctl logs`
 
 ```bash

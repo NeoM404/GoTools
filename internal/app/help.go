@@ -76,6 +76,9 @@ var helpGroups = []helpGroup{
 		{"app", "NAME", "One app in every environment: version, ready replicas, last change",
 			"Searches every AKS cluster on the bastions (or --env, --cluster, --aws for EKS) for deployments and statefulsets whose name contains NAME, and shows each one's image version, ready replicas and last update, then a one-line summary of which version runs where. Read-only.",
 			[]string{"nedctl app payments-api", "nedctl app payments-api --env qa,prod --match payments", "nedctl app payments-api --exact -o json"}},
+		{"diff", "NAME", "Works in QA, fails in prod? The same app side by side, differences marked",
+			"Compares a deployment or statefulset (exact name) wherever it runs: images, replicas, update strategy, service account, node selector and tolerations, and per container resources, probes, environment variable names and the ConfigMaps and Secrets it loads (+ added, − missing, against the first). Only names are read, never values. --all shows what is the same too. Read-only.",
+			[]string{"nedctl diff payments-api --env qa,prod", "nedctl diff payments-api --env dev,qa -n payments --all", "nedctl diff payments-api -o json"}},
 	}},
 	{"For DevOps: run the fleet", []cmdHelp{
 		{"health", "", "One line per cluster, then what needs attention",

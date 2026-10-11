@@ -110,6 +110,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdDebug(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "app":
 		return cmdApp(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "diff":
+		return cmdDiff(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "logs":
 		return cmdLogs(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "forward":
