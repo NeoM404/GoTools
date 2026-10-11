@@ -93,8 +93,10 @@ When you run one, nedctl:
 2. **runs reading steps** straight away and shows their output;
 3. for each **changing step**, runs a **server-side dry run** (when the
    step allows it) and shows what the cluster says, then **asks** before
-   running it. `--dry-run` stops after the dry runs; `--yes` runs without
-   asking, which scripts need;
+   running it. `--dry-run` runs the dry runs but changes nothing, and skips
+   the reading steps that follow a change, since they would watch for
+   something that didn't happen. `--yes` runs without asking, which scripts
+   need;
 4. **stops at the first failure**, and **records** the run with its
    parameters and how far it got (`runbook` in the audit trail).
 

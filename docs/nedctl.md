@@ -344,6 +344,15 @@ clusters and Azure machines over SSH through each environment's bastion,
 with the cluster selected for that session only and nothing copied to the
 workstation. They are documented in **[azure.md](azure.md)**.
 
+## Developers, DevOps and DevSecOps
+
+- **[developers.md](developers.md):** `explain`, `app`, `logs`,
+  `forward`, `cp`, `azure cp`.
+- **[operations.md](operations.md):** `health`, `fleet run`, `run`
+  (runbooks), `node cordon|uncordon|drain`.
+- **[security-checks.md](security-checks.md):** `posture`, `images`,
+  `access review`, `doctor --hygiene`, `azure auth`.
+
 ## Debugging
 
 `debug pod`, `debug node`, `debug attach`, `debug net`, `debug ls` and

@@ -320,10 +320,16 @@ func runRunbook(ctx context.Context, cfg config.Config, s *kubeSession, rb runbo
 	if code := applyChangeControl(ctx, cfg, inventory.Cluster{Name: s.cluster, Environment: s.env}, cr, glass, tr, stderr); code != ExitOK {
 		return code
 	}
-	done := 0
+	done, skippedChange := 0, false
 	for i, args := range steps {
 		step := rb.Steps[i]
 		fmt.Fprintf(stderr, "%s %d/%d %s\n", st.Bold("▶"), i+1, len(steps), step.Name)
+		if !step.Change && skippedChange {
+			// It would observe a change that was not made (a rollout status
+			// would wait for a restart that never happened).
+			fmt.Fprintln(stderr, "  not run (--dry-run: it follows a change that was not made)")
+			continue
+		}
 		if step.Change {
 			if step.DryRun {
 				out, err := s.output(ctx, "", append(append([]string{}, args...), "--dry-run=server")...)
@@ -336,6 +342,7 @@ func runRunbook(ctx context.Context, cfg config.Config, s *kubeSession, rb runbo
 			}
 			if dryRun {
 				fmt.Fprintln(stderr, "  skipped (--dry-run)")
+				skippedChange = true
 				continue
 			}
 			if !yes {

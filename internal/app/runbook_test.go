@@ -68,7 +68,8 @@ func TestRunbookStopsWithoutApproval(t *testing.T) {
 	}
 	// --dry-run changes nothing and asks nothing.
 	code, _, errb = run("--config", f.cfg, "run", "restart-deployment", "deployment=api", "namespace=payments", "--cluster", c, "--dry-run")
-	if code != ExitOK || !strings.Contains(errb, "skipped (--dry-run)") || f.called(t, c, "rollout restart deployment/api -n payments") {
+	if code != ExitOK || !strings.Contains(errb, "skipped (--dry-run)") || !strings.Contains(errb, "not run (--dry-run: it follows a change that was not made)") ||
+		f.called(t, c, "rollout restart deployment/api -n payments") || f.called(t, c, "rollout status deployment/api -n payments --timeout=5m") {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 	ev := readAudit(t, f.logPath)
