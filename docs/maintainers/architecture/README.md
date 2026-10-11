@@ -19,6 +19,6 @@ Edit a `.drawio` file directly in draw.io (desktop or app.diagrams.net). To
 regenerate all of them from code, with draw.io desktop installed:
 
 ```bash
-cd docs/architecture/generate
+cd docs/maintainers/architecture/generate
 python3 d01.py .. && python3 d02_08.py ..
 ```

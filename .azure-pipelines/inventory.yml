@@ -6,7 +6,7 @@
 # never edits the inventory — when reality and inventory/fleet.json disagree it
 # goes red and publishes a proposed inventory for a person to merge by PR.
 #
-# Setup (once): see docs/azure-devops.md
+# Setup (once): see docs/maintainers/azure-devops.md
 #   - service connection with Reader on every subscription in inventory/nedctl.json
 #   - fill in the subscription IDs in inventory/nedctl.json
 #   - create the pipeline from this file

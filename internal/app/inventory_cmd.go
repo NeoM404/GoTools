@@ -43,7 +43,7 @@ func scan(ctx context.Context, cfgPath string, stderr io.Writer, quiet bool) (co
 	}
 	if cfg.Bastion() {
 		fmt.Fprintln(stderr, "inventory discovery does not run on a bastion (config mode \"bastion\"): it needs cloud CLI access the bastion does not have. "+
-			"It runs in the inventory pipeline, which publishes the inventory bastions use — see docs/azure-devops.md")
+			"It runs in the inventory pipeline, which publishes the inventory bastions use — see docs/maintainers/azure-devops.md")
 		return cfg, declared, discovery.Result{}, false
 	}
 	d := cfg.Discovery

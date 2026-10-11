@@ -35,7 +35,7 @@ func TestSetupFromScratchIsIdempotent(t *testing.T) {
 	os.WriteFile(rc, []byte("export MINE=1\neval \"$(/old/nedctl prompt init bash)\""), 0o600)
 	args := []string{"setup", "--yes", "--start-url", "https://d-1234567890.awsapps.com/start", "--sso-region", "eu-west-1"}
 	_, _, errb := run(args...)
-	for _, want := range []string{"✔ config", "✔ install", "✔ shell", "line 2 of " + rc + " already runs `prompt init`", "nedctl aws login"} {
+	for _, want := range []string{"✔ config", "✔ install", "✔ shell", "commented out the older `prompt init` on line 2 of " + rc, "nedctl aws login"} {
 		if !strings.Contains(errb, want) {
 			t.Fatalf("setup output lacks %q:\n%s", want, errb)
 		}
@@ -48,7 +48,7 @@ func TestSetupFromScratchIsIdempotent(t *testing.T) {
 		t.Fatalf("installed binary: %v %v", fi, err)
 	}
 	first, _ := os.ReadFile(rc)
-	if !strings.HasPrefix(string(first), "export MINE=1\neval") || !strings.Contains(string(first), `export PATH="$HOME/.local/bin:$PATH"`) ||
+	if !strings.HasPrefix(string(first), "export MINE=1\n# disabled by nedctl setup: eval") || !strings.Contains(string(first), `export PATH="$HOME/.local/bin:$PATH"`) ||
 		!strings.Contains(string(first), `eval "$(nedctl prompt init bash)"`) {
 		t.Fatalf("~/.bashrc:\n%s", first)
 	}

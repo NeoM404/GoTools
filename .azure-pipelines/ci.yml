@@ -62,7 +62,7 @@ steps:
     condition: and(succeeded(), ne(variables['Build.Reason'], 'Schedule'))
 
   # What bastions consume. How it reaches them is the team's choice — see
-  # docs/azure-devops.md ("Getting the inventory onto the bastions").
+  # docs/maintainers/azure-devops.md ("Getting the inventory onto the bastions").
   - publish: inventory/fleet.json
     displayName: Publish validated inventory
     artifact: fleet

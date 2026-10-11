@@ -101,7 +101,7 @@ The bastions have no internet. The team needs to pick one of these:
 | **C. Azure Storage, private endpoint** | Static website on a storage account reachable only through a private endpoint in the bastions' VNet. | Fully Azure-native. Needs network/DNS work, and the bank's storage policy may forbid anonymous read. |
 
 Each bastion then uses a config like
-[`configs/nedctl.bastion.example.json`](../configs/nedctl.bastion.example.json)
+[`configs/nedctl.bastion.example.json`](../../configs/nedctl.bastion.example.json)
 (`"mode": "bastion"`), created with `nedctl init --mode bastion`.
 
 ## What nedctl does on a bastion

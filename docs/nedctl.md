@@ -85,7 +85,7 @@ be no `az`/`aws` CLI and no internet. With `"mode": "bastion"`:
   the record says so: the cluster's own audit log cannot tell operators apart.
 
 How the inventory reaches bastions, and the Azure DevOps pipelines that build
-and reconcile it, are in [azure-devops.md](azure-devops.md).
+and reconcile it, are in [maintainers/azure-devops.md](maintainers/azure-devops.md).
 
 ## Configuration
 

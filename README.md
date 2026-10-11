@@ -22,18 +22,11 @@ New tools are added as separate `cmd/<tool>` binaries in this one module.
 
 ## Quick start
 
-Engineers: download the release binary for your machine, then
-
-```bash
-chmod +x nedctl-linux-amd64 && ./nedctl-linux-amd64 setup
-```
-
-On Windows without WSL: `.\nedctl-windows-amd64.exe setup` in PowerShell.
-
-`setup` installs nedctl to `~/.local/bin`, adds the prompt and tab colours
-to your shell, checks your tools and network, and tells you what to run
-next (`nedctl aws login`). Release builds carry the organisation's sign-in
-settings, so there is no config to write.
+**Engineers: follow [docs/getting-started.md](docs/getting-started.md)** —
+prerequisites, where to download a release (Azure DevOps → Pipelines →
+nedctl Release → Artifacts), `setup`, and daily use. Problems:
+[docs/troubleshooting.md](docs/troubleshooting.md). The same docs are
+published as the **nedctl docs** wiki.
 
 From source:
 
@@ -51,7 +44,7 @@ internet), run nedctl in **bastion mode** (`nedctl init --mode bastion`):
 audit record, and `guard` classifies contexts by everything the kubeconfig
 carries. Cloud discovery moves to a nightly Azure DevOps pipeline that
 reconciles the reviewed inventory against Azure — see
-**[docs/azure-devops.md](docs/azure-devops.md)**.
+**[docs/maintainers/azure-devops.md](docs/maintainers/azure-devops.md)**.
 
 ## Layout
 

@@ -318,7 +318,6 @@ func addShellIntegration(ask func(string) bool, bin string) (rc, note string, er
 		block += `case ":$PATH:" in *":` + dir + `:"*) ;; *) export PATH="` + dir + `:$PATH" ;; esac` + "\n"
 	}
 	block += `command -v nedctl >/dev/null 2>&1 && eval "$(nedctl prompt init ` + shell + `)"` + "\n" + rcEnd + "\n"
-	old, _ := os.ReadFile(rc)
 	written, err := upsertBlock(rc, block, ask)
 	if err != nil || !written {
 		if err == nil {
@@ -327,7 +326,8 @@ func addShellIntegration(ask func(string) bool, bin string) (rc, note string, er
 		}
 		return rc, note, err
 	}
-	return rc, earlierInitLine(rc, string(old), "command -v nedctl"), nil
+	note, err = disableEarlierInit(rc, ask)
+	return rc, note, err
 }
 
 // addPowerShellIntegration writes the block into the profile of each
@@ -359,6 +359,11 @@ func addPowerShellIntegration(ask func(string) bool, bin string) (rc, note strin
 		}
 		if written {
 			done = append(done, p)
+			if n, err := disableEarlierInit(p, ask); err != nil {
+				return "", "", err
+			} else if n != "" {
+				note = n
+			}
 		}
 	}
 	if len(done) == 0 {
@@ -367,7 +372,7 @@ func addPowerShellIntegration(ask func(string) bool, bin string) (rc, note strin
 	if pol, err := psRun("Get-ExecutionPolicy"); err == nil {
 		switch strings.ToLower(pol) {
 		case "restricted", "allsigned", "undefined":
-			note = "PowerShell's execution policy is " + pol + ", so profiles do not load: run  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned  (or ask IT if it is enforced)"
+			note = strings.TrimSpace(note+"\n         ") + "PowerShell's execution policy is " + pol + ", so profiles do not load: run  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned  (or ask IT if it is enforced)"
 		}
 	}
 	return strings.Join(done, ", "), note, nil
@@ -412,13 +417,49 @@ func upsertBlock(path, block string, ask func(string) bool) (bool, error) {
 	return true, writeFileAtomic(path, []byte(text), mode)
 }
 
-// earlierInitLine points out a hand-added `prompt init` line outside the
-// block, which would run as well.
-func earlierInitLine(path, old, ours string) string {
-	for n, line := range strings.Split(old, "\n") {
-		if strings.Contains(line, "prompt init") && !strings.HasPrefix(strings.TrimSpace(line), ours) {
-			return fmt.Sprintf("line %d of %s already runs `prompt init` — remove it; the nedctl block replaces it", n+1, path)
+// disableEarlierInit finds `prompt init` lines outside nedctl's block —
+// added by hand before setup existed — which would run as well and point
+// nedctl at an old binary. It offers to comment them out (never deletes);
+// declined, it says where they are.
+func disableEarlierInit(path string, ask func(string) bool) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil
+	}
+	lines := strings.Split(string(data), "\n")
+	var found []int
+	inBlock := false
+	for i, l := range lines {
+		t := strings.TrimSpace(l)
+		switch {
+		case t == rcBegin:
+			inBlock = true
+		case t == rcEnd:
+			inBlock = false
+		case !inBlock && !strings.HasPrefix(t, "#") && strings.Contains(t, "prompt init"):
+			found = append(found, i)
 		}
 	}
-	return ""
+	if len(found) == 0 {
+		return "", nil
+	}
+	nums := make([]string, len(found))
+	for i, n := range found {
+		nums[i] = fmt.Sprint(n + 1)
+	}
+	where := fmt.Sprintf("line %s of %s", strings.Join(nums, ", "), path)
+	if !ask(fmt.Sprintf("%s runs an older `prompt init`, which would point nedctl at an old binary. Comment it out?", where)) {
+		return where + " still runs an older `prompt init` — remove it; the nedctl block replaces it", nil
+	}
+	for _, i := range found {
+		lines[i] = "# disabled by nedctl setup: " + lines[i]
+	}
+	mode := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil {
+		mode = fi.Mode().Perm()
+	}
+	if err := writeFileAtomic(path, []byte(strings.Join(lines, "\n")), mode); err != nil {
+		return "", err
+	}
+	return "commented out the older `prompt init` on " + where, nil
 }

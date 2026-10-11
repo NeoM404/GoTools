@@ -23,7 +23,9 @@ type Tool struct {
 	Name     string // binary name in PATH
 	Purpose  string
 	Required bool // required for nedctl's own subcommands to work
-	Install  string
+	// Install is how to get the tool on macOS (Homebrew); InstallLinux on
+	// Ubuntu and WSL, InstallWindows on Windows. Empty: see the docs.
+	Install, InstallLinux, InstallWindows string
 
 	// MinVersion is the floor nedctl warns below (empty = presence-only).
 	MinVersion string
@@ -35,26 +37,57 @@ type Tool struct {
 // to surface genuinely stale CLIs, not to nag. Override per-tool in config via
 // "minVersions": {"kubectl": "1.29"}.
 func Catalog() []Tool {
+	const more = "see docs/ecosystem-tools.md"
 	return []Tool{
 		{Name: "kubectl", Purpose: "Kubernetes CLI (nedctl guard/current shell out to it)", Required: true,
-			Install: "brew install kubectl", MinVersion: "1.28", VersionArgs: []string{"version", "--client"}},
+			Install:        "brew install kubectl",
+			InstallLinux:   `curl -sSLo kubectl "https://dl.k8s.io/release/$(curl -sSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && sudo install -m 0755 kubectl /usr/local/bin/kubectl`,
+			InstallWindows: "winget install Kubernetes.kubectl",
+			MinVersion:     "1.28", VersionArgs: []string{"version", "--client"}},
 		{Name: "aws", Purpose: "AWS CLI — EKS kubeconfig + SSO login", Required: true,
-			Install: "brew install awscli", MinVersion: "2.13", VersionArgs: []string{"--version"}},
+			Install:        "brew install awscli",
+			InstallLinux:   "curl -sSo awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip && unzip -q awscliv2.zip && sudo ./aws/install --update",
+			InstallWindows: "winget install Amazon.AWSCLI",
+			MinVersion:     "2.13", VersionArgs: []string{"--version"}},
 		{Name: "az", Purpose: "Azure CLI — AKS kubeconfig + login", Required: true,
-			Install: "brew install azure-cli", MinVersion: "2.55", VersionArgs: []string{"version", "-o", "json"}},
-		{Name: "session-manager-plugin", Purpose: "AWS Session Manager plugin — nedctl shell/connect", Install: "brew install --cask session-manager-plugin",
-			VersionArgs: []string{"--version"}},
+			Install:        "brew install azure-cli",
+			InstallLinux:   "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash",
+			InstallWindows: "winget install Microsoft.AzureCLI",
+			MinVersion:     "2.55", VersionArgs: []string{"version", "-o", "json"}},
+		{Name: "session-manager-plugin", Purpose: "AWS Session Manager plugin — nedctl shell/connect",
+			Install:        "brew install --cask session-manager-plugin",
+			InstallLinux:   "curl -sSo session-manager-plugin.deb https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb && sudo dpkg -i session-manager-plugin.deb",
+			InstallWindows: "winget install Amazon.SessionManagerPlugin",
+			VersionArgs:    []string{"--version"}},
 		{Name: "helm", Purpose: "Kubernetes package manager", Install: "brew install helm",
+			InstallLinux: "curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash", InstallWindows: "winget install Helm.Helm",
 			MinVersion: "3.12", VersionArgs: []string{"version", "--short"}},
-		{Name: "kubectx", Purpose: "Fast context switching", Install: "brew install kubectx"},
-		{Name: "kubens", Purpose: "Fast namespace switching", Install: "brew install kubectx"},
-		{Name: "kubie", Purpose: "Isolated per-shell contexts (safer at fleet scale)", Install: "brew install kubie"},
-		{Name: "k9s", Purpose: "Terminal UI for clusters", Install: "brew install k9s"},
-		{Name: "stern", Purpose: "Multi-pod log tailing", Install: "brew install stern"},
-		{Name: "argocd", Purpose: "Argo CD CLI (GitOps fleet)", Install: "brew install argocd"},
-		{Name: "kubent", Purpose: "Deprecated-API scanner (pre-upgrade)", Install: "sh -c 'curl -sSfL https://git.io/install-kubent | sh'"},
-		{Name: "trivy", Purpose: "Image/IaC/secret scanner", Install: "brew install trivy"},
+		{Name: "kubectx", Purpose: "Fast context switching", Install: "brew install kubectx", InstallLinux: more, InstallWindows: more},
+		{Name: "kubens", Purpose: "Fast namespace switching", Install: "brew install kubectx", InstallLinux: more, InstallWindows: more},
+		{Name: "kubie", Purpose: "Isolated per-shell contexts (safer at fleet scale)", Install: "brew install kubie", InstallLinux: more, InstallWindows: more},
+		{Name: "k9s", Purpose: "Terminal UI for clusters", Install: "brew install k9s", InstallLinux: more, InstallWindows: "winget install Derailed.k9s"},
+		{Name: "stern", Purpose: "Multi-pod log tailing", Install: "brew install stern", InstallLinux: more, InstallWindows: more},
+		{Name: "argocd", Purpose: "Argo CD CLI (GitOps fleet)", Install: "brew install argocd", InstallLinux: more, InstallWindows: more},
+		{Name: "kubent", Purpose: "Deprecated-API scanner (pre-upgrade)", Install: "sh -c 'curl -sSfL https://git.io/install-kubent | sh'",
+			InstallLinux: "sh -c 'curl -sSfL https://git.io/install-kubent | sh'", InstallWindows: more},
+		{Name: "trivy", Purpose: "Image/IaC/secret scanner", Install: "brew install trivy", InstallLinux: more, InstallWindows: more},
 	}
+}
+
+// InstallHint is how to install the tool on goos ("darwin", "linux",
+// "windows"): what someone on that machine can actually run.
+func (t Tool) InstallHint(goos string) string {
+	switch goos {
+	case "linux":
+		if t.InstallLinux != "" {
+			return t.InstallLinux
+		}
+	case "windows":
+		if t.InstallWindows != "" {
+			return t.InstallWindows
+		}
+	}
+	return t.Install
 }
 
 // Result is the outcome of checking one tool.

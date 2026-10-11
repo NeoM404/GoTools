@@ -1,4 +1,4 @@
-# bankctl Fleet Tooling Roadmap
+# Fleet tooling roadmap (early plan, written when the tool was called bankctl)
 
 Expanding GoTools for a multi-cloud AKS + EKS fleet under banking regulatory constraints.
 

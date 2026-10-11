@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,5 +62,21 @@ func TestVersionCheck(t *testing.T) {
 	os.WriteFile(cfg, []byte(`{"releaseUrl": "http://insecure.example/latest.json"}`), 0o600)
 	if code, _, _ := run("--config", cfg, "version", "--check"); code != ExitFailure {
 		t.Fatal("releaseUrl must be https")
+	}
+}
+
+func TestVersionWarnsWhenAnotherNedctlIsOnPath(t *testing.T) {
+	old := checkShadow
+	t.Cleanup(func() { checkShadow = old })
+	checkShadow = func(io.Writer) bool { return true }
+	fakeCLI(t, "nedctl", `echo "nedctl v1.0.0"`)
+	_, out, errb := run("version")
+	if !strings.HasPrefix(out, "nedctl ") || !strings.Contains(errb, "the nedctl on your PATH is") || !strings.Contains(errb, "(v1.0.0)") {
+		t.Fatalf("out=%q err=%q", out, errb)
+	}
+	// The same binary on PATH: nothing to say.
+	t.Setenv("PATH", t.TempDir())
+	if _, _, errb := run("version"); errb != "" {
+		t.Fatalf("no other nedctl: %q", errb)
 	}
 }

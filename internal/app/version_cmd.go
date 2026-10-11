@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"nedctl/internal/config"
@@ -89,6 +93,11 @@ func cmdVersion(ctx context.Context, cfgPath string, args []string, stdout, stde
 		return ExitUsage
 	}
 	fmt.Fprintf(stdout, "nedctl %s\n", Version)
+	if checkShadow(stderr) {
+		if note := shadowNote(ctx); note != "" {
+			fmt.Fprintln(stderr, note)
+		}
+	}
 	if !*check {
 		return ExitOK
 	}
@@ -122,4 +131,42 @@ func cmdVersion(ctx context.Context, cfgPath string, args []string, stdout, stde
 		fmt.Fprintln(stdout, "up to date")
 	}
 	return ExitOK
+}
+
+// checkShadow turns shadowNote on: at a terminal, or in tests.
+var checkShadow = func(stderr io.Writer) bool { return colorOn(stderr) }
+
+// shadowNote says when the nedctl that is running is not the one on PATH —
+// typically an older shell function or alias (from a hand-added
+// `prompt init` line) still calling a dev build after setup installed a
+// release. It names both and their versions.
+func shadowNote(ctx context.Context) string {
+	if os.Getenv("NEDCTL_NO_SHADOW_CHECK") != "" {
+		return ""
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	self, _ = filepath.EvalSymlinks(self)
+	onPath, err := exec.LookPath("nedctl")
+	if err != nil {
+		return ""
+	}
+	real, _ := filepath.EvalSymlinks(onPath)
+	if real == "" || real == self {
+		return ""
+	}
+	other := "unknown version"
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, real, "version") //nolint:gosec // the nedctl on PATH, asked only its version
+	cmd.Env = append(os.Environ(), "NEDCTL_NO_SHADOW_CHECK=1")
+	if out, err := cmd.Output(); err == nil {
+		other = strings.TrimPrefix(strings.TrimSpace(string(out)), "nedctl ")
+	}
+	return fmt.Sprintf("⚠ the nedctl on your PATH is %s (%s), but this is %s (%s).\n"+
+		"  Something — usually an older `prompt init` line in ~/.bashrc, or a terminal opened before setup — runs this one instead.\n"+
+		"  Open a new terminal; if it persists, run setup again (it offers to disable old lines) or check ~/.bashrc.",
+		real, other, self, Version)
 }

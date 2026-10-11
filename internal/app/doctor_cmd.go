@@ -190,7 +190,7 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 		for _, r := range results {
 			rep.Tools = append(rep.Tools, doctorTool{
 				Name: r.Name, Required: r.Required, Status: toolStatus(r),
-				Version: r.Detected, MinVersion: r.MinVersion, Purpose: r.Purpose, Install: r.Install,
+				Version: r.Detected, MinVersion: r.MinVersion, Purpose: r.Purpose, Install: r.InstallHint(goos),
 			})
 		}
 		if rc := writeJSON(stdout, stderr, rep); rc != ExitOK {
@@ -233,13 +233,13 @@ func cmdDoctor(ctx context.Context, cfgPath string, args []string, stdout, stder
 	if len(missing) > 0 {
 		fmt.Fprintln(stderr, "\n"+ui.Style{Color: colorOn(stderr)}.Fail("missing REQUIRED tools:"))
 		for _, m := range missing {
-			fmt.Fprintf(stderr, "  %s — install: %s\n", m.Name, m.Install)
+			fmt.Fprintf(stderr, "  %s — install: %s\n", m.Name, m.InstallHint(goos))
 		}
 	}
 	if len(outdatedAll) > 0 {
 		fmt.Fprintln(stderr, "\n"+ui.Style{Color: colorOn(stderr)}.Warn("below version floor (update these):"))
 		for _, o := range outdatedAll {
-			fmt.Fprintf(stderr, "  %s %s < %s — %s\n", o.Name, o.Detected, o.MinVersion, o.Install)
+			fmt.Fprintf(stderr, "  %s %s < %s — %s\n", o.Name, o.Detected, o.MinVersion, o.InstallHint(goos))
 		}
 	}
 	if len(missing) == 0 && len(outdatedAll) == 0 {

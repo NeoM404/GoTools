@@ -22,3 +22,4 @@ fleet.json
 *.test
 *.out
 coverage.*
+__pycache__/

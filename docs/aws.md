@@ -16,6 +16,9 @@ to configure, see [security.md](security.md).
 
 ## Setup
 
+New to nedctl? **[Getting started](getting-started.md)** covers the
+prerequisites, where to download a release, and `setup`. In short:
+
 ```bash
 ./nedctl-linux-amd64 setup      # from the release download
 nedctl aws login                # in a new terminal
