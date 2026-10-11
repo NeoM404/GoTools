@@ -46,7 +46,7 @@ func newAzureWorld(t *testing.T, extra string) *azureWorld {
 	}
 	fakeCLI(t, "ssh", `printf '%s\n' "$*" >> `+sq(w.calls)+`
 while [ $# -gt 0 ]; do
-  case "$1" in -o|-l|-J) shift 2;; -t|-T) shift;; *) break;; esac
+  case "$1" in -o|-l|-J|-L) shift 2;; -t|-T) shift;; *) break;; esac
 done
 case "$1" in unreachable*) echo "ssh: connect to host: timed out" >&2; exit 255;; esac
 shift

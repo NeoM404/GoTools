@@ -94,3 +94,27 @@ start. `-f` keeps following until you press Ctrl-C.
 On AKS this runs on the bastion, so you don't need a shell there. Reading
 logs is recorded in the audit trail (`logs-read`), because production logs
 can hold customer data.
+
+## Reach a service from your laptop: `nedctl forward`
+
+```bash
+nedctl forward svc/payments-api 8080 -n payments            # → http://127.0.0.1:8080
+nedctl forward svc/payments-db 15432:5432 -n payments       # DBeaver on 127.0.0.1:15432
+nedctl forward svc/web 443 -n web                           # privileged port → 127.0.0.1:8443
+```
+
+This makes a service, pod or deployment reachable on **127.0.0.1** on your
+machine, for a browser, Postman or a database tool. It works the same on
+Windows, WSL and Mac. Ctrl-C stops it.
+
+- **EKS:** kubectl port-forwards through the tunnel.
+- **AKS:** kubectl port-forwards on the bastion, to its own loopback, and
+  your SSH connection carries that port to you. It's a single connection,
+  so when you stop, both ends stop. If the local port is in use, nedctl says
+  so before connecting.
+
+Each forward is recorded (`port-forward`). On the bastion, the forwarded
+port is on the bastion's loopback for as long as you forward, so other users
+logged in to that bastion could reach it too. They have the same cluster
+access already, so this gives them nothing new, but don't forward to a
+production database longer than you need.

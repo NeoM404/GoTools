@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -77,4 +78,15 @@ func (f *clusterFixture) fail(t *testing.T, cluster, args, msg string) {
 	if err := os.WriteFile(filepath.Join(f.dir, cluster, fixtureKey(args)+".err"), []byte(msg), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func (f *clusterFixture) kubectlCalls(t *testing.T) string {
+	t.Helper()
+	data, _ := os.ReadFile(f.calls)
+	return string(data)
+}
+
+func (f *clusterFixture) called(t *testing.T, cluster, args string) bool {
+	t.Helper()
+	return strings.Contains(f.kubectlCalls(t), cluster+"|"+args+"\n")
 }

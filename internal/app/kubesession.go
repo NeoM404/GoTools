@@ -20,6 +20,7 @@ import (
 type kubeSession struct {
 	cloud, cluster, env, where string
 	pc                         profileContext
+	bastion                    *sshTarget // AKS: the bastion kubectl runs on
 	// kubectl runs kubectl with args; tty asks for a terminal (exec -it).
 	kubectl func(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, tty bool) error
 	close   func()
@@ -112,7 +113,7 @@ func openAKSSession(ctx context.Context, cfg config.Config, f sessionFlags, stde
 	}
 	saveLast(cfg, pc, "aks", name)
 	label, title := promptLabel(cfg, env, name, false), strings.ToUpper(env)+" · "+name
-	s := &kubeSession{cloud: "azure", cluster: name, env: env, where: "on bastion " + t.Name, pc: pc, close: func() {}}
+	s := &kubeSession{cloud: "azure", cluster: name, env: env, where: "on bastion " + t.Name, pc: pc, bastion: &t, close: func() {}}
 	s.kubectl = func(ctx context.Context, args []string, in io.Reader, out, errw io.Writer, tty bool) error {
 		remote := remoteBash(sessionScript, append([]string{label, title, "", name, "kubectl"}, args...)...)
 		err := execx.Interactive(ctx, execx.Spec{Stdin: in, Stdout: out, Stderr: errw, Name: "ssh",

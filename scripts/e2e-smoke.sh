@@ -58,6 +58,7 @@ check "debug validates the image" 2 'not an image reference' -- --config "$root/
 check "explain validates its target" 2 'usage: nedctl explain' -- explain 'svc/x'
 check "app needs a name" 2 'usage: nedctl app' -- app
 check "logs validates --since" 2 'usage: nedctl logs' -- logs x --since 1d
+check "forward validates the port" 2 'ports are 1-65535' -- forward svc/x 70000
 check "prompt never fails" 0 - -- prompt --shell bash
 check "guard without a kubeconfig fails clearly" 1 'current kube-context' -- guard
 check "doctor -o json is machine readable" 0 '"healthy"' -- --config "$root/configs/nedctl.bastion.example.json" doctor -o json
