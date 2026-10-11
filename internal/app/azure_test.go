@@ -18,7 +18,7 @@ import (
 // here with a real bash, as the bastion would, against a fake kubectl with
 // three contexts. Everything ssh was asked to do is kept in calls.
 type azureWorld struct {
-	cfg, calls, logPath, remoteHome string
+	cfg, calls, logPath, remoteHome, remoteTmp string
 }
 
 func newAzureWorld(t *testing.T, extra string) *azureWorld {
@@ -27,10 +27,17 @@ func newAzureWorld(t *testing.T, extra string) *azureWorld {
 		t.Skip("bash not installed")
 	}
 	dir := t.TempDir()
-	w := &azureWorld{calls: filepath.Join(dir, "ssh-calls"), logPath: filepath.Join(dir, "audit.log"), remoteHome: filepath.Join(dir, "bastion-home")}
-	if err := os.MkdirAll(w.remoteHome, 0o700); err != nil {
+	w := &azureWorld{calls: filepath.Join(dir, "ssh-calls"), logPath: filepath.Join(dir, "audit.log"), remoteHome: filepath.Join(dir, "bastion-home"), remoteTmp: filepath.Join(dir, "bastion-tmp")}
+	// As on the real bastions, ~/.kube belongs to the platform: read-only.
+	for _, d := range []string{filepath.Join(w.remoteHome, ".kube"), w.remoteTmp} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(w.remoteHome, ".kube"), 0o555); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { os.Chmod(filepath.Join(w.remoteHome, ".kube"), 0o700) })
 	w.cfg = filepath.Join(dir, "cfg.json")
 	body := `{"environments":["dev","ete","qa","prod"],"prodEnvironments":["qa","prod"],"audit":{"logPath":` + quote(w.logPath) + `},
  "azure":{"bastions":{"qa":"aks-qa","dev":"neo@10.0.0.4"},"hosts":[{"name":"jenkins-dev","environment":"dev","jump":"bastion"}]}` + extra + `}`
@@ -47,7 +54,7 @@ shift
 # A login shell here would load this machine's profile and lose the fake
 # kubectl from PATH; on a bastion -l is what loads its PATH.
 remote=$(printf '%s' "$1" | sed '1s/^bash -lc /bash -c /')
-HOME=`+sq(w.remoteHome)+` KUBECONFIG= exec sh -c "$remote"`)
+HOME=`+sq(w.remoteHome)+` TMPDIR=`+sq(w.remoteTmp)+` KUBECONFIG= exec sh -c "$remote"`)
 	fakeCLI(t, "kubectl", `case "$*" in
 "config get-contexts -o name") printf 'Last login banner\nacm-k8s-qa-cluster\npayments-k8s-qa-cluster\npayments-k8s-qa-blue\n';;
 "config get-contexts "*) case "$3" in acm-k8s-qa-cluster|payments-k8s-qa-cluster|payments-k8s-qa-blue) exit 0;; *) exit 1;; esac;;
@@ -74,7 +81,7 @@ func TestAzureKubeOneCommandSelectsTheClusterForThatCommandOnly(t *testing.T) {
 	if !strings.Contains(w.sshCalls(t), " aks-qa bash -lc ") {
 		t.Fatalf("ssh calls:\n%s", w.sshCalls(t))
 	}
-	if !strings.Contains(out, "kubectl get pods -A KUBECONFIG="+w.remoteHome+"/.kube/nedctl/session-") ||
+	if !strings.Contains(out, "kubectl get pods -A KUBECONFIG="+w.remoteTmp+"/nedctl-ctx.") ||
 		!strings.Contains(out, ":"+w.remoteHome+"/.kube/config") || !strings.Contains(out, `current-context: "payments-k8s-qa-cluster"`) {
 		t.Fatalf("remote output: %q", out)
 	}
@@ -82,7 +89,7 @@ func TestAzureKubeOneCommandSelectsTheClusterForThatCommandOnly(t *testing.T) {
 		t.Fatalf("the session file must not hold credentials: %q", out)
 	}
 	// The session file is removed after the command.
-	if left, _ := filepath.Glob(filepath.Join(w.remoteHome, ".kube/nedctl/session-*")); len(left) != 0 {
+	if left, _ := filepath.Glob(filepath.Join(w.remoteTmp, "nedctl-ctx.*")); len(left) != 0 {
 		t.Fatalf("left behind: %v", left)
 	}
 	ev := readAudit(t, w.logPath)
@@ -103,11 +110,11 @@ func TestAzureKubeInteractiveShellHasTheClusterAndCleansUp(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
-	if !strings.Contains(out, "KC="+w.remoteHome+"/.kube/nedctl/session-") || !strings.Contains(out, `current-context: "acm-k8s-qa-cluster"`) ||
+	if !strings.Contains(out, "KC="+w.remoteTmp+"/nedctl-ctx.") || !strings.Contains(out, `current-context: "acm-k8s-qa-cluster"`) ||
 		!strings.Contains(out, "PS1=[QA acm-k8s-qa-cluster] ") {
 		t.Fatalf("remote shell: %q", out)
 	}
-	if left, _ := filepath.Glob(filepath.Join(w.remoteHome, ".kube/nedctl/session-*")); len(left) != 0 {
+	if left, _ := filepath.Glob(filepath.Join(w.remoteTmp, "nedctl-ctx.*")); len(left) != 0 {
 		t.Fatalf("left behind: %v", left)
 	}
 	if !strings.Contains(errb, "▶ QA · acm-k8s-qa-cluster on aks-qa") || !strings.Contains(errb, "PRODUCTION") {

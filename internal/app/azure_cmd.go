@@ -178,7 +178,9 @@ const listContextsScript = `kubectl config get-contexts -o name`
 // arguments are one command to run instead of a shell.
 //
 // The kube-context is selected for this session only: a small file that
-// sets just current-context goes first in KUBECONFIG, in front of the
+// sets just current-context (made with mktemp in the bastion's temp
+// directory, mode 0600 — ~/.kube is often read-only, owned by the
+// platform) goes first in KUBECONFIG, in front of the
 // host's own kubeconfig. Credentials stay where the platform put them —
 // nothing is copied — and the engineer's other sessions (or `kubectx` in
 // another terminal) cannot switch this one to another cluster. `kubectx`
@@ -189,11 +191,10 @@ if [ -n "$ctx" ]; then
     echo "nedctl: there is no kube-context \"$ctx\" on $(hostname) — see nedctl azure clusters --refresh" >&2
     exit 3
   fi
-  d="$HOME/.kube/nedctl"
-  (umask 077; mkdir -p "$d") || exit 1
-  find "$d" -name 'session-*' -mmin +1440 -delete 2>/dev/null
-  NEDCTL_CTX="$d/session-$$.yaml"
-  (umask 077; printf 'apiVersion: v1\nkind: Config\ncurrent-context: "%s"\n' "$ctx" > "$NEDCTL_CTX") || exit 1
+  tmp="${TMPDIR:-/tmp}"
+  find "$tmp" -maxdepth 1 -name 'nedctl-ctx.*' -user "$(id -u)" -mmin +1440 -delete 2>/dev/null
+  NEDCTL_CTX=$(mktemp "$tmp/nedctl-ctx.XXXXXX") || exit 1
+  printf 'apiVersion: v1\nkind: Config\ncurrent-context: "%s"\n' "$ctx" > "$NEDCTL_CTX" || exit 1
   export NEDCTL_CTX
   if [ $# -gt 0 ]; then
     KUBECONFIG="$NEDCTL_CTX:${KUBECONFIG:-$HOME/.kube/config}" "$@"

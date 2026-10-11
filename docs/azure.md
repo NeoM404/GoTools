@@ -39,9 +39,10 @@ bastion. With two terminals open, one on a QA cluster and one on another,
 switching in one silently switches the other.
 
 nedctl's sessions don't do that. Each session gets a small file on the
-bastion (`~/.kube/nedctl/session-<pid>.yaml`) that holds only
+bastion (`/tmp/nedctl-ctx.XXXXXX`, readable only by you) that holds only
 `current-context`. That file goes first in `KUBECONFIG`, in front of your
-own kubeconfig. As a result:
+own kubeconfig. Your `~/.kube` is never written to, so this works when it is
+read-only. As a result:
 
 - each session stays on the cluster it was opened for;
 - `kubectx` inside a session switches only that session;
