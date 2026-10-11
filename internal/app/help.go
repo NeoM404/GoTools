@@ -57,6 +57,8 @@ var helpGroups = []helpGroup{
 			[]string{"nedctl azure shell qa", "nedctl azure shell", "nedctl azure shell ete --tab"}},
 		{"azure clusters", "[env]", "The AKS clusters on each bastion", "Uses what nedctl remembers; --refresh asks the bastions again.", []string{"nedctl azure clusters", "nedctl azure clusters qa --refresh"}},
 		{"azure hosts", "", "The bastions and machines azure shell reaches", "", []string{"nedctl azure hosts"}},
+		{"azure cp", "<name|env>:PATH LOCAL", "Copy files to or from a bastion or Azure machine (scp)", "Uses the same SSH settings as azure shell. Recorded.",
+			[]string{"nedctl azure cp qa:/tmp/capture.pcap .", "nedctl azure cp ./script.sh qa:~/"}},
 	}},
 	{"For developers (EKS or AKS)", []cmdHelp{
 		{"explain", "<pod|deploy/NAME>", "Why is it not working? Findings in plain words, with what to do",
@@ -68,6 +70,9 @@ var helpGroups = []helpGroup{
 		{"forward", "<svc/NAME> [LOCAL:]REMOTE", "Reach a service in the cluster from this machine (127.0.0.1)",
 			"Port-forwards a service, pod or deployment to 127.0.0.1 here, for a browser, Postman or a database tool. On AKS, kubectl forwards on the bastion and SSH carries the port to you in the same connection. Ctrl-C stops both. Recorded.",
 			[]string{"nedctl forward svc/payments-api 8080 -n payments", "nedctl forward svc/payments-db 15432:5432 -n payments --cluster acm-k8s-qa-cluster", "nedctl forward svc/web 443 -n web   # → 127.0.0.1:8443"}},
+		{"cp", "POD:/path LOCAL", "Copy files out of (or into) a container",
+			"Streams a tar of the path through the session — on AKS through the bastion, never stored there — and writes it here, refusing paths that escape the target (up to 2 GB). LOCAL POD:/path copies into the container after showing what and asking. Needs tar in the container. Recorded.",
+			[]string{"nedctl cp payments-api-7f9c:/tmp/heap.hprof . -n payments", "nedctl cp ./config.yaml payments-api-7f9c:/tmp/config.yaml -n payments"}},
 		{"app", "NAME", "One app in every environment: version, ready replicas, last change",
 			"Searches every AKS cluster on the bastions (or --env, --cluster, --aws for EKS) for deployments and statefulsets whose name contains NAME, and shows each one's image version, ready replicas and last update, then a one-line summary of which version runs where. Read-only.",
 			[]string{"nedctl app payments-api", "nedctl app payments-api --env qa,prod --match payments", "nedctl app payments-api --exact -o json"}},

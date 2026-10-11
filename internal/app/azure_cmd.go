@@ -250,7 +250,7 @@ func tabIndex(cfg config.Config, env string) string {
 
 func cmdAzure(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: nedctl azure <kube|shell|clusters|hosts> ...")
+		fmt.Fprintln(stderr, "usage: nedctl azure <kube|shell|clusters|hosts|cp> ...")
 		return ExitUsage
 	}
 	switch args[0] {
@@ -262,6 +262,8 @@ func cmdAzure(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return azureClusters(ctx, cfgPath, args[1:], stdout, stderr)
 	case "hosts":
 		return azureHosts(cfgPath, args[1:], stdout, stderr)
+	case "cp":
+		return azureCp(ctx, cfgPath, args[1:], stderr)
 	}
 	fmt.Fprintf(stderr, "unknown azure subcommand %q (want kube, shell, clusters or hosts)\n", args[0])
 	return ExitUsage

@@ -118,3 +118,35 @@ port is on the bastion's loopback for as long as you forward, so other users
 logged in to that bastion could reach it too. They have the same cluster
 access already, so this gives them nothing new, but don't forward to a
 production database longer than you need.
+
+## Copy files out of (or into) a container: `nedctl cp`
+
+```bash
+nedctl cp payments-api-7f9c:/tmp/heap.hprof . -n payments          # a heap dump to this folder
+nedctl cp payments-api-7f9c:/var/log/app ./logs -n payments -c api # a whole directory
+nedctl cp ./config.yaml payments-api-7f9c:/tmp/config.yaml -n payments
+```
+
+The container makes a tar of the path, and it streams through the session
+to your machine. On AKS it passes through the bastion but is never stored
+there. nedctl unpacks it here itself and:
+
+- refuses entries that would land outside the target;
+- skips links and devices;
+- stops above 2 GB.
+
+**Copying into a container** shows what will be copied (files and size),
+asks first, and is recorded. Both directions need `tar` in the container.
+For distroless images, `nedctl debug attach` gives you a shell beside the
+container instead.
+
+### Files on a bastion or Azure machine: `nedctl azure cp`
+
+```bash
+nedctl azure cp qa:/tmp/capture.pcap .        # from the QA bastion
+nedctl azure cp ./script.sh jenkins-dev:/tmp/ # to a machine from azure hosts
+```
+
+This uses `scp` with the same SSH settings as `azure shell`: user,
+`~/.ssh/config` and the jump through the bastion. Directories copy
+recursively. Copies are recorded (`scp-download`, `scp-upload`).

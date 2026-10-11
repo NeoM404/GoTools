@@ -90,3 +90,15 @@ func (f *clusterFixture) called(t *testing.T, cluster, args string) bool {
 	t.Helper()
 	return strings.Contains(f.kubectlCalls(t), cluster+"|"+args+"\n")
 }
+
+// keepStdin records what kubectl reads on stdin for args (then answers out).
+func (f *clusterFixture) keepStdin(t *testing.T, cluster, args, out string) {
+	t.Helper()
+	f.answer(t, cluster, args, out)
+	os.WriteFile(filepath.Join(f.dir, cluster, fixtureKey(args)+".stdin"), nil, 0o600)
+}
+
+func (f *clusterFixture) stdinOf(cluster, args string) []byte {
+	data, _ := os.ReadFile(filepath.Join(f.dir, cluster, fixtureKey(args)+".stdin"))
+	return data
+}
