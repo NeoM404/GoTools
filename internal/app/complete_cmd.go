@@ -29,7 +29,7 @@ var subcommands = map[string][]string{
 	"eks":       {"auth", "access"},
 	"ec2":       {"start", "stop"},
 	"clusters":  {"list"},
-	"fleet":     {"versions", "eol", "calendar"},
+	"fleet":     {"versions", "eol", "calendar", "run"},
 	"inventory": {"validate", "diff", "sync"},
 	"audit":     {"verify"},
 	"prompt":    {"init"},

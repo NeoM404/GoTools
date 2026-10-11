@@ -76,6 +76,9 @@ var helpGroups = []helpGroup{
 		{"health", "", "One line per cluster, then what needs attention",
 			"Nodes not ready or under pressure, pods crash-looping or stuck pending, workloads below their replicas, volume claims not bound, TLS certificates expiring (default within 30 days), and the version's support status. --env qa checks every QA cluster in one SSH connection per bastion. Read-only; exits 1 when a cluster fails or cannot be reached.",
 			[]string{"nedctl health --env qa", "nedctl health --env dev,qa --match payments", "nedctl health --cluster acm-k8s-qa-cluster", "nedctl health --aws -o json"}},
+		{"fleet run", "-- kubectl …", "One read-only kubectl command on many clusters",
+			"Runs a read-only kubectl command (get, describe, logs, top, events, auth can-i, …) on every cluster selected — --env qa runs it on every QA cluster in one SSH connection per bastion — and shows the answers per cluster. Write commands, --context/--kubeconfig and -f/--watch are refused.",
+			[]string{"nedctl fleet run --env qa -- kubectl get nodes", "nedctl fleet run --env dev,qa,prod --prefix -- kubectl get deploy -A | grep payments-api", "nedctl fleet run --aws -- kubectl get --raw /version"}},
 	}},
 	{"Debugging on a cluster (EKS or AKS)", []cmdHelp{
 		{"debug pod", "", "A debug pod (netshoot by default) with a shell; removed when you exit",

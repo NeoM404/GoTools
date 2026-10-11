@@ -21,7 +21,7 @@ var now = time.Now
 
 func cmdFleet(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: nedctl fleet <versions|eol|calendar> ...")
+		fmt.Fprintln(stderr, "usage: nedctl fleet <versions|eol|calendar|run> ...")
 		return ExitUsage
 	}
 	switch args[0] {
@@ -31,6 +31,8 @@ func cmdFleet(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return fleetEOL(cfgPath, args[1:], stdout, stderr)
 	case "calendar":
 		return fleetCalendar(ctx, cfgPath, args[1:], stdout, stderr)
+	case "run":
+		return fleetRun(ctx, cfgPath, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown fleet subcommand %q\n", args[0])
 		return ExitUsage

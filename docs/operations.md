@@ -47,3 +47,27 @@ For each cluster, `health` reports:
 
 `health` exits with code 1 when any cluster fails or can't be reached, so it
 works as a scheduled check. `-o json` gives the full list.
+
+## One command on many clusters: `nedctl fleet run`
+
+```bash
+nedctl fleet run --env qa -- kubectl get nodes
+nedctl fleet run --env dev,qa,prod --prefix -- kubectl get deploy -A | grep payments-api
+nedctl fleet run --env prod -- kubectl auth can-i list secrets
+```
+
+This runs one **read-only** kubectl command on every selected cluster and
+shows the answers under a heading per cluster. With `--prefix`, every line
+starts with the cluster's name instead, ready for `grep`. All of a bastion's
+clusters run over one SSH connection, eight at a time, with a 20-second
+limit each. A cluster that doesn't answer is shown as failed, and the
+command exits 1.
+
+Allowed: `get`, `describe`, `logs`, `top`, `events`, `version`,
+`api-resources`, `api-versions`, `explain`, `cluster-info`, `auth can-i`
+and `auth whoami`. Refused:
+
+- every command that changes something (use a [runbook](#runbooks-nedctl-run));
+- `--context`, `--kubeconfig`, `--server`, `--token` and `--as`, because
+  nedctl chooses the clusters;
+- `-f` and `--watch`, because the command has to finish on every cluster.
