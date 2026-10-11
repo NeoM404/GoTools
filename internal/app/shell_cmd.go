@@ -166,7 +166,7 @@ func instancesIn(ctx context.Context, cfg config.Config, profile, region string)
 				switch {
 				case tg.Key == "Name":
 					e.Name = tg.Value
-				case strings.EqualFold(tg.Key, levelTag):
+				case config.SameTagKey(tg.Key, levelTag):
 					e.AccessLevel = tg.Value
 				}
 			}
@@ -174,6 +174,23 @@ func instancesIn(ctx context.Context, cfg config.Config, profile, region string)
 		}
 	}
 	return list, nil
+}
+
+// parseLevels reads --level: access levels 0-4, comma-separated; nil when
+// not given.
+func parseLevels(s string) (map[string]bool, bool) {
+	if strings.TrimSpace(s) == "" {
+		return nil, true
+	}
+	m := map[string]bool{}
+	for _, l := range strings.Split(s, ",") {
+		l = strings.TrimSpace(l)
+		if len(l) != 1 || l[0] < '0' || l[0] > '4' {
+			return nil, false
+		}
+		m[l] = true
+	}
+	return m, true
 }
 
 // noInstances explains an empty search instead of an empty picker.
@@ -245,6 +262,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	fs.SetOutput(stderr)
 	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last nedctl aws login)")
 	instance := fs.String("instance", "", "instance ID or Name tag (skips the picker)")
+	level := fs.String("level", "", "only instances with this Access Level, 0-4 (several: 2,3)")
 	yes := fs.Bool("yes", false, "confirm production access without being asked (when confirmProduction is on)")
 	via := fs.String("via", "aws", "aws (Session Manager directly) or legacy (launch sm/SSMshell already signed in)")
 	tab := fs.Bool("tab", false, "open the session in a new Windows Terminal tab coloured by environment")
@@ -258,6 +276,11 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	}
 	if *via != "aws" && *via != "legacy" {
 		fmt.Fprintf(stderr, "--via %q: want aws or legacy\n", *via)
+		return ExitUsage
+	}
+	levels, ok := parseLevels(*level)
+	if !ok {
+		fmt.Fprintf(stderr, "--level %q: want access levels 0-4, e.g. 3 or 2,3\n", *level)
 		return ExitUsage
 	}
 	cfg, _, err := config.Load(cfgPath)
@@ -284,6 +307,19 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	if len(list) == 0 {
 		noInstances(pc, searched, stderr)
 		return ExitFailure
+	}
+	if levels != nil {
+		var kept []ec2Instance
+		for _, in := range list {
+			if levels[strings.TrimSpace(in.AccessLevel)] {
+				kept = append(kept, in)
+			}
+		}
+		if len(kept) == 0 {
+			fmt.Fprintf(stderr, "no instance in %s has %s %s\n", pc.label(), cfg.AWS.LevelTag(), *level)
+			return ExitFailure
+		}
+		list = kept
 	}
 	in, code := chooseInstance(cfg, pc, list, *instance, terms, stderr)
 	if code != ExitOK {

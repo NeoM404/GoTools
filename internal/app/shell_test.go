@@ -9,6 +9,7 @@ import (
 
 	"nedctl/internal/audit"
 	"nedctl/internal/awssso"
+	"nedctl/internal/config"
 )
 
 // ec2World is an awsWorld signed in to one profile, with a fake account of
@@ -19,7 +20,7 @@ type ec2World struct {
 }
 
 const instancesJSON = `{"Reservations":[{"Instances":[
- {"InstanceId":"i-0aaaaaaaaaaaaaaa1","InstanceType":"t3.large","PrivateIpAddress":"10.0.1.10","State":{"Name":"running"},"Placement":{"AvailabilityZone":"af-south-1a"},"Tags":[{"Key":"Name","Value":"payments-devops"},{"Key":"AccessLevel","Value":"3"}]},
+ {"InstanceId":"i-0aaaaaaaaaaaaaaa1","InstanceType":"t3.large","PrivateIpAddress":"10.0.1.10","State":{"Name":"running"},"Placement":{"AvailabilityZone":"af-south-1a"},"Tags":[{"Key":"Name","Value":"payments-devops"},{"Key":"Access Level","Value":"3"}]},
  {"InstanceId":"i-0bbbbbbbbbbbbbbb2","InstanceType":"t3.small","PrivateIpAddress":"10.0.1.11","State":{"Name":"stopped"},"Placement":{"AvailabilityZone":"af-south-1b"},"Tags":[{"Key":"Name","Value":"payments-batch"},{"Key":"AccessLevel","Value":"1"}]},
  {"InstanceId":"i-0ccccccccccccccc3","InstanceType":"t3.small","PrivateIpAddress":"10.0.1.12","State":{"Name":"running"},"Placement":{"AvailabilityZone":"af-south-1a"},"Tags":[{"Key":"Name","Value":"payments-tools"}]}]}]}`
 
@@ -83,6 +84,36 @@ func TestShellPickerShowsInstancesLikeSSMshell(t *testing.T) {
 	}
 	if !strings.Contains(w.awsCalls(t), "--target i-0ccccccccccccccc3") {
 		t.Fatalf("calls:\n%s", w.awsCalls(t))
+	}
+}
+
+func TestShellLevelFiltersOnTheAccessLevelTag(t *testing.T) {
+	w := newEC2World(t, "dev", "")
+	// "Access Level" (the bank's tag) and "AccessLevel" are the same tag.
+	if code, _, errb := run("--config", w.cfg, "shell", "--level", "3"); code != ExitOK {
+		t.Fatalf("err=%q", errb)
+	}
+	if !strings.Contains(w.awsCalls(t), "--target i-0aaaaaaaaaaaaaaa1") {
+		t.Fatalf("calls:\n%s", w.awsCalls(t))
+	}
+	if code, _, errb := run("--config", w.cfg, "shell", "--level", "2,4"); code != ExitFailure || !strings.Contains(errb, "Access Level 2,4") {
+		t.Fatalf("code=%d err=%q", code, errb)
+	}
+	for _, bad := range []string{"5", "x", "1,,2", "12"} {
+		if code, _, _ := run("--config", w.cfg, "shell", "--level", bad); code != ExitUsage {
+			t.Errorf("--level %q: code %d, want usage", bad, code)
+		}
+	}
+}
+
+func TestSameTagKey(t *testing.T) {
+	for _, k := range []string{"Access Level", "AccessLevel", "access-level", "ACCESS_LEVEL", " Access Level "} {
+		if !config.SameTagKey(k, "Access Level") {
+			t.Errorf("%q should match", k)
+		}
+	}
+	if config.SameTagKey("Access", "Access Level") {
+		t.Error("a different key must not match")
 	}
 }
 

@@ -197,8 +197,10 @@ type AWS struct {
 	BreakGlassRoles []string `json:"breakGlassRoles"`
 	// SessionTimeout bounds an interactive sign-in or shell (default "12h").
 	SessionTimeout string `json:"sessionTimeout"`
-	// AccessLevelTag is the EC2 tag holding an instance's access level
-	// (default "AccessLevel"), shown in the instance picker.
+	// AccessLevelTag is the EC2 tag holding an instance's access level, 0
+	// to 4 (default "Access Level"), shown in the instance picker and
+	// filtered with --level. Case, spaces, - and _ do not matter, so
+	// "Access Level", "AccessLevel" and "access-level" are the same tag.
 	AccessLevelTag string `json:"accessLevelTag"`
 	// LegacyTool is the existing SSM tool `shell --via legacy` launches
 	// already signed in (default "sm"; e.g. "AWS-EC2-SSMshell.exe").
@@ -494,9 +496,18 @@ func (a AWS) DevopsName() string {
 // LevelTag returns the access-level tag key.
 func (a AWS) LevelTag() string {
 	if a.AccessLevelTag == "" {
-		return "AccessLevel"
+		return "Access Level"
 	}
 	return a.AccessLevelTag
+}
+
+// SameTagKey reports whether two tag keys name the same tag, ignoring
+// case, spaces, hyphens and underscores.
+func SameTagKey(a, b string) bool {
+	norm := func(s string) string {
+		return strings.ToLower(strings.NewReplacer(" ", "", "-", "", "_", "").Replace(strings.TrimSpace(s)))
+	}
+	return norm(a) == norm(b)
 }
 
 // Legacy returns the existing SSM tool's command.
