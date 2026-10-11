@@ -143,6 +143,12 @@ var helpGroups = []helpGroup{
 			[]string{"nedctl doctor", "nedctl doctor --all", "nedctl doctor --hygiene", "nedctl doctor --offline -o json"}},
 		{"prompt init", "<bash|zsh|powershell>", "Shell code for the prompt, tab colour, completion and login switching", "setup adds it to ~/.bashrc, ~/.zshrc or your PowerShell profile for you.", []string{`eval "$(nedctl prompt init bash)"`, "nedctl prompt init powershell | Out-String | Invoke-Expression"}},
 		{"version", "", "This nedctl's version; --check looks for a newer release", "", []string{"nedctl version --check"}},
+		{"update", "", "Install the latest release — only one signed by the bank",
+			"Downloads this platform's binary with SHA256SUMS and its signature from the release location, checks the signature against the key built into this nedctl and the binary against its checksum, runs it to confirm its version, then replaces this nedctl. Anything that fails a check is refused and nothing changes. Recorded.",
+			[]string{"nedctl update", "nedctl update --check"}},
+		{"verify", "FILE", "Check a downloaded nedctl against the bank's signature",
+			"Needs SHA256SUMS and SHA256SUMS.sig next to FILE (they come with every release). setup does this by itself when they are there.",
+			[]string{"nedctl verify ~/Downloads/nedctl-linux-amd64"}},
 		{"init", "", "Write a starter config by hand", "", nil},
 	}},
 	{"Fleet and inventory", []cmdHelp{

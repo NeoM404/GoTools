@@ -5,7 +5,13 @@ VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev
 # region, environments…) so squads need no config file. Set by the release
 # pipeline from a secure file; empty for local builds.
 ORG_DEFAULTS ?=
-LDFLAGS  := -s -w -X nedctl/internal/app.Version=$(VERSION) -X nedctl/internal/config.OrgDefaults=$(ORG_DEFAULTS)
+# SIGNING_KEYS: the release public keys (base64 Ed25519, comma-separated)
+# every binary trusts for `nedctl update` and `nedctl verify`.
+# SIGNING_KEY_FILE: the private key that signs SHA256SUMS. Both come from the
+# release pipeline (secure file nedctl-signing.key); see docs/maintainers.
+SIGNING_KEYS ?=
+SIGNING_KEY_FILE ?=
+LDFLAGS  := -s -w -X nedctl/internal/app.Version=$(VERSION) -X nedctl/internal/config.OrgDefaults=$(ORG_DEFAULTS) -X nedctl/internal/release.PublicKeys=$(SIGNING_KEYS)
 
 # Release builds are static (no cgo), carry no local filesystem paths
 # (-trimpath) and are reproducible: the same commit and toolchain produce
@@ -99,6 +105,8 @@ RELEASE_BASE_URL ?=
 release: clean checksums
 	@case "$(VERSION)" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "release needs a vX.Y.Z tag, got $(VERSION)"; exit 1 ;; esac
 	@[ -n "$(ORG_DEFAULTS)" ] || { echo "release needs ORG_DEFAULTS (base64 of the organisation config fragment)"; exit 1; }
+	@[ -n "$(SIGNING_KEYS)" ] && [ -n "$(SIGNING_KEY_FILE)" ] || { echo "release needs SIGNING_KEYS and SIGNING_KEY_FILE: an unsigned release cannot be installed by nedctl update (docs/maintainers/azure-devops.md)"; exit 1; }
+	go run ./scripts/sign sign -key "$(SIGNING_KEY_FILE)" dist/SHA256SUMS
 	@printf '{"version": "%s", "download": "%s"}\n' "$(VERSION)" "$(RELEASE_BASE_URL)$(if $(RELEASE_BASE_URL),/$(VERSION)/,)" > dist/latest.json
 	@cat dist/latest.json
 

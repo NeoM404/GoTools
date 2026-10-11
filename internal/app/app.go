@@ -66,6 +66,10 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdOpenURL(cmdArgs, stderr)
 	case "version", "--version":
 		return cmdVersion(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "update":
+		return cmdUpdate(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "verify":
+		return cmdVerify(cmdArgs, stdout, stderr)
 	case "init":
 		return cmdInit(cmdArgs, stdout, stderr)
 	case "setup":

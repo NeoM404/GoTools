@@ -11,6 +11,12 @@
 #        "prodPatterns": ["(?i)(^|[-_.])(prod|prd|qa)([-_.]|$)"],
 #        "releaseUrl": "https://<where latest.json is served>/latest.json"}
 #     It stays out of the repository. Authorise this pipeline to use it.
+#   • Secure file  nedctl-signing.key — the Ed25519 key that signs SHA256SUMS
+#     (made once with: go run ./scripts/sign keygen -out nedctl-signing.key).
+#     Binaries trust its public key, so `nedctl update` installs only what
+#     this pipeline signed. Authorise this pipeline to use it.
+#   • Variable  signingKeysNext (optional) — during a key rotation, the next
+#     public key, so binaries built now also trust releases signed with it.
 #   • Variables (optional):
 #       artifactsFeed   Azure Artifacts feed to publish a Universal Package to
 #       releaseBaseUrl  where engineers download releases; goes into latest.json
@@ -61,13 +67,23 @@ steps:
     inputs:
       secureFile: nedctl-org.json
 
+  - task: DownloadSecureFile@1
+    name: signingKey
+    displayName: Release signing key
+    inputs:
+      secureFile: nedctl-signing.key
+
   - script: |
       set -eu
       ORG_DEFAULTS="$(base64 -w0 "$(orgDefaults.secureFilePath)")"
+      SIGNING_KEYS="$(go run ./scripts/sign pub -key "$(signingKey.secureFilePath)")"
+      next='$(signingKeysNext)'
+      case "$next" in '$('*|'') ;; *) SIGNING_KEYS="$SIGNING_KEYS,$next" ;; esac
       base='$(releaseBaseUrl)'
       case "$base" in '$('*) base="" ;; esac # variable not defined
-      make release VERSION="$(releaseVersion)" ORG_DEFAULTS="$ORG_DEFAULTS" RELEASE_BASE_URL="$base"
-    displayName: Build release binaries + SHA256SUMS + latest.json
+      make release VERSION="$(releaseVersion)" ORG_DEFAULTS="$ORG_DEFAULTS" RELEASE_BASE_URL="$base" \
+        SIGNING_KEYS="$SIGNING_KEYS" SIGNING_KEY_FILE="$(signingKey.secureFilePath)"
+    displayName: Build release binaries + signed SHA256SUMS + latest.json
 
   # Prove the built binary carries the defaults and the right version before
   # anyone downloads it.
@@ -76,6 +92,7 @@ steps:
       bin=dist/nedctl-linux-amd64
       test "$($bin version)" = "nedctl $(releaseVersion)"
       HOME="$(mktemp -d)" $bin doctor --offline -o json | grep -q 'built-in organisation settings'
+      $bin verify $bin   # the signature, with the key built into the binary
       cd dist && sha256sum -c SHA256SUMS
     displayName: Verify the release
 

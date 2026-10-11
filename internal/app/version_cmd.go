@@ -122,8 +122,9 @@ func cmdVersion(ctx context.Context, cfgPath string, args []string, stdout, stde
 			fmt.Fprintf(stdout, " — %s", rel.Notes)
 		}
 		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "update with:  nedctl update   (it installs only a release signed by the bank)")
 		if rel.Download != "" {
-			fmt.Fprintf(stdout, "download: %s\nthen run its  setup  to install it\n", rel.Download)
+			fmt.Fprintf(stdout, "or download: %s, check it with  nedctl verify FILE,  then run its  setup\n", rel.Download)
 		}
 	case func() bool { _, ok := semver(Version); return !ok }():
 		fmt.Fprintf(stdout, "development build; the latest release is %s\n", rel.Version)

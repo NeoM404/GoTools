@@ -18,7 +18,7 @@ func TestSafeRemovesTerminalControl(t *testing.T) {
 		"carriage\rover":                                             "carriage�over",
 		"bell\x07":                                                   "bell�",
 		"c1 \u009b31mred":                                            "c1 red",
-		"bidi ‮gnp.exe":                                              "bidi �gnp.exe",
+		"bidi \u202egnp.exe":                                              "bidi �gnp.exe",
 		"unterminated \x1b]0;title":                                  "unterminated ",
 		"lone esc \x1b":                                              "lone esc ",
 		"zażółć ⎈ ✔ 日本":                                              "zażółć ⎈ ✔ 日本",

@@ -90,7 +90,14 @@ func cmdSetup(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		done("config", written)
 	}
 
-	// 2. nedctl on PATH.
+	// 2. nedctl on PATH — only a binary that verifies, when its signed
+	// checksums came with it.
+	if note, err := selfVerification(); err != nil {
+		fmt.Fprintf(stderr, "%s this nedctl failed verification: %v\n→ delete it and download the release again\n", tick(stderr, false), err)
+		return ExitFailure
+	} else if note != "" {
+		done("verify", note)
+	}
 	installed, _ := os.Executable()
 	if !*noInstall {
 		dest, onPath, err := installSelf(ask)

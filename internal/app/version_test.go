@@ -44,7 +44,7 @@ func TestVersionCheck(t *testing.T) {
 	t.Cleanup(func() { Version = oldV })
 	Version = "v1.3.2"
 	code, out, _ := run("--config", cfg, "version", "--check")
-	if code != ExitOK || !strings.Contains(out, "nedctl v1.4.0 is available — tab completion") || !strings.Contains(out, "download: https://releases.example/nedctl/v1.4.0/") {
+	if code != ExitOK || !strings.Contains(out, "nedctl v1.4.0 is available — tab completion") || !strings.Contains(out, "nedctl update") || !strings.Contains(out, "download: https://releases.example/nedctl/v1.4.0/") {
 		t.Fatalf("code=%d out=%q", code, out)
 	}
 	Version = "v1.4.0"

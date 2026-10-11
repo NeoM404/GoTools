@@ -12,7 +12,7 @@ const hostile = "\x1b]52;c;cm0gLXJmIH4=\x07\x1b]0;pwned\x07\x1b[2K"
 
 func noControl(t *testing.T, what, s string) {
 	t.Helper()
-	if strings.ContainsAny(s, "\x1b\x07\x9b") || strings.Contains(s, "pwned") {
+	if strings.ContainsAny(s, "\x1b\x07\u009b") || strings.Contains(s, "pwned") {
 		t.Fatalf("%s carries terminal control:\n%q", what, s)
 	}
 }

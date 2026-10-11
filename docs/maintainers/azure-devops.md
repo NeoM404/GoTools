@@ -162,6 +162,41 @@ built-in settings, and publishes the files as the pipeline artifact
 
 One-time setup, under Pipelines → Library:
 
+- **Secure file `nedctl-signing.key`.** The Ed25519 key that signs every
+  release's `SHA256SUMS`. Create it once, on a trusted machine:
+
+  ```bash
+  go run ./scripts/sign keygen -out nedctl-signing.key   # prints the public key
+  ```
+
+  Upload the file under the name `nedctl-signing.key`, authorise the release
+  pipeline to use it, then delete your local copy. Never commit it or email
+  it. The pipeline derives the public key from it and builds that key into
+  every binary. `nedctl update` then installs only releases this pipeline
+  signed, and `make release` refuses to build without it.
+
+  Publish the public key (the `keygen` output) on the wiki, so anyone can
+  check a first download without nedctl. This needs OpenSSL 3, as on WSL or
+  Linux; macOS's built-in LibreSSL can't check Ed25519. An engineer who
+  already has nedctl can simply run `nedctl verify FILE`.
+
+  ```bash
+  printf '%s' '<public key>' | base64 -d > raw.pub
+  printf '302a300506032b6570032100' | xxd -r -p | cat - raw.pub > pub.der
+  openssl pkey -pubin -inform DER -in pub.der -out nedctl-release.pem
+  base64 -d < SHA256SUMS.sig > SHA256SUMS.sig.bin
+  openssl pkeyutl -verify -pubin -inkey nedctl-release.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig.bin
+  sha256sum -c SHA256SUMS --ignore-missing
+  ```
+
+  **Rotating the key:**
+  1. Make a new key, and set its public key as the pipeline variable
+     `signingKeysNext`.
+  2. Release once, so every binary also trusts the new key.
+  3. Swap the secure file for the new key, and clear `signingKeysNext`.
+
+  Binaries from before the rotation can still update, because they trust
+  the old key, and that release is signed with it.
 - **Secure file `nedctl-org.json`.** The config fragment every engineer
   shares: the Identity Center start URL and region, environments, prod
   patterns, `releaseUrl`, and `azure.bastions` (each environment's AKS

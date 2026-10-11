@@ -145,11 +145,12 @@ added after cleaning. Interactive shells (`kube`, `azure shell`,
 | `govulncheck` on our code and the standard library | Every build and nightly |
 | Static, reproducible builds (`CGO_ENABLED=0`, `-trimpath`) | `make repro` proves byte-identical output |
 | SHA-256 checksums for release binaries | `make checksums` |
+| Signed releases | The release pipeline signs `SHA256SUMS` with an Ed25519 key kept as an Azure DevOps secure file. Every binary carries the public key. `nedctl update` and `setup` install only a binary whose checksum is in a SHA256SUMS signed by that key, that runs, and that reports the announced version. `nedctl verify FILE` checks a download by hand |
 | Pinned analysis tools | `staticcheck` and `govulncheck` versions pinned |
 | Unit, race and end-to-end tests | Every build (`make ci`) |
 | Release pipeline | `.azure-pipelines/release.yml`: only `vX.Y.Z` tags on main; full gate, then the built binary's version and built-in settings are checked before publishing |
 | Organisation defaults kept out of the repository | Built into release binaries from an Azure DevOps secure file. They are settings (start URL, region, environments), not secrets: anyone holding the binary can read them |
-| Binary signing (cosign) and SBOM | Recommended next step, not yet in place |
+| SBOM | Recommended next step, not yet in place |
 
 ## What we ask Information Security to configure
 
