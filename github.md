@@ -1,20 +1,18 @@
 # Bridge: Mac ⇄ GitHub ⇄ WSL workstation ⇄ Azure DevOps
 
 This file lives on the **`bridge`** branch of the GitHub repo only. It never
-goes to `main` and never goes to Azure DevOps. It carries two things:
+goes to `main` and never goes to Azure DevOps. It holds the **steps** for the
+workstation and the **status** of each change. Errors go to Claude in the chat.
 
-1. **Steps** for the workstation (written on the Mac).
-2. **Logs** from the workstation when something fails (pasted on the workstation).
-
-**Azure DevOps `main` is the source of truth.** GitHub `main` is a mirror of it,
-refreshed after every merge, so the Mac and the workstation always start from
-the same code.
+**Azure DevOps `main` is the source of truth.** GitHub `main` holds the same
+files (Claude keeps it in step after every merge), so changes made on the Mac
+always start from what ADO has.
 
 ---
 
-## ⚠ Rules before you paste anything here
+## ⚠ Rules before you paste an error anywhere
 
-The GitHub repo is **public**. Everything in this file can be read by anyone.
+The GitHub repo is **public**, and chat logs travel too. Redact first.
 
 - **Never** paste tokens, PATs, passwords, access keys, session tokens, cookies.
 - **Redact** before pasting: AWS account IDs (12 digits → `1111…`), ARNs,
@@ -27,76 +25,55 @@ The GitHub repo is **public**. Everything in this file can be read by anyone.
 
 ---
 
-## One-time setup on the workstation
+## How changes move (one way — no GitHub token on the workstation)
 
-```bash
-cd <repo>
-git remote -v                     # expect: ado (Azure DevOps) and github
-git fetch github
-git switch bridge                 # this file
-git switch main                   # back to code
-```
-
-Pushing to GitHub needs your GitHub token at the password prompt. Keep it out
-of files and commands:
-
-```bash
-git config --global credential.helper 'cache --timeout=3600'
-```
-
----
-
-## The loop
+The workstation only **fetches** from GitHub (the repo is public, so no
+login is needed) and pushes to **Azure DevOps**. Commit IDs differ between
+GitHub and ADO (the ADO history was rewritten); that does not matter,
+because changes move as **files**.
 
 ### A. A change arrives from the Mac
 
-The Mac pushes each change as a branch named `claude/<topic>` to GitHub, and
-the status table below says which one.
+The Mac pushes it as branch `claude/<topic>`; the Status table says which.
 
 ```bash
-git fetch github
-git fetch ado
-# The change must sit on top of what ADO has:
-git merge-base --is-ancestor ado/main github/claude/<topic> && echo OK
-# Send it to Azure DevOps as a branch:
-git push ado github/claude/<topic>:refs/heads/claude/<topic>
+cd <repo>
+git fetch github && git fetch ado
+git diff --stat refs/remotes/ado/main refs/remotes/github/claude/<topic>   # only the files the change touches
+git switch -C claude/<topic> refs/remotes/ado/main
+git restore --source=refs/remotes/github/claude/<topic> --staged --worktree :/
+git status --short                                                         # same files as the diff above
+git commit -m "<message from the Status table>"
+git push ado claude/<topic> --force
 ```
 
 Then in Azure DevOps: **Repos → Pull requests → New**, `claude/<topic>` →
-`main`. CI runs on the pull request.
+`main`; complete it once CI is green. Tell Claude "merged".
 
-### B. CI (or anything else) fails
+Always use the full names `refs/remotes/ado/…` and `refs/remotes/github/…`:
+short names can be ambiguous.
 
-```bash
-git switch bridge && git pull github bridge
-# edit github.md: add an entry under "Log" (newest first) — see the template
-git commit -am "log: <topic> — <step that failed>"
-git push github bridge
-git switch main
-```
+### B. Something fails
 
-Then tell Claude on the Mac: "log pushed". The fix comes back as a new commit
-on the same `claude/<topic>` branch; repeat A (push the branch to ADO again —
-the pull request updates itself).
+Paste the redacted error lines into the chat with Claude (rules above). The
+fix arrives as a new commit on the same `claude/<topic>` branch: repeat A.
 
-### C. After the pull request is merged in Azure DevOps
+### C. After a merge
 
-Mirror ADO `main` to GitHub so the next change starts from it:
+Nothing to do on the workstation. Claude moves GitHub `main` to the merged
+files. To check the two are in step (should print nothing):
 
 ```bash
-git fetch ado
-git push github ado/main:main
-git switch main && git pull ado main
+git fetch github && git fetch ado
+git diff --stat refs/remotes/ado/main refs/remotes/github/main
 ```
-
-Then tell Claude: "merged".
 
 ### D. Releasing
 
-Only from ADO, after the merge (C):
+From Azure DevOps only:
 
 ```bash
-git fetch ado && git switch main && git pull ado main
+git fetch ado && git switch main && git pull
 git tag -a vX.Y.Z -m "nedctl X.Y.Z" && git push ado vX.Y.Z
 ```
 
@@ -106,19 +83,6 @@ git tag -a vX.Y.Z -m "nedctl X.Y.Z" && git push ado vX.Y.Z
 
 | Branch | What | State |
 |---|---|---|
-| `claude/ci-tool-path` | Makefile finds staticcheck and govulncheck in `$(GOBIN)` (fixes the CI static-analysis failure); test uses a placeholder Identity Center instance ID | Ready: do **A**. If you already applied the python fix on `fix/ci-tool-path`, use this branch instead and delete that one |
+| `claude/ci-tool-path` | Makefile finds staticcheck and govulncheck in `$(GOBIN)` (fixes the CI static-analysis failure); test uses a placeholder Identity Center instance ID | Sent to ADO as a PR. Waiting for "merged" + CI result |
 
 ---
-
-## Log
-
-<!-- Newest first. Template:
-
-### YYYY-MM-DD — <branch> — <pipeline/step or command>
-**What I ran:** `...`
-**Where:** CI pipeline / release pipeline / WSL / Windows
-**Result:**
-```
-<redacted lines>
-```
--->
