@@ -57,6 +57,28 @@ For each cluster, `health` reports:
 `health` exits with code 1 when any cluster fails or can't be reached, so it
 works as a scheduled check. `-o json` gives the full list.
 
+### The fleet board: `nedctl health --board`
+
+```bash
+nedctl health --env prod --board              # every prod cluster on one screen
+nedctl health --env dev,qa,prod --watch 1m    # a wall screen: read again every minute
+```
+
+The board draws every cluster straight away and fills each one in as its
+result arrives over the bastion connection. The status flips into place
+like a departures board, and the counters at the top climb (ok, warn,
+fail, unreachable, still reading).
+
+With `--watch`, it reads everything again on that interval (30s or more).
+A cluster whose status changed since the last round flips again and is
+marked `▲` (better) or `▼` (worse). Ctrl-C stops it, and the problems of
+the last round are listed underneath.
+
+The board only draws in a terminal. Scripts keep using plain `health`, or
+`-o json`. `NEDCTL_REDUCED_MOTION=1` keeps the live updates but drops the
+flipping. Columns that don't fit a narrow window are left out rather than
+wrapped.
+
 ## One command on many clusters: `nedctl fleet run`
 
 ```bash

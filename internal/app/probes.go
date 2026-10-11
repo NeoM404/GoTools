@@ -45,6 +45,27 @@ type clusterOut struct {
 type clusterSel struct {
 	cluster, env, match, awsProfile string
 	aws                             bool
+	sink                            *probeSink // optional: told as clusters are found and as each one's results arrive
+}
+
+// probeSink hears about a run as it happens, for live displays: the
+// clusters about to be read, then each cluster's results as they arrive
+// (in the order clusters finish).
+type probeSink struct {
+	start  func(cloud, env string, clusters []string)
+	result func(clusterOut)
+}
+
+func (k *probeSink) started(cloud, env string, clusters []string) {
+	if k != nil && k.start != nil {
+		k.start(cloud, env, clusters)
+	}
+}
+
+func (k *probeSink) got(co clusterOut) {
+	if k != nil && k.result != nil {
+		k.result(co)
+	}
 }
 
 func addClusterSel(fs *flag.FlagSet, sel *clusterSel, multi bool) {
@@ -69,9 +90,12 @@ func runProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 			return nil, code
 		}
 		defer s.close()
+		sel.sink.started(s.cloud, s.env, []string{s.cluster})
 		sp := spinning(stderr, "Reading "+s.label()+"…")
-		defer sp.Stop()
-		return []clusterOut{sessionProbes(ctx, s, probes)}, ExitOK
+		co := sessionProbes(ctx, s, probes)
+		sp.Stop()
+		sel.sink.got(co)
+		return []clusterOut{co}, ExitOK
 	}
 	var all []clusterOut
 	if sel.env != "" {
@@ -85,7 +109,7 @@ func runProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 				fmt.Fprintf(stderr, "no bastion for %q — azure.bastions has %s\n", env, strings.Join(azureEnvs(cfg), ", "))
 				return nil, ExitUsage
 			}
-			all = append(all, bastionProbes(ctx, cfg, bastionTarget(cfg, env), sel.match, probes, stderr)...)
+			all = append(all, bastionProbes(ctx, cfg, bastionTarget(cfg, env), sel.match, probes, sel.sink, stderr)...)
 		}
 	}
 	if sel.aws {
@@ -117,20 +141,28 @@ func eksProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 		return []clusterOut{{Cloud: "aws", Env: pc.Environment, Err: err}}
 	}
 	sort.Slice(hits, func(i, j int) bool { return hits[i].Name < hits[j].Name })
-	var all []clusterOut
+	var names []string
 	for _, h := range hits {
-		if sel.match != "" && !strings.Contains(h.Name, sel.match) {
-			continue
+		if sel.match == "" || strings.Contains(h.Name, sel.match) {
+			names = append(names, h.Name)
 		}
-		s, code := openEKSSession(ctx, cfg, sessionFlags{cluster: h.Name, awsProfile: sel.awsProfile}, stderr)
+	}
+	sel.sink.started("aws", pc.Environment, names)
+	var all []clusterOut
+	for _, name := range names {
+		s, code := openEKSSession(ctx, cfg, sessionFlags{cluster: name, awsProfile: sel.awsProfile}, stderr)
 		if code != ExitOK {
-			all = append(all, clusterOut{Cloud: "aws", Env: pc.Environment, Cluster: h.Name, Err: errors.New("could not reach the cluster")})
+			co := clusterOut{Cloud: "aws", Env: pc.Environment, Cluster: name, Err: errors.New("could not reach the cluster")}
+			sel.sink.got(co)
+			all = append(all, co)
 			continue
 		}
 		sp := spinning(stderr, "Reading "+s.label()+"…")
-		all = append(all, sessionProbes(ctx, s, probes))
+		co := sessionProbes(ctx, s, probes)
 		sp.Stop()
 		s.close()
+		sel.sink.got(co)
+		all = append(all, co)
 	}
 	return all
 }
@@ -143,9 +175,10 @@ const (
 )
 
 // bastionProbeScript runs every probe on every context given as an
-// argument, eight clusters at a time, then prints the results in order:
-// a mark line (context, probe), its stdout, an end line (exit code) and
-// its stderr on one line. As each cluster finishes, a done line (context,
+// argument, eight clusters at a time (a new one starts as one finishes),
+// and prints each cluster's results as soon as it is done — one writer, so
+// clusters never interleave: per probe a mark line (context, probe), its
+// stdout, an end line (exit code) and its stderr on one line. As each cluster finishes, a done line (context,
 // probes failed) goes to stderr so progress shows. $1 is the request timeout; the probes are the
 // functions p0, p1… defined in front of it.
 const bastionProbeScript = `t=$1; shift
@@ -160,17 +193,11 @@ run() {
     [ $rc -eq 0 ] || f=$((f+1))
     i=$((i+1))
   done
+  : > "$d/$c.done"
   printf '%s %s %s\n' '` + probeDone + `' "$c" $f >&2
 }
-n=0
-for c in "$@"; do
-  run "$c" &
-  n=$((n+1))
-  [ $((n % 8)) -eq 0 ] && wait
-done
-wait
-for c in "$@"; do
-  i=0
+emit() {
+  c=$1 i=0
   while [ $i -lt $N ]; do
     printf '\n%s %s %s\n' '` + probeMark + `' "$c" $i
     cat "$d/$c.$i.out"
@@ -179,7 +206,22 @@ for c in "$@"; do
     echo
     i=$((i+1))
   done
+}
+collect() {
+  for c in "$@"; do
+    if [ -f "$d/$c.done" ] && [ ! -f "$d/$c.sent" ]; then
+      emit "$c"
+      : > "$d/$c.sent"
+    fi
+  done
+}
+for c in "$@"; do
+  while [ "$(jobs -rp | wc -l)" -ge 8 ]; do collect "$@"; sleep 0.2; done
+  run "$c" &
 done
+while [ "$(jobs -rp | wc -l)" -gt 0 ]; do collect "$@"; sleep 0.2; done
+wait
+collect "$@"
 `
 
 // probeFunctions defines p0, p1… for the bastion script. Every argument
@@ -199,7 +241,7 @@ func probeFunctions(probes []probe) string {
 
 // bastionProbes lists the bastion's clusters (or uses the remembered
 // list), then runs the probes on them in one SSH connection.
-func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match string, probes []probe, stderr io.Writer) []clusterOut {
+func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match string, probes []probe, sink *probeSink, stderr io.Writer) []clusterOut {
 	names, err := listAKS(ctx, cfg, t, stderr)
 	if err != nil {
 		return []clusterOut{{Cloud: "azure", Env: t.Env, Where: "on bastion " + t.Name, Err: err}}
@@ -215,10 +257,17 @@ func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match st
 		return nil
 	}
 	fmt.Fprintf(stderr, "Reading %d cluster(s) on %s, 8 at a time (up to 20s a request)…\n", len(clusters), t.Name)
+	sink.started("azure", t.Env, clusters)
 	var out bytes.Buffer
+	var stdout io.Writer = &out
+	if sink != nil {
+		stdout = io.MultiWriter(&out, &probeStream{n: len(probes), emit: func(chunk []byte, c string) {
+			sink.got(parseProbeOutput(chunk, "azure", t.Env, "on bastion "+t.Name, []string{c}, len(probes))[0])
+		}})
+	}
 	prog := newProbeProgress(stderr, t.Name, len(clusters))
 	script := probeFunctions(probes) + bastionProbeScript
-	err = execx.Interactive(ctx, execx.Spec{Stdin: strings.NewReader(""), Name: "ssh", Stdout: &out, Stderr: prog,
+	err = execx.Interactive(ctx, execx.Spec{Stdin: strings.NewReader(""), Name: "ssh", Stdout: stdout, Stderr: prog,
 		Args: sshArgs(cfg, t, false, remoteBash(script, append([]string{"20s"}, clusters...)...)), Timeout: cfg.AWS.Timeout()})
 	prog.finish()
 	if err != nil {
@@ -323,6 +372,47 @@ func (p *probeProgress) summary() string {
 		msg += fmt.Sprintf(" (%d with errors)", p.failed)
 	}
 	return msg
+}
+
+// probeStream watches the bastion script's output and hands over each
+// cluster's chunk once its last probe has ended (the script sends a
+// cluster's probes together).
+type probeStream struct {
+	n       int
+	emit    func(chunk []byte, cluster string)
+	partial []byte
+	chunk   bytes.Buffer
+	cur     string
+	last    int
+}
+
+func (p *probeStream) Write(b []byte) (int, error) {
+	p.partial = append(p.partial, b...)
+	for {
+		i := bytes.IndexByte(p.partial, '\n')
+		if i < 0 {
+			return len(b), nil
+		}
+		line := p.partial[:i+1]
+		trim := strings.TrimRight(string(line), "\n")
+		if strings.HasPrefix(trim, probeMark+" ") {
+			if f := strings.Fields(trim); len(f) == 3 {
+				idx, _ := strconv.Atoi(f[2])
+				if idx == 0 {
+					p.chunk.Reset()
+					p.cur = f[1]
+				}
+				p.last = idx
+			}
+		}
+		p.chunk.Write(line)
+		if strings.HasPrefix(trim, probeEnd+" ") && p.last == p.n-1 && p.cur != "" {
+			p.emit(append([]byte("\n"), p.chunk.Bytes()...), p.cur)
+			p.chunk.Reset()
+			p.cur = ""
+		}
+		p.partial = p.partial[i+1:]
+	}
 }
 
 // parseProbeOutput splits the bastion script's output into results.

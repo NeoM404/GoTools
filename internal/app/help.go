@@ -79,8 +79,8 @@ var helpGroups = []helpGroup{
 	}},
 	{"For DevOps: run the fleet", []cmdHelp{
 		{"health", "", "One line per cluster, then what needs attention",
-			"Nodes not ready or under pressure, pods crash-looping or stuck pending, workloads below their replicas, volume claims not bound, TLS certificates expiring (default within 30 days), and the version's support status. --env qa checks every QA cluster in one SSH connection per bastion. Read-only; exits 1 when a cluster fails or cannot be reached.",
-			[]string{"nedctl health --env qa", "nedctl health --env dev,qa --match payments", "nedctl health --cluster acm-k8s-qa-cluster", "nedctl health --aws -o json"}},
+			"Nodes not ready or under pressure, pods crash-looping or stuck pending, workloads below their replicas, volume claims not bound, TLS certificates expiring (default within 30 days), and the version's support status. --env qa checks every QA cluster in one SSH connection per bastion. --board shows them all on a live board that fills in as results arrive; --watch 1m keeps reading (a wall screen). Read-only; exits 1 when a cluster fails or cannot be reached.",
+			[]string{"nedctl health --env qa", "nedctl health --env prod --board", "nedctl health --env dev,qa,prod --watch 1m", "nedctl health --env dev,qa --match payments", "nedctl health --cluster acm-k8s-qa-cluster", "nedctl health --aws -o json"}},
 		{"run", "<RUNBOOK> [name=value…]", "Run a team runbook: every step shown, changes dry-run and approved",
 			"Runbooks are named kubectl steps with parameters (built in: restart-deployment, scale-deployment, rollback-deployment; the team's own in runbooksDir or ./runbooks). nedctl shows the runbook filled in, runs reading steps, and for each changing step runs a server-side dry run, asks, then runs it — recorded. `run ls` lists them, `run show NAME` explains one.",
 			[]string{"nedctl run ls", "nedctl run show restart-deployment", "nedctl run restart-deployment deployment=payments-api namespace=payments --cluster acm-k8s-qa-cluster", "nedctl run scale-deployment deployment=api replicas=3 --dry-run"}},

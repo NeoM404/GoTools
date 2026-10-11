@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/base64"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"nedctl/internal/config"
@@ -57,9 +59,22 @@ func cmdHealth(ctx context.Context, cfgPath string, args []string, stdout, stder
 	var sel clusterSel
 	addClusterSel(fs, &sel, true)
 	certDays := fs.Int("cert-days", 30, "warn about TLS certificates expiring within this many days")
+	board := fs.Bool("board", false, "a live board: every cluster at once, filled in as results arrive")
+	watch := fs.Duration("watch", 0, "with the board: read again every so often, e.g. 1m (at least 30s); Ctrl-C stops")
 	output := addOutputFlag(fs)
 	if pos, err := parseInterspersed(fs, args); err != nil || len(pos) > 0 || *certDays < 1 {
-		fmt.Fprintln(stderr, "usage: nedctl health [--cluster C | --env qa | --aws] [--match WORD] [--cert-days 30] [-o json]")
+		fmt.Fprintln(stderr, "usage: nedctl health [--cluster C | --env qa | --aws] [--match WORD] [--cert-days 30] [--board [--watch 1m]] [-o json]")
+		return ExitUsage
+	}
+	if *watch != 0 {
+		*board = true
+		if *watch < 30*time.Second {
+			fmt.Fprintln(stderr, "--watch must be at least 30s: every round reads every cluster")
+			return ExitUsage
+		}
+	}
+	if *board && (*output != "table" || !colorOn(stdout)) {
+		fmt.Fprintln(stderr, "--board needs a terminal (and table output); run health without it in scripts and pipes")
 		return ExitUsage
 	}
 	if *output != "table" && *output != "json" {
@@ -69,6 +84,9 @@ func cmdHealth(ctx context.Context, cfgPath string, args []string, stdout, stder
 	if err != nil {
 		fmt.Fprintf(stderr, "config error: %v\n", err)
 		return ExitFailure
+	}
+	if *board {
+		return healthBoard(ctx, cfg, sel, *certDays, *watch, stdout, stderr)
 	}
 	results, code := runProbes(ctx, cfg, sel, healthProbes, stderr)
 	if code != ExitOK {
@@ -273,13 +291,21 @@ func nonEmptyLines(s string) []string {
 const healthDetailLimit = 12
 
 func printHealth(w io.Writer, report []clusterHealth) {
-	st := ui.Style{Color: colorOn(w)}
 	tw := newTable(w)
 	fmt.Fprintln(tw, "ENV\tCLUSTER\tSTATUS\tNODES\tPODS\tWORKLOADS\tVERSION")
 	for _, h := range report {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Environment, h.Cluster, h.Status, h.Nodes, h.Pods, h.Workloads, strings.TrimSpace(h.Version+" "+h.Support))
 	}
 	tw.Flush()
+	printHealthDetails(w, report)
+	if len(report) == 0 {
+		fmt.Fprintln(w, "no clusters")
+	}
+}
+
+// printHealthDetails lists each cluster's problems and warnings.
+func printHealthDetails(w io.Writer, report []clusterHealth) {
+	st := ui.Style{Color: colorOn(w)}
 	for _, h := range report {
 		if len(h.Problems)+len(h.Warnings) == 0 {
 			continue
@@ -302,7 +328,90 @@ func printHealth(w io.Writer, report []clusterHealth) {
 			fmt.Fprintf(w, "  %s\n", st.Dim(fmt.Sprintf("… and %d more (-o json lists all)", shown-healthDetailLimit)))
 		}
 	}
-	if len(report) == 0 {
-		fmt.Fprintln(w, "no clusters")
+}
+
+// healthBoard runs health under the live board, once or every watch.
+// Messages that would scroll the board (progress, warnings) are held and
+// printed after it.
+func healthBoard(ctx context.Context, cfg config.Config, sel clusterSel, certDays int, watch time.Duration, stdout, stderr io.Writer) int {
+	title := strings.ToUpper(firstNonBlank(sel.env, sel.cluster))
+	if sel.aws {
+		title = strings.TrimSpace(title + " EKS")
 	}
+	b := newFleetBoard(stdout, cfg, title)
+	var held lockedBuffer
+	var mu sync.Mutex
+	latest := map[string]clusterHealth{}
+	sel.sink = &probeSink{
+		start: func(_, env string, clusters []string) { b.add(env, clusters) },
+		result: func(co clusterOut) {
+			h := assessHealth(cfg, co, now(), certDays)
+			b.set(h)
+			mu.Lock()
+			latest[boardKey(h.Environment, h.Cluster)] = h
+			mu.Unlock()
+		},
+	}
+	b.start()
+	code := ExitOK
+	for {
+		if _, c := runProbes(ctx, cfg, sel, healthProbes, &held); c != ExitOK {
+			code = c
+			break
+		}
+		if watch == 0 || ctx.Err() != nil {
+			break
+		}
+		b.newRound(now().Add(watch))
+		select {
+		case <-ctx.Done():
+		case <-time.After(watch):
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	b.stop()
+	b.mu.Lock()
+	var report []clusterHealth
+	for _, r := range b.rows {
+		if h, ok := latest[boardKey(r.env, r.cluster)]; ok {
+			report = append(report, h)
+		}
+	}
+	b.mu.Unlock()
+	fmt.Fprintln(stdout)
+	printHealthDetails(stdout, report)
+	for _, l := range strings.Split(held.String(), "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "Listing clusters") && !strings.HasPrefix(l, "Reading ") && !strings.Contains(l, "clusters read") {
+			fmt.Fprintln(stderr, l)
+		}
+	}
+	if code != ExitOK {
+		return code
+	}
+	for _, h := range report {
+		if h.Status == "fail" || h.Status == "unreachable" {
+			return ExitFailure
+		}
+	}
+	return ExitOK
+}
+
+// lockedBuffer is a buffer written from several goroutines.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
