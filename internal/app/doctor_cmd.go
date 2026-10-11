@@ -68,11 +68,6 @@ func environmentChecks(ctx context.Context, cfg config.Config, used string, cfgE
 	default:
 		add("config", "ok", used)
 	}
-	if !cfg.AWS.Configured() {
-		add("aws sign-in", "info", "aws.startUrl not set — AWS commands are off")
-		return cs
-	}
-	add("aws sign-in", "ok", cfg.AWS.StartURL+" ("+cfg.AWS.SSORegion+")")
 	if p := firstNonBlank(os.Getenv("HTTPS_PROXY"), os.Getenv("https_proxy")); p != "" {
 		redacted := p
 		if u, err := url.Parse(p); err == nil {
@@ -92,6 +87,11 @@ func environmentChecks(ctx context.Context, cfg config.Config, used string, cfgE
 			add("aws ca bundle", "ok", bundle)
 		}
 	}
+	if !cfg.AWS.Configured() {
+		add("aws sign-in", "info", "aws.startUrl not set — AWS commands are off; run `nedctl setup`")
+		return cs
+	}
+	add("aws sign-in", "ok", cfg.AWS.StartURL+" ("+cfg.AWS.SSORegion+")")
 	if !offline {
 		client, target := portalProbe(cfg.AWS.SSORegion)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
