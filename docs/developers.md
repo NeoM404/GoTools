@@ -78,6 +78,35 @@ one SSH connection.
 Clusters that can't be reached are listed as warnings, so a missing row is
 never silent. Use `-o json` for release tooling.
 
+## Evidence for the incident ticket: `nedctl incident`
+
+```bash
+nedctl incident deploy/payments-api -n payments            # incident-payments-api-<cluster>-<time>.zip here
+nedctl incident deploy/payments-api -n payments --since 2h --save
+```
+
+This writes one dated zip with:
+
+- `summary.md`: what is wrong, in the words of `explain`;
+- `findings.json`;
+- the workload and its pods;
+- their events (only theirs);
+- each container's recent logs, plus the previous run's.
+
+**Before anything is written:**
+
+- environment variable values are replaced by `‹not collected›`; the names
+  stay;
+- the `last-applied-configuration` annotation (a full copy of the spec) and
+  managed fields are removed;
+- every log line is redacted like `nedctl logs`.
+
+`manifest.json` lists every file's SHA-256 with who collected it, when, and
+from which cluster. The zip's own SHA-256 is printed and written to your
+audit trail, so you can show the evidence hasn't changed since. The file
+is owner-only and never overwrites another. Attach it to the ServiceNow
+incident.
+
 ## Works in QA, fails in prod: `nedctl diff`
 
 ```bash

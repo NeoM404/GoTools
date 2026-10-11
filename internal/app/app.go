@@ -132,6 +132,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdAccess(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "explain":
 		return cmdExplain(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "incident":
+		return cmdIncident(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":
 		return cmdEKS(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "prompt":
