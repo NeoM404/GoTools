@@ -19,6 +19,7 @@ import (
 	"nedctl/internal/execx"
 	"nedctl/internal/inventory"
 	"nedctl/internal/picker"
+	"nedctl/internal/ui"
 )
 
 // ec2Instance is one row of the instance picker.
@@ -244,6 +245,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	fs.SetOutput(stderr)
 	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last nedctl aws login)")
 	instance := fs.String("instance", "", "instance ID or Name tag (skips the picker)")
+	yes := fs.Bool("yes", false, "confirm production access without being asked (when confirmProduction is on)")
 	via := fs.String("via", "aws", "aws (Session Manager directly) or legacy (launch sm/SSMshell already signed in)")
 	tab := fs.Bool("tab", false, "open the session in a new Windows Terminal tab coloured by environment")
 	crFlag := fs.String("change-record", "", "change record for this session, when change control requires one")
@@ -268,6 +270,9 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return ExitFailure
 	}
 	if *via == "legacy" {
+		if !confirmProduction(cfg, pc, cfg.AWS.Legacy(), *yes, stderr) {
+			return ExitFailure
+		}
 		return launchLegacy(ctx, cfg, pc, stderr)
 	}
 
@@ -292,6 +297,9 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return openTab(cfg, pc, in, *crFlag, *glassFlag, stderr)
 	}
 
+	if !confirmProduction(cfg, pc, firstNonBlank(in.Name, in.ID), *yes, stderr) {
+		return ExitFailure
+	}
 	cr, glass := strings.TrimSpace(*crFlag), strings.TrimSpace(*glassFlag)
 	base := audit.Event{Action: "ssm-session", Cloud: "aws", Account: pc.AccountID, Environment: pc.Environment,
 		Production: pc.Production, ChangeRecord: cr, BreakGlass: glass != "", BreakGlassReason: glass,
@@ -315,6 +323,29 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	}
 	tr.end(ctx, audit.OutcomeSuccess, pc.Role, base.Detail, stderr)
 	return ExitOK
+}
+
+// confirmProduction asks the engineer to type the environment's name before
+// a production session, when the organisation turns confirmProduction on.
+// Without a terminal it refuses unless --yes was passed.
+func confirmProduction(cfg config.Config, pc profileContext, target string, yes bool, stderr io.Writer) bool {
+	if !cfg.ConfirmProduction || !pc.Production || yes {
+		return true
+	}
+	st := ui.Style{Color: colorOn(stderr)}
+	if !stdinIsTerminal() {
+		fmt.Fprintf(stderr, "%s is production and confirmation is required — pass --yes to confirm without a terminal\n", target)
+		return false
+	}
+	env := strings.ToLower(pc.Environment)
+	fmt.Fprintf(stderr, "%s %s · %s is %s. Type %s to continue: ", st.Fg(ui.Red, "⚠"), pc.label(), target,
+		st.BoldFg(ui.Red, "PRODUCTION"), st.Bold(env))
+	line, _ := bufio.NewReader(stdin).ReadString('\n')
+	if strings.EqualFold(strings.TrimSpace(line), env) {
+		return true
+	}
+	fmt.Fprintln(stderr, "not confirmed — nothing was opened")
+	return false
 }
 
 // banner names the target in the terminal title and in the environment's

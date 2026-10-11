@@ -24,6 +24,7 @@ func cmdConsole(ctx context.Context, cfgPath string, args []string, stdout, stde
 	fs.SetOutput(stderr)
 	profileFlag := fs.String("profile", "", "profile whose account and role to open (default: $AWS_PROFILE, then the last nedctl aws login)")
 	region := fs.String("region", "", "console region (default: where nedctl last found clusters or instances)")
+	yes := fs.Bool("yes", false, "confirm production access without being asked (when confirmProduction is on)")
 	printOnly := fs.Bool("print", false, "print the link instead of opening a browser")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil || len(pos) > 1 {
@@ -57,6 +58,9 @@ func cmdConsole(ctx context.Context, cfgPath string, args []string, stdout, stde
 	r := firstNonBlank(*region, consoleRegion(cfg, pc, service))
 	link := consoleLink(cfg.AWS.StartURL, pc.AccountID, pc.Role, service, r)
 
+	if !confirmProduction(cfg, pc, "the AWS console", *yes, stderr) {
+		return ExitFailure
+	}
 	base := audit.Event{Action: "aws-console", Cloud: "aws", Account: pc.AccountID, Environment: pc.Environment,
 		Production: pc.Production, Detail: fmt.Sprintf("console %s in %s, role %s", firstNonBlank(service, "home"), r, pc.Role)}
 	tr, err := beginAuditEvent(ctx, cfg, base, stderr)

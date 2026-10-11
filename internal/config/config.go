@@ -126,6 +126,11 @@ type Config struct {
 	// pipeline publishes next to the binaries; `nedctl version --check`
 	// compares against it. Usually part of the built-in defaults.
 	ReleaseURL string `json:"releaseUrl"`
+
+	// ConfirmProduction makes shell, kube, connect and console ask the
+	// engineer to type the environment's name before a production session
+	// (--yes confirms without asking). Off by default.
+	ConfirmProduction bool `json:"confirmProduction"`
 }
 
 // DefaultEnvironmentColors matches the colours engineers already know from

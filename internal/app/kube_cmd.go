@@ -34,6 +34,7 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	fs := flag.NewFlagSet("kube", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last nedctl aws login)")
+	yes := fs.Bool("yes", false, "confirm production access without being asked (when confirmProduction is on)")
 	viaInstance := fs.String("via-instance", "", "instance to tunnel through (default: the account's devops instance)")
 	port := fs.Int("port", 0, "local port for the tunnel (default: a free one)")
 	via := fs.String("via", viaAuto, "auto (direct if the endpoint answers from here, else the devops instance), direct, or bastion")
@@ -89,6 +90,9 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		what = "command " + command[0]
 	}
 	cr, glass := strings.TrimSpace(*crFlag), strings.TrimSpace(*glassFlag)
+	if !confirmProduction(cfg, pc, plan.cluster.Name, *yes, stderr) {
+		return ExitFailure
+	}
 	base := audit.Event{Action: "eks-connect", Cloud: "aws", Cluster: plan.cluster.Name, Account: pc.AccountID, Environment: pc.Environment,
 		Production: pc.Production, ChangeRecord: cr, BreakGlass: glass != "", BreakGlassReason: glass,
 		Detail: fmt.Sprintf("kube %s; tunnel 127.0.0.1:%d → %s:443 via %s (%s), profile %s", what, plan.port, plan.cluster.Host,

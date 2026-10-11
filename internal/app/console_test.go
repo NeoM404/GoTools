@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 )
@@ -47,5 +48,33 @@ func TestConsoleOpensAsTheCurrentAccountAndRecordsIt(t *testing.T) {
 	}
 	if code, _, _ := run("--config", w.cfg, "console", "bad service!"); code != ExitUsage {
 		t.Fatal("service names are validated")
+	}
+}
+
+func TestConfirmProduction(t *testing.T) {
+	w := newEC2World(t, "prod", "")
+	body, _ := os.ReadFile(w.cfg)
+	os.WriteFile(w.cfg, []byte(strings.Replace(string(body), "{", `{"confirmProduction": true, `, 1)), 0o600)
+
+	if code, _, errb := run("--config", w.cfg, "console", "--print"); code != ExitFailure || !strings.Contains(errb, "pass --yes") {
+		t.Fatalf("no terminal: code=%d %q", code, errb)
+	}
+	if code, _, _ := run("--config", w.cfg, "console", "--print", "--yes"); code != ExitOK {
+		t.Fatalf("--yes: code=%d", code)
+	}
+	answer(t, "nope\n")
+	if code, _, errb := run("--config", w.cfg, "console", "--print"); code != ExitFailure || !strings.Contains(errb, "not confirmed") {
+		t.Fatalf("wrong word: code=%d %q", code, errb)
+	}
+	answer(t, "PROD\n")
+	if code, _, errb := run("--config", w.cfg, "console", "--print"); code != ExitOK || !strings.Contains(errb, "is PRODUCTION") {
+		t.Fatalf("typed: code=%d %q", code, errb)
+	}
+	// Off by default; non-production never asks.
+	dev := newEC2World(t, "dev", "")
+	body, _ = os.ReadFile(dev.cfg)
+	os.WriteFile(dev.cfg, []byte(strings.Replace(string(body), "{", `{"confirmProduction": true, `, 1)), 0o600)
+	if code, _, _ := run("--config", dev.cfg, "console", "--print"); code != ExitOK {
+		t.Fatal("dev must not ask")
 	}
 }
