@@ -60,6 +60,13 @@ nedctl aws login lms qa         # switch account: the prompt and the tab colour 
 nedctl version --check          # is a newer release out?
 ```
 
+`nedctl` on its own shows who you are signed in as, for how long, and the
+commands you use most; `nedctl help <command>` (or `--help`) shows examples
+and flags; a mistyped command suggests the right one. You never have to sign
+in first: `kube`, `shell`, `connect` and `console` open the account picker
+when you are not signed in, and renew an expired sign-in in place (same
+account and role) instead of failing with "Token has expired".
+
 ### Configuration
 
 To configure by hand, or to override the built-in settings, add an `aws`
