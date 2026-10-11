@@ -24,7 +24,7 @@ The GitHub repo is **public**, and chat logs travel too. Redact first.
 - When in doubt, describe the error in words instead of pasting it.
 
 ---
-Z2l0aHViX3BhdF8xMUFWQzRTREEwejBtSElWUU9ZWjZZX2RDVHhtZjJzTWZMSGoyNGlFeVk3U1E5bVJYMVlTbDBUazVOcVdySmJURThMN1ZXTEQyRkJlTGV0MzVGCg==
+
 ## How changes move (one way — no GitHub token on the workstation)
 
 The workstation only **fetches** from GitHub (the repo is public, so no
@@ -53,41 +53,14 @@ Then in Azure DevOps: **Repos → Pull requests → New**, `claude/<topic>` →
 Always use the full names `refs/remotes/ado/…` and `refs/remotes/github/…`:
 short names can be ambiguous.
 
-### B. Something fails: send the log through GitHub
+### B. Something fails
 
-Logs go in their own file under `logs/` on the `bridge` branch (never in
-this file, so your logs and Claude's edits never conflict). Only `bridge`
-is pushed to GitHub — never `main`.
+Paste the **redacted** error lines into the chat with Claude (rules above) —
+the first error and about 20 lines above it is enough. The bank network does
+not allow logging in to GitHub from the workstation, so nothing is pushed to
+GitHub from there; never put a token in this repo, encoded or not.
 
-**Once per session — give git your GitHub token without the hidden prompt:**
-
-```bash
-git config --global credential.helper 'cache --timeout=3600'
-read -rsp "GitHub token: " GH_TOKEN; echo          # paste with right-click; nothing shows
-echo "length ${#GH_TOKEN}, starts ${GH_TOKEN:0:11}"  # expect about 93, github_pat_
-curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/NeoM404/GoTools   # 200 = good
-printf 'protocol=https\nhost=github.com\nusername=NeoM404\npassword=%s\n\n' "$GH_TOKEN" | git credential approve
-unset GH_TOKEN
-```
-
-The token never appears on screen, in a file or in shell history. A 401
-from curl means the token is wrong or expired: make a new one (Contents:
-Read and write on NeoM404/GoTools).
-
-**Each log:**
-
-```bash
-git fetch github
-git switch -C bridge refs/remotes/github/bridge
-mkdir -p logs
-nano logs/$(date +%F)-<topic>.md                    # paste the REDACTED log, save
-git add logs && git commit -m "log: <topic> — <step that failed>"
-git push github bridge
-git switch main
-```
-
-Then tell Claude "log pushed". The fix arrives as a new commit on the same
-`claude/<topic>` branch: repeat A.
+The fix arrives as a new commit on the same `claude/<topic>` branch: repeat A.
 
 ### C. After a merge
 
@@ -114,6 +87,5 @@ git tag -a vX.Y.Z -m "nedctl X.Y.Z" && git push ado vX.Y.Z
 
 | Branch | What | State |
 |---|---|---|
-| `claude/ci-tool-path` | Makefile finds staticcheck and govulncheck in `$(GOBIN)` (fixes the CI static-analysis failure); test uses a placeholder Identity Center instance ID | Sent to ADO as a PR. Waiting for "merged" + CI result |
-
----
+| `claude/docs-squads` | Docs for squads: Home, Getting started, Troubleshooting, wiki page order, maintainer docs moved to `docs/maintainers/`; `doctor` install hints per platform; `setup` offers to disable older `prompt init` lines; `version` warns when another nedctl shadows it. Commit message: `Docs for squads; doctor hints per platform; setup and version catch an old nedctl` | **Ready: do A.** Then tag **v1.0.1** (D) |
+| `claude/ci-tool-path` | CI tool path, test isolation, doctor network checks | Merged (CI green); GitHub `main` updated |
