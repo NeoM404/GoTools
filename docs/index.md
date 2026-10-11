@@ -17,6 +17,7 @@ beside `sm`, SSMshell and your SSH setup.
 | Install nedctl and use it today | **[Getting started](getting-started.md)** |
 | Learn every AWS command and option | [AWS access](aws.md) |
 | Use AKS clusters and Azure machines | [Azure access](azure.md) |
+| See why my app is failing, read its logs, reach it from my laptop | [For developers](developers.md) |
 | Debug pods, nodes and network on a cluster | [Debugging](debug.md) |
 | Fix something that is not working | [Troubleshooting](troubleshooting.md) |
 | Understand the security model | [Security](security.md) |

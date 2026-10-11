@@ -58,6 +58,11 @@ var helpGroups = []helpGroup{
 		{"azure clusters", "[env]", "The AKS clusters on each bastion", "Uses what nedctl remembers; --refresh asks the bastions again.", []string{"nedctl azure clusters", "nedctl azure clusters qa --refresh"}},
 		{"azure hosts", "", "The bastions and machines azure shell reaches", "", []string{"nedctl azure hosts"}},
 	}},
+	{"For developers (EKS or AKS)", []cmdHelp{
+		{"explain", "<pod|deploy/NAME>", "Why is it not working? Findings in plain words, with what to do",
+			"Reads the workload, its pods and their events (and the last log lines of a container that keeps crashing) and says what is wrong: image cannot be pulled, crash loop with the exit reason, killed for memory, cannot be scheduled and why, readiness or liveness probe failing, missing Secret or ConfigMap, stuck rollout. Read-only. Exits 1 when something is failing.",
+			[]string{"nedctl explain deploy/payments-api -n payments", "nedctl explain payments-api-7f9c-x2x4z -n payments --cluster acm-k8s-qa-cluster", "nedctl explain deploy/payments-api -n payments -o json"}},
+	}},
 	{"Debugging on a cluster (EKS or AKS)", []cmdHelp{
 		{"debug pod", "", "A debug pod (netshoot by default) with a shell; removed when you exit",
 			"Shows the pod it will deploy, has the cluster check it (server-side dry run), and deploys it only when you approve. It goes in the default namespace unless you give -n, never gets a service-account token, and is removed when you exit (or at its time limit, 2h). --image takes a short name (netshoot, busybox, alpine, ubuntu, curl) or any image. Profiles: general (default), netadmin (tcpdump), sysadmin (privileged), restricted (non-root).",
