@@ -104,6 +104,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdAzure(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "debug":
 		return cmdDebug(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "app":
+		return cmdApp(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "explain":
 		return cmdExplain(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":

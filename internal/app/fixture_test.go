@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,6 +41,7 @@ case "$*" in
 "config get-contexts "*) [ -d "$F/$3" ]; exit $?;;
 esac
 key=$(printf '%s' "$*" | LC_ALL=C tr -c 'A-Za-z0-9' '_')
+if [ ${#key} -gt 100 ]; then key="$(printf '%s' "$key" | head -c 60)_$(printf '%s' "$key" | tail -c 30)_${#key}"; fi
 [ -f "$F/$ctx/$key.stdin" ] && cat > "$F/$ctx/$key.stdin"
 if [ -f "$F/$ctx/$key.err" ]; then cat "$F/$ctx/$key.err" >&2; exit 1; fi
 if [ -f "$F/$ctx/$key" ]; then cat "$F/$ctx/$key"; exit 0; fi
@@ -54,6 +56,9 @@ func fixtureKey(args string) string {
 		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
 			b[i] = '_'
 		}
+	}
+	if len(b) > 100 { // as the fake shortens it: start, end and length
+		return fmt.Sprintf("%s_%s_%d", b[:60], b[len(b)-30:], len(b))
 	}
 	return string(b)
 }

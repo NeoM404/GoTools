@@ -62,6 +62,9 @@ var helpGroups = []helpGroup{
 		{"explain", "<pod|deploy/NAME>", "Why is it not working? Findings in plain words, with what to do",
 			"Reads the workload, its pods and their events (and the last log lines of a container that keeps crashing) and says what is wrong: image cannot be pulled, crash loop with the exit reason, killed for memory, cannot be scheduled and why, readiness or liveness probe failing, missing Secret or ConfigMap, stuck rollout. Read-only. Exits 1 when something is failing.",
 			[]string{"nedctl explain deploy/payments-api -n payments", "nedctl explain payments-api-7f9c-x2x4z -n payments --cluster acm-k8s-qa-cluster", "nedctl explain deploy/payments-api -n payments -o json"}},
+		{"app", "NAME", "One app in every environment: version, ready replicas, last change",
+			"Searches every AKS cluster on the bastions (or --env, --cluster, --aws for EKS) for deployments and statefulsets whose name contains NAME, and shows each one's image version, ready replicas and last update, then a one-line summary of which version runs where. Read-only.",
+			[]string{"nedctl app payments-api", "nedctl app payments-api --env qa,prod --match payments", "nedctl app payments-api --exact -o json"}},
 	}},
 	{"Debugging on a cluster (EKS or AKS)", []cmdHelp{
 		{"debug pod", "", "A debug pod (netshoot by default) with a shell; removed when you exit",
@@ -335,7 +338,7 @@ func (d flagDef) spelling() string {
 
 // placeholders name a flag's value better than its Go type does.
 var placeholders = map[string]string{
-	"profile": "NAME", "aws-profile": "PROFILE", "cluster": "CLUSTER", "image": "IMAGE", "n": "NAMESPACE", "namespace": "NAMESPACE", "on-node": "NODE", "c": "CONTAINER", "container": "CONTAINER", "region": "REGION", "via": "MODE", "via-instance": "INSTANCE", "instance": "INSTANCE",
+	"profile": "NAME", "aws-profile": "PROFILE", "cluster": "CLUSTER", "image": "IMAGE", "n": "NAMESPACE", "namespace": "NAMESPACE", "on-node": "NODE", "c": "CONTAINER", "container": "CONTAINER", "match": "WORD", "region": "REGION", "via": "MODE", "via-instance": "INSTANCE", "instance": "INSTANCE",
 	"port": "PORT", "change-record": "CHG", "break-glass": "REASON", "o": "FORMAT", "output": "FORMAT",
 	"format": "FORMAT", "account": "ACCOUNT", "role": "ROLE", "shell": "SHELL", "env": "ENV", "cloud": "CLOUD",
 	"start-url": "URL", "sso-region": "REGION", "mode": "MODE", "context": "NAME", "owner": "NAME", "period": "QUARTER",

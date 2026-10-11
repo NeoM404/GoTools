@@ -46,3 +46,34 @@ name. A bare name tries a pod first, then the deployment of that name.
 
 The same problem on every replica is reported once. `explain` exits with
 code 1 when something is failing. Use `-o json` to feed it to other tools.
+
+## What runs where? `nedctl app`
+
+```bash
+nedctl app payments-api
+```
+
+```
+ENV   CLUSTER                   NAMESPACE  NAME          READY  VERSION  UPDATED
+dev   payments-k8s-dev-cluster  payments   payments-api  1/1    1.5.0    2026-10-11T08:12:40
+qa    payments-k8s-qa-cluster   payments   payments-api  2/3    1.4.2    2026-10-10T09:00:00
+prod  payments-k8s-prod-cluster payments   payments-api  3/3    1.3.9    2026-10-02T18:30:11
+
+versions: dev 1.5.0 · qa 1.4.2 · prod 1.3.9
+```
+
+nedctl searches every AKS cluster on the bastions for deployments and
+statefulsets whose name contains `payments-api`. It shows each one's version
+(the image tag), ready replicas and last update. Each bastion answers over
+one SSH connection.
+
+| Narrow it | Flag |
+|---|---|
+| Some environments | `--env qa,prod` |
+| Clusters whose name contains a word | `--match payments` |
+| One cluster | `--cluster payments-k8s-qa-cluster` |
+| EKS clusters in your signed-in account | `--aws` |
+| A namespace, or the exact name | `-n payments`, `--exact` |
+
+Clusters that can't be reached are listed as warnings, so a missing row is
+never silent. Use `-o json` for release tooling.
