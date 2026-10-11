@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -133,23 +134,28 @@ func eksProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 const (
 	probeMark = "@@nedctl-probe@@"
 	probeEnd  = "@@nedctl-end@@"
+	probeDone = "@@nedctl-done@@" // on stderr as each cluster finishes, for progress
 )
 
 // bastionProbeScript runs every probe on every context given as an
 // argument, eight clusters at a time, then prints the results in order:
 // a mark line (context, probe), its stdout, an end line (exit code) and
-// its stderr on one line. $1 is the request timeout; the probes are the
+// its stderr on one line. As each cluster finishes, a done line (context,
+// probes failed) goes to stderr so progress shows. $1 is the request timeout; the probes are the
 // functions p0, p1… defined in front of it.
 const bastionProbeScript = `t=$1; shift
 d=$(mktemp -d "${TMPDIR:-/tmp}/nedctl-probe.XXXXXX") || exit 1
 trap 'rm -rf "$d"' EXIT
 run() {
-  c=$1 i=0
+  c=$1 i=0 f=0
   while [ $i -lt $N ]; do
     "p$i" "$c" "$t" > "$d/$c.$i.out" 2> "$d/$c.$i.err"
-    echo $? > "$d/$c.$i.rc"
+    rc=$?
+    echo $rc > "$d/$c.$i.rc"
+    [ $rc -eq 0 ] || f=$((f+1))
     i=$((i+1))
   done
+  printf '%s %s %s\n' '` + probeDone + `' "$c" $f >&2
 }
 n=0
 for c in "$@"; do
@@ -203,16 +209,83 @@ func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match st
 		fmt.Fprintf(stderr, "no clusters on %s match %q\n", t.Name, match)
 		return nil
 	}
-	fmt.Fprintf(stderr, "Reading %d cluster(s) on %s…\n", len(clusters), t.Name)
+	fmt.Fprintf(stderr, "Reading %d cluster(s) on %s, 8 at a time (up to 20s a request)…\n", len(clusters), t.Name)
 	var out bytes.Buffer
+	prog := &probeProgress{w: stderr, total: len(clusters), tty: isTerminalWriter(stderr)}
 	script := probeFunctions(probes) + bastionProbeScript
-	err = execx.Interactive(ctx, execx.Spec{Stdin: strings.NewReader(""), Name: "ssh", Stdout: &out,
+	err = execx.Interactive(ctx, execx.Spec{Stdin: strings.NewReader(""), Name: "ssh", Stdout: &out, Stderr: prog,
 		Args: sshArgs(cfg, t, false, remoteBash(script, append([]string{"20s"}, clusters...)...)), Timeout: cfg.AWS.Timeout()})
+	prog.finish()
 	if err != nil {
 		err = sshError(t, err)
+		if msg := strings.TrimSpace(prog.other.String()); msg != "" && !strings.Contains(err.Error(), "could not reach") {
+			err = fmt.Errorf("%w: %s", err, msg)
+		}
 		return []clusterOut{{Cloud: "azure", Env: t.Env, Where: "on bastion " + t.Name, Err: err}}
 	}
 	return parseProbeOutput(out.Bytes(), "azure", t.Env, "on bastion "+t.Name, clusters, len(probes))
+}
+
+// probeProgress reads the bastion script's stderr: each done line moves a
+// counter (redrawn in place on a terminal, every quarter otherwise); any
+// other line is kept for the error should SSH fail.
+type probeProgress struct {
+	w           io.Writer
+	total, done int
+	failed      int
+	tty         bool
+	partial     []byte
+	other       bytes.Buffer
+}
+
+func (p *probeProgress) Write(b []byte) (int, error) {
+	p.partial = append(p.partial, b...)
+	for {
+		i := bytes.IndexByte(p.partial, '\n')
+		if i < 0 {
+			break
+		}
+		line := string(p.partial[:i])
+		p.partial = p.partial[i+1:]
+		f := strings.Fields(line)
+		if len(f) != 3 || f[0] != probeDone {
+			if p.other.Len() < 4<<10 {
+				p.other.WriteString(line + "\n")
+			}
+			continue
+		}
+		p.done++
+		if f[2] != "0" {
+			p.failed++
+		}
+		p.show()
+	}
+	return len(b), nil
+}
+
+func (p *probeProgress) show() {
+	msg := fmt.Sprintf("  %d/%d clusters read", p.done, p.total)
+	if p.failed > 0 {
+		msg += fmt.Sprintf(" (%d with errors)", p.failed)
+	}
+	switch {
+	case p.tty:
+		fmt.Fprintf(p.w, "\r\033[K%s", msg)
+	case p.done == p.total || p.done%max(1, p.total/4) == 0:
+		fmt.Fprintln(p.w, msg)
+	}
+}
+
+func (p *probeProgress) finish() {
+	if p.tty && p.done > 0 {
+		fmt.Fprintln(p.w)
+	}
+}
+
+// isTerminalWriter reports whether w is a terminal.
+func isTerminalWriter(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && isTerminal(f)
 }
 
 // parseProbeOutput splits the bastion script's output into results.

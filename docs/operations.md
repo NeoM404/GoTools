@@ -10,6 +10,15 @@ on many at once:
 | Only the clusters whose name contains a word | `--match payments` |
 | Every EKS cluster in your signed-in account | `--aws` |
 
+`--env` always means the AKS bastions in `azure.bastions` (`--env dev` is
+`aks-dev`), because AWS environments are accounts you sign in to, not hosts.
+For EKS use `--aws` (with `--aws-profile`), or both: `--env qa --aws`.
+
+On a bastion, eight clusters are read at a time, each request with a 20s limit.
+Progress shows as clusters finish (`12/23 clusters read`). A cluster that is
+down costs up to 20s per check, so a large environment can take a minute or
+two. `--match` narrows it.
+
 ## The morning check: `nedctl health`
 
 ```bash
