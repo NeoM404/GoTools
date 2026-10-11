@@ -141,3 +141,28 @@ with a warning that says why):
   `"dryRun": true` when kubectl supports `--dry-run=server` for it (`apply`,
   `scale`, `rollout restart` and `rollout undo`, `patch`, `delete`, `label`,
   `annotate`).
+
+## Draining a node safely: `nedctl node`
+
+```bash
+nedctl node drain aks-pool1-000001 --cluster acm-k8s-qa-cluster --dry-run
+nedctl node drain aks-pool1-000001 --cluster acm-k8s-qa-cluster
+nedctl node uncordon aks-pool1-000001 --cluster acm-k8s-qa-cluster
+```
+
+Before draining, nedctl shows the checks people skip under pressure:
+
+- **the pods that will move**, and how many DaemonSet pods stay;
+- **pods that belong to no controller.** Nothing would recreate them, so
+  the drain stops on them. nedctl never uses `--force`; move or delete them
+  first;
+- **disruption budgets that allow no disruption** in the affected
+  namespaces. The drain waits on them, up to `--timeout 5m`;
+- **the cluster's own server-side dry run** of the drain.
+
+Then it asks. `--dry-run` stops before asking, and `--yes` skips the
+question. The drain runs with `--ignore-daemonsets --delete-emptydir-data`.
+If it doesn't finish, the node stays cordoned and nedctl says how to give
+it back. `cordon` and `uncordon` follow the same steps. Every one is
+recorded (`node-drain`, `node-cordon`, `node-uncordon`), and change control
+applies.

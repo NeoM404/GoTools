@@ -63,7 +63,8 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
 - Every access (`aws-login`, `ssm-session`, `eks-connect`,
   `legacy-ssm-tool`, `aws-export-credentials`, `ec2-start`/`ec2-stop`,
   `aks-session`, `ssh-session`, `debug-pod`, `debug-node`, `debug-attach`,
-  `debug-net`, `debug-clean`, `logs-read`, `port-forward`, `runbook`, and
+  `debug-net`, `debug-clean`, `logs-read`, `port-forward`, `runbook`,
+  `node-drain`, `node-cordon`, `node-uncordon`, and
   the cluster credential commands) writes a start event **before** acting.
   If the event cannot be written, the action does not happen.
 - The log is hash-chained and file-locked. `nedctl audit verify` detects any

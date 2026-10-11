@@ -114,6 +114,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdHealth(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "run":
 		return cmdRun(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "node":
+		return cmdNode(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "explain":
 		return cmdExplain(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "eks":
