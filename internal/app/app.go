@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -30,23 +31,35 @@ func ExecContext(ctx context.Context, args []string, stdout, stderr io.Writer) i
 }
 
 func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		printUsage(stdout)
-		return ExitOK
-	}
-
 	// Split a leading global --config flag from the subcommand.
 	cfgPath, rest := extractConfig(args)
 	if len(rest) == 0 {
+		// A person at a terminal gets their status and the daily commands;
+		// anything else (a script, a pipe) gets the command list.
+		if f, ok := stdout.(*os.File); ok && isTerminal(f) {
+			return cmdStatus(cfgPath, stdout)
+		}
 		printUsage(stdout)
 		return ExitOK
+	}
+	if wantsHelp(rest[1:]) && !rawHelp {
+		return printCommandHelp(ctx, commandPath(rest), stdout)
+	}
+	if _, grouped := subcommands[rest[0]]; grouped && len(rest) == 1 && rest[0] != "prompt" && !rawHelp {
+		printCommandHelp(ctx, rest, stderr)
+		return ExitUsage
 	}
 
 	cmd, cmdArgs := rest[0], rest[1:]
 	switch cmd {
 	case "help", "-h", "--help":
+		if len(cmdArgs) > 0 {
+			return printCommandHelp(ctx, commandPath(cmdArgs), stdout)
+		}
 		printUsage(stdout)
 		return ExitOK
+	case "status":
+		return cmdStatus(cfgPath, stdout)
 	case "version", "--version":
 		return cmdVersion(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "init":
@@ -92,9 +105,7 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	case "current":
 		return cmdCurrent(ctx, cfgPath, cmdArgs, stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n\n", cmd)
-		printUsage(stderr)
-		return ExitUsage
+		return unknownCommand(cmd, stderr)
 	}
 }
 
@@ -120,116 +131,4 @@ func extractConfig(args []string) (string, []string) {
 		}
 	}
 	return cfg, rest
-}
-
-func printUsage(w io.Writer) {
-	fmt.Fprint(w, `nedctl — banking Kubernetes fleet CLI
-
-Usage:
-  nedctl [--config PATH] <command> [args]
-
-Commands:
-  setup [--yes]               First run: sign-in settings, install to
-                              ~/.local/bin, prompt + tab colour, health check
-  init                        Write a starter config to ~/.config/nedctl
-                              [--path PATH] [--force]
-                              [--mode workstation|bastion]
-  clusters list [--cloud aws|azure] [--env ENV] [--owner NAME] [-o table|json]
-                              List clusters in the fleet inventory; with no
-                              inventory, the signed-in AWS account's EKS
-                              clusters, live
-  clusters get <name> [-o table|json]
-                              Show one cluster's details
-  kubeconfig <cluster>        Fetch credentials for a cluster (aws/az CLI)
-                              [--file PATH] [--dry-run]
-                              [--change-record CHG… | --break-glass REASON]
-  login <cluster>             kubeconfig + safety check for the target
-                              (same flags as kubeconfig). On a bastion:
-                              switch to the cluster's provisioned context,
-                              audited and change-controlled [--context NAME]
-  fleet versions [-o table|json]
-                              Version-drift report against the target for
-                              each cluster's environment
-                              [--fail-on-stale]  (exit 1 if any STALE cluster)
-  fleet eol [-o table|json]   Support lifecycle + extended-support premium
-                              [--warn-days N] [--by-cost-centre]
-                              [--fail-on-risk]  (exit 1 if any cluster at risk)
-  fleet calendar aws          Generate supportCalendar.aws from EKS
-                              [--profile P] [--region R]
-  inventory validate [--file PATH]
-                              Check an inventory against the config
-  inventory diff [-o table|json] [--report FILE]
-                              Reconcile the inventory against the clouds:
-                              shadow, missing and drifted clusters
-                              (exit 1 unless complete and in sync)
-  inventory sync [--out FILE] [--force]
-                              Write the inventory the clouds imply
-                              (refuses a partial scan or an invalid result)
-  sweep [--apply] [--kubeconfig PATH] [-o table|json]
-                              Remove EKS/AKS contexts the inventory proves
-                              stale (dry run by default; backup first)
-                              [--include-current]
-  audit verify [--log PATH]...
-                              Check the audit log's hash chain
-  evidence --period 2026-Q3 | --from DATE --to DATE
-                              Evidence pack: accesses, change records and
-                              exceptions to review [--log PATH]...
-                              [--production] [--out FILE] [-o table|json]
-  aws login [WORDS…]          Sign in with IAM Identity Center and pick ONE
-                              account + role (picker; words such as "lms qa"
-                              narrow it, one match goes straight in);
-                              writes an AWS CLI profile, no keys handled
-                              [--device-code] [--force] [--format sh|powershell|none]
-                              [--all --break-glass REASON]  (break-glass roles only)
-  aws whoami [--profile P] [-o table|json]
-                              Who you act as, where, and sign-in time left
-  aws env [--profile P] [--format sh|powershell]
-                              Short-term credentials for tools that need
-                              keys (sm, SSMshell):  eval "$(nedctl aws env)"
-  shell [FILTER…]             Session Manager shell on an instance in the
-                              profile's account: picker coloured by env,
-                              audited [--instance ID|NAME] [--profile P]
-                              [--tab] (Windows Terminal) [--via aws|legacy]
-                              (legacy: launch sm/SSMshell already signed in)
-                              [--change-record CHG… | --break-glass REASON]
-  ec2 <start|stop> <instance> Start/stop an instance, audited [--yes]
-  connect [eks-cluster]       Tunnel to a private EKS endpoint through the
-                              devops instance (Session Manager); kubectl
-                              runs locally as YOUR SSO role, TLS verified
-                              [--via auto|direct|bastion] [--via-instance I]
-                              [--port N] [--tab]
-  kube [eks-cluster]          connect in one step: tunnel in the background,
-                              a shell with KUBECONFIG set (prompt shows the
-                              cluster); exit closes the tunnel. No name:
-                              pick from the account's clusters
-                              [-- command args…] run one command instead
-                              [--via auto|direct|bastion] (auto: direct when
-                              the endpoint answers from here, e.g. on VPN)
-  eks auth [--profile P]… [--all-profiles] [-o table|json]
-                              Authentication mode + endpoint exposure of
-                              every EKS cluster; who still needs to move
-                              off CONFIG_MAP [--fail-on-configmap]
-  eks access <cluster>        Who can reach a cluster via access entries,
-                              with which policy and scope
-  guard [-o table|json]       Check the CURRENT kube-context for prod
-                              [--block]  (exit 3 if prod — for prompts/CI)
-  current [-o table|json]     Show current context + prod status
-  prompt [--shell bash|zsh|powershell|plain] [--tab]
-                              Prompt segment: kube-context and AWS profile
-                              in their environment's colour (never fails);
-                              --tab also colours the Windows Terminal tab
-  prompt init <bash|zsh>      Shell code for ~/.bashrc (setup adds it): prompt,
-                              tab colour, tab completion, aws login switching
-  doctor [-o table|json]      Check tools, config, proxy, CA bundle, portal
-                              reachability and sign-in [--offline]
-                              [--strict]  (exit 1 if any tool is below floor)
-  version [--check]           Print nedctl version; --check: is a newer one out?
-  help                        Show this help
-
-Exit codes: 0 ok · 1 failed/check found a problem · 2 usage error
-            3 production context (guard --block) · 130 interrupted
-Config: --config, $NEDCTL_CONFIG, ~/.config/nedctl/config.json, ./nedctl.json
-First run:  nedctl setup   (sign-in settings, PATH, prompt, health check)
-See docs/nedctl.md for full documentation.
-`)
 }

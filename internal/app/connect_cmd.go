@@ -121,7 +121,7 @@ func freePort() (int, error) {
 func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("connect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `nedctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last nedctl aws login)")
 	viaInstance := fs.String("via-instance", "", "instance to tunnel through (default: the account's devops instance)")
 	port := fs.Int("port", 0, "local port for the tunnel (default: a free one)")
 	tab := fs.Bool("tab", false, "hold the tunnel in a new Windows Terminal tab coloured by environment")
@@ -187,7 +187,7 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	}
 	banner(cfg, pc, cluster.Name, stderr)
 	fmt.Fprintf(stderr, "kubeconfig: %s\nIn another terminal:  export KUBECONFIG=%s   (PowerShell: $env:KUBECONFIG = '%s')\nTunnel open until you press Ctrl-C.\n", kc, kc, kc)
-	err = execx.Interactive(ctx, execx.Spec{Name: "aws", Args: portForwardArgs(plan, pc.Name), Stdout: stderr, Timeout: cfg.AWS.Timeout()})
+	err = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "aws", Args: portForwardArgs(plan, pc.Name), Stdout: stderr, Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "tunnel failed: %v\n", err)

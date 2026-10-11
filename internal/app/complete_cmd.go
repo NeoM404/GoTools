@@ -1,14 +1,12 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -36,7 +34,7 @@ var subcommands = map[string][]string{
 }
 
 var commandNames = []string{
-	"setup", "aws", "shell", "kube", "connect", "eks", "ec2", "clusters", "kubeconfig", "login",
+	"setup", "status", "aws", "shell", "kube", "connect", "console", "eks", "ec2", "clusters", "kubeconfig", "login",
 	"fleet", "inventory", "sweep", "audit", "evidence", "guard", "current", "prompt", "doctor", "init", "version", "help",
 }
 
@@ -136,16 +134,12 @@ func positionals(rest []string, flags map[string]bool) int {
 	return n
 }
 
-var flagLineRe = regexp.MustCompile(`(?m)^  -([A-Za-z][\w-]*)( \S+)?`)
-
 // flagsOf asks the command for its flags (as `-h` prints them): name →
 // whether it takes a value.
 func flagsOf(ctx context.Context, path []string) map[string]bool {
-	var errb bytes.Buffer
-	dispatch(ctx, append(append([]string{}, path...), "-h"), io.Discard, &errb)
 	flags := map[string]bool{}
-	for _, m := range flagLineRe.FindAllStringSubmatch(errb.String(), -1) {
-		flags[m[1]] = m[2] != ""
+	for _, d := range flagDefs(ctx, path) {
+		flags[d.name] = d.kind != ""
 	}
 	return flags
 }

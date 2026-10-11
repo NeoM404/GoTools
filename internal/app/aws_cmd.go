@@ -19,10 +19,15 @@ import (
 	"nedctl/internal/config"
 	"nedctl/internal/execx"
 	"nedctl/internal/picker"
+	"nedctl/internal/ui"
 )
 
 // Seams for tests: the operator's terminal and the Identity Center portal.
 var (
+	// childStdin is what interactive children (shells, sessions, sign-in)
+	// read; nil is the terminal. Tests give them an empty input so a real
+	// shell started by a test exits instead of waiting on the developer.
+	childStdin                = func() io.Reader { return nil }
 	stdin           io.Reader = os.Stdin
 	stdinIsTerminal           = func() bool { return isTerminal(os.Stdin) }
 	newPortal                 = func(a config.AWS) awssso.Portal { return awssso.Portal{Region: a.SSORegion} }
@@ -75,7 +80,7 @@ func loadAWSConfig(cfgPath string, stderr io.Writer) (config.Config, bool) {
 		return cfg, false
 	}
 	if !cfg.AWS.Configured() {
-		fmt.Fprintln(stderr, `IAM Identity Center is not configured — set "aws": {"startUrl": "https://<id>.awsapps.com/start", "ssoRegion": "<region>"} in your config (see docs/aws.md)`)
+		fmt.Fprintln(stderr, "IAM Identity Center is not configured — run `nedctl setup` (or set aws.startUrl and aws.ssoRegion in your config; see docs/aws.md)")
 		return cfg, false
 	}
 	return cfg, true
@@ -184,7 +189,9 @@ func listChoices(ctx context.Context, cfg config.Config, deviceCode, force, refr
 			return classifyAll(cfg, cached), managed, ExitOK
 		}
 	}
+	stop := ui.Style{Color: colorOn(stderr)}.Progress(stderr, "Fetching your accounts and roles…")
 	assignments, err := newPortal(a).Assignments(ctx, tok)
+	stop()
 	if errors.Is(err, awssso.ErrUnauthorized) && !force {
 		// Revoked server-side although the cache looked valid: sign in once more.
 		if tok, managed, code = ensureSignIn(ctx, cfg, deviceCode, true, stderr); code != ExitOK {
@@ -381,7 +388,7 @@ func ensureSignIn(ctx context.Context, cfg config.Config, deviceCode, force bool
 	}
 	// stdout stays clean for `eval "$(nedctl aws login)"`; the CLI's
 	// instructions go to the terminal on stderr.
-	if err := execx.Interactive(ctx, execx.Spec{Name: "aws", Args: args, Stdout: stderr, Stderr: stderr, Timeout: 15 * time.Minute}); err != nil {
+	if err := execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "aws", Args: args, Stdout: stderr, Stderr: stderr, Timeout: 15 * time.Minute}); err != nil {
 		fmt.Fprintf(stderr, "sign-in failed: %v\n", err)
 		return awssso.Token{}, m, ExitFailure
 	}
@@ -703,7 +710,7 @@ type awsIdentity struct {
 func awsWhoami(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("aws whoami", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to check (default: $AWS_PROFILE, then the last `nedctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to check (default: $AWS_PROFILE, then the last nedctl aws login)")
 	output := addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
@@ -818,7 +825,7 @@ func exportCredentials(ctx context.Context, cfg config.Config, profile string) (
 func awsEnv(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("aws env", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to export (default: $AWS_PROFILE, then the last `nedctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to export (default: $AWS_PROFILE, then the last nedctl aws login)")
 	format := fs.String("format", defaultEnvFormat(), "sh or powershell")
 	show := fs.Bool("show", false, "print the keys even when stdout is a terminal (they would be visible on screen)")
 	if err := fs.Parse(args); err != nil {

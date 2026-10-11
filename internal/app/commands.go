@@ -62,7 +62,7 @@ func loadFleet(cfgPath string, stderr io.Writer) (config.Config, inventory.Fleet
 	case cfg.InventoryPath != "":
 		fleet, err = inventory.LoadFile(cfg.InventoryPath)
 	default:
-		hint := "set inventoryPath or inventoryUrl in your config"
+		hint := "set inventoryPath or inventoryUrl in your config, or run `nedctl setup` and `nedctl aws login` to list your AWS account's clusters"
 		if used != "" {
 			hint = fmt.Sprintf("%s (loaded %s)", hint, used)
 		}

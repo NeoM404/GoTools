@@ -45,6 +45,8 @@ type Spec struct {
 	// captured and quoted in the error on failure instead.
 	Stdout io.Writer
 	Stderr io.Writer
+	// Stdin feeds an Interactive command; nil means the terminal (os.Stdin).
+	Stdin io.Reader
 	// Timeout is required: a zero or negative value is a programming error,
 	// because an unbounded subprocess is exactly what this package prevents.
 	Timeout time.Duration
@@ -98,6 +100,9 @@ func Interactive(ctx context.Context, spec Spec) error {
 	cmd := exec.CommandContext(ctx, path, spec.Args...) //nolint:gosec // callers pass typed, validated arguments
 	cmd.WaitDelay = waitDelay
 	cmd.Stdin = os.Stdin
+	if spec.Stdin != nil {
+		cmd.Stdin = spec.Stdin
+	}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if spec.Stdout != nil {
 		cmd.Stdout = spec.Stdout

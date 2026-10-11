@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +20,7 @@ func TestMain(m *testing.M) {
 	// Tests never read the developer's terminal; those that need a picker
 	// feed it explicitly.
 	stdinIsTerminal = func() bool { return false }
+	childStdin = func() io.Reader { return strings.NewReader("") }
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

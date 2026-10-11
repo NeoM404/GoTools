@@ -233,7 +233,7 @@ func chooseInstance(cfg config.Config, pc profileContext, list []ec2Instance, in
 func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("shell", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `nedctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last nedctl aws login)")
 	instance := fs.String("instance", "", "instance ID or Name tag (skips the picker)")
 	via := fs.String("via", "aws", "aws (Session Manager directly) or legacy (launch sm/SSMshell already signed in)")
 	tab := fs.Bool("tab", false, "open the session in a new Windows Terminal tab coloured by environment")
@@ -297,7 +297,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		return code
 	}
 	banner(cfg, pc, firstNonBlank(in.Name, in.ID), stderr)
-	err = execx.Interactive(ctx, execx.Spec{Name: "aws", Args: []string{"ssm", "start-session", "--target", in.ID, "--region", in.Region, "--profile", pc.Name},
+	err = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "aws", Args: []string{"ssm", "start-session", "--target", in.ID, "--region", in.Region, "--profile", pc.Name},
 		Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
@@ -351,7 +351,7 @@ func launchLegacy(ctx context.Context, cfg config.Config, pc profileContext, std
 		env = shareWithWindows(env)
 	}
 	banner(cfg, pc, tool, stderr)
-	err = execx.Interactive(ctx, execx.Spec{Name: tool, Env: env, Timeout: cfg.AWS.Timeout()})
+	err = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: tool, Env: env, Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "%s: %v\n", tool, err)

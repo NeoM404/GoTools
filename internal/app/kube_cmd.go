@@ -33,7 +33,7 @@ var tunnelReadyTimeout = 60 * time.Second
 func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("kube", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last `nedctl aws login`)")
+	profileFlag := fs.String("profile", "", "profile to act with (default: $AWS_PROFILE, then the last nedctl aws login)")
 	viaInstance := fs.String("via-instance", "", "instance to tunnel through (default: the account's devops instance)")
 	port := fs.Int("port", 0, "local port for the tunnel (default: a free one)")
 	via := fs.String("via", viaAuto, "auto (direct if the endpoint answers from here, else the devops instance), direct, or bastion")
@@ -144,7 +144,7 @@ func runKubeChild(ctx context.Context, cfg config.Config, pc profileContext, pla
 	env := []string{"KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBE=" + plan.cluster.Name}
 	var childErr error
 	if command != nil {
-		childErr = execx.Interactive(ctx, execx.Spec{Name: command[0], Args: command[1:], Env: env, Timeout: cfg.AWS.Timeout()})
+		childErr = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: command[0], Args: command[1:], Env: env, Timeout: cfg.AWS.Timeout()})
 	} else {
 		name, shellArgs, shellEnv, cleanup := kubeShell(cfg, pc, plan.cluster.Name)
 		defer cleanup()
@@ -153,7 +153,7 @@ func runKubeChild(ctx context.Context, cfg config.Config, pc profileContext, pla
 			closing = "Type exit when done."
 		}
 		fmt.Fprintf(stderr, "⎈ %s ready — kubectl works in this shell. %s\n  other terminals: export KUBECONFIG=%s\n", plan.cluster.Name, closing, plan.kubeconfig)
-		childErr = execx.Interactive(ctx, execx.Spec{Name: name, Args: shellArgs, Env: append(env, shellEnv...), Timeout: cfg.AWS.Timeout()})
+		childErr = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: name, Args: shellArgs, Env: append(env, shellEnv...), Timeout: cfg.AWS.Timeout()})
 	}
 
 	if tunnel != nil {

@@ -118,7 +118,7 @@ func eksAuth(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	fs.SetOutput(stderr)
 	var profiles multiFlag
 	fs.Var(&profiles, "profile", "profile to report on (repeatable; default: the current profile)")
-	allProfiles := fs.Bool("all-profiles", false, "every profile `nedctl aws login` has written")
+	allProfiles := fs.Bool("all-profiles", false, "every profile nedctl aws login has written")
 	failOnConfigMap := fs.Bool("fail-on-configmap", false, "exit 1 if any cluster still uses CONFIG_MAP only")
 	var rs regionSearch
 	addRegionFlags(fs, &rs)

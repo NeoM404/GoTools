@@ -18,6 +18,7 @@ import (
 	"nedctl/internal/config"
 	"nedctl/internal/execx"
 	"nedctl/internal/httpx"
+	"nedctl/internal/ui"
 )
 
 // Accounts keep their clusters and instances in whatever region the squad
@@ -139,7 +140,10 @@ func regionDenied(err error) bool {
 // empty result (not an error) for a region with nothing in it.
 func searchRegions[T any](ctx context.Context, cfg config.Config, pc profileContext, rs regionSearch, kind string, stderr io.Writer,
 	find func(region string) ([]T, error)) ([]T, []string, error) {
+	what := map[string]string{"eks": "clusters", "ec2": "instances"}[kind]
+	stop := ui.Style{Color: colorOn(stderr)}.Progress(stderr, "Looking for "+firstNonBlank(what, kind)+" in "+firstNonBlank(pc.label(), pc.Name)+"…")
 	got, searched, err := searchRegionsOnce(ctx, cfg, pc, rs, kind, stderr, find)
+	stop()
 	if err == nil {
 		rememberNames(cfg, pc, kind, got, rs.Flag != "")
 	}
