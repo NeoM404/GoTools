@@ -3,7 +3,9 @@ package ui
 import (
 	"bytes"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestPlainStylesAreUnchanged(t *testing.T) {
@@ -32,4 +34,40 @@ func TestTableAlignsColouredCells(t *testing.T) {
 			t.Fatalf("misaligned: %d vs %d\n%s", got, col, b.String())
 		}
 	}
+}
+
+func TestSpinnerShowsTheLatestMessageAndClears(t *testing.T) {
+	var mu sync.Mutex
+	var b bytes.Buffer
+	w := lockedWriter{&mu, &b}
+	sp := Style{Color: true}.Spinner(w, "1/3 done")
+	time.Sleep(120 * time.Millisecond)
+	sp.Set("2/3 done")
+	time.Sleep(200 * time.Millisecond)
+	sp.Stop()
+	sp.Stop() // twice is fine
+	mu.Lock()
+	out := b.String()
+	mu.Unlock()
+	if !strings.Contains(out, "1/3 done") || !strings.Contains(out, "2/3 done") || !strings.HasSuffix(out, "\r\x1b[K") {
+		t.Errorf("spinner output = %q", out)
+	}
+	var none bytes.Buffer
+	sp = Style{}.Spinner(&none, "x")
+	sp.Set("y")
+	sp.Stop()
+	if none.Len() != 0 {
+		t.Errorf("no terminal, no drawing: %q", none.String())
+	}
+}
+
+type lockedWriter struct {
+	mu *sync.Mutex
+	b  *bytes.Buffer
+}
+
+func (l lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
 }

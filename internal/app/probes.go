@@ -7,13 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 
 	"nedctl/internal/config"
 	"nedctl/internal/execx"
+	"nedctl/internal/ui"
 )
 
 // Probes are read-only kubectl commands run on one cluster or many: the
@@ -211,7 +211,7 @@ func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match st
 	}
 	fmt.Fprintf(stderr, "Reading %d cluster(s) on %s, 8 at a time (up to 20s a request)…\n", len(clusters), t.Name)
 	var out bytes.Buffer
-	prog := &probeProgress{w: stderr, total: len(clusters), tty: isTerminalWriter(stderr)}
+	prog := newProbeProgress(stderr, t.Name, len(clusters))
 	script := probeFunctions(probes) + bastionProbeScript
 	err = execx.Interactive(ctx, execx.Spec{Stdin: strings.NewReader(""), Name: "ssh", Stdout: &out, Stderr: prog,
 		Args: sshArgs(cfg, t, false, remoteBash(script, append([]string{"20s"}, clusters...)...)), Timeout: cfg.AWS.Timeout()})
@@ -227,15 +227,32 @@ func bastionProbes(ctx context.Context, cfg config.Config, t sshTarget, match st
 }
 
 // probeProgress reads the bastion script's stderr: each done line moves a
-// counter (redrawn in place on a terminal, every quarter otherwise); any
-// other line is kept for the error should SSH fail.
+// counter, shown on a spinner on a terminal and every quarter otherwise;
+// any other line is kept for the error should SSH fail.
 type probeProgress struct {
 	w           io.Writer
+	where       string
 	total, done int
 	failed      int
-	tty         bool
+	spin        *ui.Spinner // nil when not a terminal
 	partial     []byte
 	other       bytes.Buffer
+}
+
+func newProbeProgress(w io.Writer, where string, total int) *probeProgress {
+	p := &probeProgress{w: w, where: where, total: total}
+	if st := (ui.Style{Color: colorOn(w)}); st.Color {
+		p.spin = st.Spinner(w, p.message())
+	}
+	return p
+}
+
+func (p *probeProgress) message() string {
+	msg := fmt.Sprintf("Reading clusters on %s: %d/%d done", p.where, p.done, p.total)
+	if p.failed > 0 {
+		msg += fmt.Sprintf(", %d with errors", p.failed)
+	}
+	return msg + "…"
 }
 
 func (p *probeProgress) Write(b []byte) (int, error) {
@@ -258,34 +275,33 @@ func (p *probeProgress) Write(b []byte) (int, error) {
 		if f[2] != "0" {
 			p.failed++
 		}
-		p.show()
+		switch {
+		case p.spin != nil:
+			p.spin.Set(p.message())
+		case p.done == p.total || p.done%max(1, p.total/4) == 0:
+			fmt.Fprintln(p.w, p.summary())
+		}
 	}
 	return len(b), nil
 }
 
-func (p *probeProgress) show() {
+// finish stops the spinner, leaving a one-line summary behind.
+func (p *probeProgress) finish() {
+	if p.spin == nil {
+		return
+	}
+	p.spin.Stop()
+	if p.done > 0 {
+		fmt.Fprintln(p.w, p.summary())
+	}
+}
+
+func (p *probeProgress) summary() string {
 	msg := fmt.Sprintf("  %d/%d clusters read", p.done, p.total)
 	if p.failed > 0 {
 		msg += fmt.Sprintf(" (%d with errors)", p.failed)
 	}
-	switch {
-	case p.tty:
-		fmt.Fprintf(p.w, "\r\033[K%s", msg)
-	case p.done == p.total || p.done%max(1, p.total/4) == 0:
-		fmt.Fprintln(p.w, msg)
-	}
-}
-
-func (p *probeProgress) finish() {
-	if p.tty && p.done > 0 {
-		fmt.Fprintln(p.w)
-	}
-}
-
-// isTerminalWriter reports whether w is a terminal.
-func isTerminalWriter(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	return ok && isTerminal(f)
+	return msg
 }
 
 // parseProbeOutput splits the bastion script's output into results.

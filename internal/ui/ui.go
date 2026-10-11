@@ -123,26 +123,56 @@ func (s Style) Table(w io.Writer, header []string, rows [][]string) {
 // called, then clears the line. It draws only when s.Color is set (a
 // terminal), so logs and pipes never get spinner noise.
 func (s Style) Progress(w io.Writer, msg string) (stop func()) {
+	return s.Spinner(w, msg).Stop
+}
+
+// Spinner is an animated "⠋ msg" whose message can change while it spins,
+// for work that reports how far it has got.
+type Spinner struct {
+	mu       sync.Mutex
+	msg      string
+	done     chan struct{}
+	finished chan struct{}
+	once     sync.Once
+}
+
+// Spinner starts a spinner on w; like Progress it draws only on a terminal.
+func (s Style) Spinner(w io.Writer, msg string) *Spinner {
+	sp := &Spinner{msg: msg, done: make(chan struct{}), finished: make(chan struct{})}
 	if !s.Color {
-		return func() {}
+		close(sp.finished)
+		return sp
 	}
 	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	done := make(chan struct{})
-	finished := make(chan struct{})
 	go func() {
-		defer close(finished)
+		defer close(sp.finished)
 		t := time.NewTicker(90 * time.Millisecond)
 		defer t.Stop()
 		for i := 0; ; i++ {
-			fmt.Fprintf(w, "\r%s %s", s.Fg(Blue, frames[i%len(frames)]), s.Dim(msg))
+			sp.mu.Lock()
+			msg := sp.msg
+			sp.mu.Unlock()
+			fmt.Fprintf(w, "\r\x1b[K%s %s", s.Fg(Blue, frames[i%len(frames)]), s.Dim(msg))
 			select {
-			case <-done:
+			case <-sp.done:
 				fmt.Fprint(w, "\r\x1b[K")
 				return
 			case <-t.C:
 			}
 		}
 	}()
-	var once sync.Once
-	return func() { once.Do(func() { close(done); <-finished }) }
+	return sp
+}
+
+// Set changes the message shown from the next frame on.
+func (sp *Spinner) Set(msg string) {
+	sp.mu.Lock()
+	sp.msg = msg
+	sp.mu.Unlock()
+}
+
+// Stop clears the line and waits for the spinner to finish; it is safe to
+// call more than once.
+func (sp *Spinner) Stop() {
+	sp.once.Do(func() { close(sp.done); <-sp.finished })
 }
