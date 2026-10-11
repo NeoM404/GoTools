@@ -45,8 +45,11 @@ e2e:
 	go test -race -count=1 -run 'E2E' ./internal/app/
 	./scripts/e2e-smoke.sh
 
+# Windows code (file locks, console colour, PowerShell setup) is vetted too,
+# so a Windows-only break fails here rather than on an engineer's laptop.
 vet:
 	go vet ./...
+	GOOS=windows go vet ./...
 
 fmt:
 	gofmt -l -w .

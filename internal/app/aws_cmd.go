@@ -42,7 +42,7 @@ func isTerminal(f *os.File) bool {
 // (https://no-color.org) unset.
 func colorOn(w io.Writer) bool {
 	f, ok := w.(*os.File)
-	return ok && isTerminal(f) && os.Getenv("NO_COLOR") == ""
+	return ok && isTerminal(f) && os.Getenv("NO_COLOR") == "" && consoleColor(f)
 }
 
 // tokenMargin: a cached sign-in expiring sooner than this counts as expired,

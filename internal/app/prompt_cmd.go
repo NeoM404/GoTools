@@ -119,14 +119,18 @@ func nonPrinting(shell, s string) string {
 // nedctl by full path, so it works when nedctl is not on PATH. Inside
 // `nedctl kube`, the cluster prefix that shell sets is kept in front.
 func promptInit(args []string, stdout, stderr io.Writer) int {
-	if len(args) != 1 || (args[0] != "bash" && args[0] != "zsh") {
-		fmt.Fprintln(stderr, "usage: nedctl prompt init <bash|zsh>   (add  eval \"$(nedctl prompt init bash)\"  to ~/.bashrc)")
+	if len(args) != 1 || (args[0] != "bash" && args[0] != "zsh" && args[0] != "powershell") {
+		fmt.Fprintln(stderr, "usage: nedctl prompt init <bash|zsh|powershell>   (nedctl setup adds it to your shell's startup file)")
 		return ExitUsage
 	}
 	self, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(stderr, "locating nedctl: %v\n", err)
 		return ExitFailure
+	}
+	if args[0] == "powershell" {
+		fmt.Fprint(stdout, powershellInit(self))
+		return ExitOK
 	}
 	bin := shellQuote(self)
 	// `nedctl aws login` cannot change this shell's AWS_PROFILE itself; the
@@ -221,4 +225,49 @@ func segment(cfg config.Config, shell, label, env string, prod bool) string {
 		start, end = "%{"+start+"%}", "%{"+end+"%}"
 	}
 	return start + text + end
+}
+
+// powershellInit is the PowerShell integration (Windows PowerShell 5.1 and
+// PowerShell 7): the prompt segment and tab colour, `nedctl aws login`
+// setting $env:AWS_PROFILE, and tab completion. Like the bash version it
+// never runs nedctl's output: login's one line is matched against an exact
+// pattern and only a [A-Za-z0-9._-] profile name is taken.
+func powershellInit(bin string) string {
+	return strings.ReplaceAll(`# nedctl shell integration: prompt, tab colour, completion, and
+# "nedctl aws login" switching this session's AWS_PROFILE.
+$global:__nedctlBin = '@BIN@'
+function global:__nedctlRun {
+  $enc = [Console]::OutputEncoding
+  try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; & $global:__nedctlBin @args }
+  finally { [Console]::OutputEncoding = $enc }
+}
+function global:nedctl {
+  if ($args.Count -ge 2 -and $args[0] -eq 'aws' -and $args[1] -eq 'login') {
+    $env:NEDCTL_SHELL_HOOK = '1'
+    try { $out = (__nedctlRun @args --format powershell | Out-String).Trim(); $rc = $LASTEXITCODE }
+    finally { Remove-Item Env:NEDCTL_SHELL_HOOK -ErrorAction SilentlyContinue }
+    if ($out -match '^\$env:AWS_PROFILE = ''([A-Za-z0-9._-]+)''$') { $env:AWS_PROFILE = $Matches[1] }
+    elseif ($out) { $out }
+    $global:LASTEXITCODE = $rc
+    return
+  }
+  __nedctlRun @args
+}
+if (-not (Test-Path variable:global:__nedctlBasePrompt)) { $global:__nedctlBasePrompt = $function:prompt }
+function global:prompt {
+  $rc = $global:LASTEXITCODE
+  $seg = (__nedctlRun prompt --shell powershell --tab 2>$null | Out-String).TrimEnd()
+  $base = & $global:__nedctlBasePrompt
+  $global:LASTEXITCODE = $rc
+  if ($seg) { "$seg $base" } else { $base }
+}
+Register-ArgumentCompleter -Native -CommandName nedctl, nedctl.exe -ScriptBlock {
+  param($wordToComplete, $commandAst, $cursorPosition)
+  $words = @($commandAst.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text })
+  if ($wordToComplete -eq '') { $words += '__empty__' }
+  __nedctlRun __complete @words 2>$null | ForEach-Object {
+    if ($_ -ne '__files__') { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+  }
+}
+`, "@BIN@", strings.ReplaceAll(bin, "'", "''"))
 }

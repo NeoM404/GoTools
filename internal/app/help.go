@@ -64,7 +64,7 @@ var helpGroups = []helpGroup{
 			"Every step asks first, is safe to repeat and never overwrites anything. Running a newer download's setup is also how you update.",
 			[]string{"./nedctl-linux-amd64 setup", "nedctl setup --yes"}},
 		{"doctor", "", "Check tools, config, proxy, CA bundle, portal and sign-in", "", []string{"nedctl doctor", "nedctl doctor --all", "nedctl doctor --offline -o json"}},
-		{"prompt init", "<bash|zsh>", "Shell code for the prompt, tab colour, completion and login switching", "setup adds it to ~/.bashrc or ~/.zshrc for you.", []string{`eval "$(nedctl prompt init bash)"`}},
+		{"prompt init", "<bash|zsh|powershell>", "Shell code for the prompt, tab colour, completion and login switching", "setup adds it to ~/.bashrc, ~/.zshrc or your PowerShell profile for you.", []string{`eval "$(nedctl prompt init bash)"`, "nedctl prompt init powershell | Out-String | Invoke-Expression"}},
 		{"version", "", "This nedctl's version; --check looks for a newer release", "", []string{"nedctl version --check"}},
 		{"init", "", "Write a starter config by hand", "", nil},
 	}},

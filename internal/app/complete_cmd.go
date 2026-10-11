@@ -45,6 +45,9 @@ func cmdComplete(ctx context.Context, cfgPath string, words []string, stdout io.
 		words = []string{""}
 	}
 	cur, done := words[len(words)-1], words[:len(words)-1]
+	if cur == "__empty__" { // PowerShell 5.1 cannot pass an empty argument
+		cur = ""
+	}
 	for _, c := range completions(ctx, cfgPath, done, cur) {
 		if strings.HasPrefix(strings.ToLower(c), strings.ToLower(cur)) || c == "__files__" {
 			fmt.Fprintln(stdout, c)
@@ -113,7 +116,7 @@ func completions(ctx context.Context, cfgPath string, done []string, cur string)
 	case "aws login":
 		return assignmentWords(cfg)
 	case "prompt init":
-		return []string{"bash", "zsh"}
+		return []string{"bash", "zsh", "powershell"}
 	case "console":
 		if positionals(rest, flags) == 0 {
 			out := make([]string, 0, len(consoleDestinations))

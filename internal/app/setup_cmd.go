@@ -12,8 +12,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"nedctl/internal/config"
+	"nedctl/internal/execx"
 	"nedctl/internal/picker"
 )
 
@@ -89,8 +91,13 @@ func cmdSetup(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	}
 
 	// 2. nedctl on PATH.
+	installed, _ := os.Executable()
 	if !*noInstall {
-		switch dest, onPath, err := installSelf(ask); {
+		dest, onPath, err := installSelf(ask)
+		if dest != "" {
+			installed = dest
+		}
+		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "installing: %v\n", err)
 			return ExitFailure
@@ -101,11 +108,14 @@ func cmdSetup(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		default:
 			done("install", dest+" (its folder joins PATH through the shell step)")
 		}
+		if goos == "windows" && dest != "" && !pathHas(filepath.Dir(dest)) {
+			fmt.Fprintln(stderr, "         added to your PATH for new terminals")
+		}
 	}
 
 	// 3. Shell integration.
 	if !*noShell {
-		switch rc, note, err := addShellIntegration(ask); {
+		switch rc, note, err := addShellIntegration(ask, installed); {
 		case err != nil:
 			fmt.Fprintf(stderr, "shell integration: %v\n", err)
 			return ExitFailure
@@ -123,7 +133,11 @@ func cmdSetup(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	fmt.Fprintln(stderr)
 	code := cmdDoctor(ctx, cfgPath, nil, stdout, stderr)
 	fmt.Fprintln(stderr)
-	fmt.Fprintln(stderr, "Next: open a new terminal (or run  exec $SHELL), then")
+	if goos == "windows" {
+		fmt.Fprintln(stderr, "Next: open a new PowerShell window, then")
+	} else {
+		fmt.Fprintln(stderr, "Next: open a new terminal (or run  exec $SHELL), then")
+	}
 	fmt.Fprintln(stderr, "  nedctl aws login          pick an account and role")
 	fmt.Fprintln(stderr, "  nedctl shell              a shell on an instance")
 	fmt.Fprintln(stderr, "  nedctl kube               kubectl on a cluster")
@@ -177,8 +191,19 @@ func writeSetupConfig(explicit, found, url, region string) (string, error) {
 	return path, nil
 }
 
-// userBinDir is where setup installs nedctl; a var so tests can move it.
-var userBinDir = func() (string, error) {
+// goos is runtime.GOOS; a var so tests can take the Windows paths.
+var goos = runtime.GOOS
+
+// userBinDir is where setup installs nedctl: ~/.local/bin, or on Windows
+// %LOCALAPPDATA%\Programs\nedctl. A var so tests can move it.
+var userBinDir = defaultUserBinDir
+
+func defaultUserBinDir() (string, error) {
+	if goos == "windows" {
+		if base := os.Getenv("LOCALAPPDATA"); base != "" {
+			return filepath.Join(base, "Programs", "nedctl"), nil
+		}
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -186,13 +211,19 @@ var userBinDir = func() (string, error) {
 	return filepath.Join(home, ".local", "bin"), nil
 }
 
-// installSelf copies this binary to ~/.local/bin/nedctl, unless the
-// nedctl on PATH already is this binary. Re-running setup from a newer
-// download is also how nedctl is updated.
+// psRun runs a PowerShell command (Windows setup only); a var for tests.
+var psRun = func(script string) (string, error) {
+	out, err := execx.Output(context.Background(), 20*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	return strings.TrimSpace(string(out)), err
+}
+
+func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+
+// installSelf copies this binary into userBinDir, unless the nedctl on PATH
+// already is this binary. On Windows it also puts that folder on the user's
+// PATH for new terminals. Re-running setup from a newer download is also how
+// nedctl is updated.
 func installSelf(ask func(string) bool) (dest string, onPath bool, err error) {
-	if runtime.GOOS == "windows" {
-		return "", false, nil
-	}
 	self, err := os.Executable()
 	if err != nil {
 		return "", false, err
@@ -202,30 +233,48 @@ func installSelf(ask func(string) bool) (dest string, onPath bool, err error) {
 	if err != nil {
 		return "", false, err
 	}
-	dest = filepath.Join(dir, "nedctl")
+	name := "nedctl"
+	if goos == "windows" {
+		name = "nedctl.exe"
+	}
+	dest = filepath.Join(dir, name)
 	onPath = pathHas(dir)
 	if p, err := exec.LookPath("nedctl"); err == nil {
 		if real, _ := filepath.EvalSymlinks(p); real == self {
 			return real, true, nil
 		}
 	}
-	if self == dest {
-		return dest, onPath, nil
+	if self != dest {
+		if !ask(fmt.Sprintf("Install nedctl to %s so it runs from anywhere?", dest)) {
+			return "", false, nil
+		}
+		data, err := os.ReadFile(self)
+		if err != nil {
+			return "", false, err
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", false, err
+		}
+		if err := writeFileAtomic(dest, data, 0o755); err != nil {
+			if goos == "windows" {
+				err = fmt.Errorf("%w (close any nedctl running from %s and try again)", err, dir)
+			}
+			return "", false, err
+		}
 	}
-	if !ask(fmt.Sprintf("Install nedctl to %s so it runs from anywhere?", dest)) {
-		return "", false, nil
-	}
-	data, err := os.ReadFile(self)
-	if err != nil {
-		return "", false, err
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", false, err
-	}
-	if err := writeFileAtomic(dest, data, 0o755); err != nil {
-		return "", false, err
+	if goos == "windows" && !onPath {
+		// The user's PATH lives in the registry; new terminals pick it up.
+		if _, err := psRun(psAddUserPath(dir)); err != nil {
+			return dest, false, fmt.Errorf("adding %s to your PATH: %w", dir, err)
+		}
+		onPath = true
 	}
 	return dest, onPath, nil
+}
+
+func psAddUserPath(dir string) string {
+	return "$d = " + psQuote(dir) + "; $p = [Environment]::GetEnvironmentVariable('Path', 'User'); " +
+		"if (-not (($p -split ';') -contains $d)) { [Environment]::SetEnvironmentVariable('Path', (@($p.TrimEnd(';'), $d) | Where-Object { $_ }) -join ';', 'User') }"
 }
 
 func pathHas(dir string) bool {
@@ -242,10 +291,16 @@ const (
 	rcEnd   = "# <<< nedctl <<<"
 )
 
-// addShellIntegration adds (or refreshes) a marked block in ~/.bashrc or
-// ~/.zshrc that puts ~/.local/bin on PATH and runs `nedctl prompt init`.
-// Lines outside the block are never changed.
-func addShellIntegration(ask func(string) bool) (rc, note string, err error) {
+const rcComment = "# Added by `nedctl setup`: prompt with account and environment, coloured tab,\n# tab completion, and `nedctl aws login` switching this shell. Re-run setup to refresh.\n"
+
+// addShellIntegration adds (or refreshes) a marked block in the shell's
+// startup file — ~/.bashrc, ~/.zshrc, or on Windows the PowerShell
+// profiles — that runs `nedctl prompt init`. Lines outside the block are
+// never changed. bin is the installed nedctl, for PowerShell.
+func addShellIntegration(ask func(string) bool, bin string) (rc, note string, err error) {
+	if goos == "windows" {
+		return addPowerShellIntegration(ask, bin)
+	}
 	shell := filepath.Base(os.Getenv("SHELL"))
 	if shell != "bash" && shell != "zsh" {
 		return "", "your shell is " + firstNonBlank(shell, "unknown") + ": add  eval \"$(nedctl prompt init bash)\"  (or zsh) to its startup file yourself", nil
@@ -255,11 +310,7 @@ func addShellIntegration(ask func(string) bool) (rc, note string, err error) {
 		return "", "", err
 	}
 	rc = filepath.Join(home, "."+shell+"rc")
-	old, err := os.ReadFile(rc)
-	if err != nil && !os.IsNotExist(err) {
-		return "", "", err
-	}
-	block := rcBegin + "\n# Added by `nedctl setup`: prompt with account and environment, coloured tab,\n# tab completion, and `nedctl aws login` switching this shell. Re-run setup to refresh.\n"
+	block := rcBegin + "\n" + rcComment
 	if dir, err := userBinDir(); err == nil {
 		if rel, err := filepath.Rel(home, dir); err == nil && !strings.HasPrefix(rel, "..") {
 			dir = "$HOME/" + filepath.ToSlash(rel)
@@ -267,32 +318,107 @@ func addShellIntegration(ask func(string) bool) (rc, note string, err error) {
 		block += `case ":$PATH:" in *":` + dir + `:"*) ;; *) export PATH="` + dir + `:$PATH" ;; esac` + "\n"
 	}
 	block += `command -v nedctl >/dev/null 2>&1 && eval "$(nedctl prompt init ` + shell + `)"` + "\n" + rcEnd + "\n"
+	old, _ := os.ReadFile(rc)
+	written, err := upsertBlock(rc, block, ask)
+	if err != nil || !written {
+		if err == nil {
+			note = "left " + rc + " unchanged"
+			rc = ""
+		}
+		return rc, note, err
+	}
+	return rc, earlierInitLine(rc, string(old), "command -v nedctl"), nil
+}
 
+// addPowerShellIntegration writes the block into the profile of each
+// PowerShell installed (Windows PowerShell 5.1 and PowerShell 7 keep
+// separate ones; OneDrive may move Documents, so PowerShell is asked where
+// they are), and says when the execution policy would stop profiles loading.
+func addPowerShellIntegration(ask func(string) bool, bin string) (rc, note string, err error) {
+	var profiles []string
+	for _, exe := range []string{"powershell.exe", "pwsh.exe"} {
+		if _, err := exec.LookPath(exe); err != nil {
+			continue
+		}
+		if p, err := psRunWith(exe, "$PROFILE.CurrentUserCurrentHost"); err == nil && p != "" {
+			profiles = append(profiles, p)
+		}
+	}
+	if len(profiles) == 0 {
+		return "", "PowerShell not found: add  nedctl prompt init powershell | Out-String | Invoke-Expression  to your profile", nil
+	}
+	block := rcBegin + "\n" + rcComment + psProfileLine(bin) + "\n" + rcEnd + "\n"
+	var done []string
+	for _, p := range profiles {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return "", "", err
+		}
+		written, err := upsertBlock(p, block, ask)
+		if err != nil {
+			return "", "", err
+		}
+		if written {
+			done = append(done, p)
+		}
+	}
+	if len(done) == 0 {
+		return "", "left your PowerShell profile unchanged", nil
+	}
+	if pol, err := psRun("Get-ExecutionPolicy"); err == nil {
+		switch strings.ToLower(pol) {
+		case "restricted", "allsigned", "undefined":
+			note = "PowerShell's execution policy is " + pol + ", so profiles do not load: run  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned  (or ask IT if it is enforced)"
+		}
+	}
+	return strings.Join(done, ", "), note, nil
+}
+
+// psRunWith runs a command in a specific PowerShell.
+var psRunWith = func(exe, script string) (string, error) {
+	out, err := execx.Output(context.Background(), 20*time.Second, exe, "-NoProfile", "-NonInteractive", "-Command", script)
+	return strings.TrimSpace(string(out)), err
+}
+
+func psProfileLine(bin string) string {
+	return "$__nedctl = " + psQuote(bin) + "; if (Test-Path $__nedctl) { & $__nedctl prompt init powershell | Out-String | Invoke-Expression }"
+}
+
+// upsertBlock replaces the marked block in path, or appends it after
+// asking; it reports whether the file now holds the block.
+func upsertBlock(path, block string, ask func(string) bool) (bool, error) {
+	old, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
 	text := string(old)
 	if i, j := strings.Index(text, rcBegin), strings.Index(text, rcEnd); i >= 0 && j > i {
-		if text[i:j+len(rcEnd)+1] == block {
-			return rc, "", nil // already current
+		if text[i:min(len(text), j+len(rcEnd)+1)] == block {
+			return true, nil // already current
 		}
 		text = text[:i] + block + strings.TrimPrefix(text[j+len(rcEnd):], "\n")
 	} else {
-		if !ask(fmt.Sprintf("Add the nedctl shell integration to %s?", rc)) {
-			return "", "left " + rc + " unchanged", nil
+		if !ask(fmt.Sprintf("Add the nedctl shell integration to %s?", path)) {
+			return false, nil
 		}
 		if text != "" && !strings.HasSuffix(text, "\n") {
 			text += "\n"
 		}
 		text += "\n" + block
 	}
-	// An earlier hand-added `prompt init` line would run as well: point it out.
-	for n, line := range strings.Split(string(old), "\n") {
-		if strings.Contains(line, "prompt init") && !strings.HasPrefix(strings.TrimSpace(line), "command -v nedctl") {
-			note = fmt.Sprintf("line %d of %s already runs `prompt init` — remove it; the nedctl block replaces it", n+1, rc)
-			break
-		}
-	}
 	mode := os.FileMode(0o644)
-	if fi, err := os.Stat(rc); err == nil {
+	if fi, err := os.Stat(path); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	return rc, note, writeFileAtomic(rc, []byte(text), mode)
+	return true, writeFileAtomic(path, []byte(text), mode)
+}
+
+// earlierInitLine points out a hand-added `prompt init` line outside the
+// block, which would run as well.
+func earlierInitLine(path, old, ours string) string {
+	for n, line := range strings.Split(old, "\n") {
+		if strings.Contains(line, "prompt init") && !strings.HasPrefix(strings.TrimSpace(line), ours) {
+			return fmt.Sprintf("line %d of %s already runs `prompt init` — remove it; the nedctl block replaces it", n+1, path)
+		}
+	}
+	return ""
 }

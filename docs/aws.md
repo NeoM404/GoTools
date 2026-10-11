@@ -26,6 +26,29 @@ completion and login switching to your shell, and runs `doctor`. Release
 binaries carry the organisation's sign-in settings, so most engineers write
 no config at all ([nedctl.md, First run](nedctl.md#first-run)).
 
+### Windows without WSL (PowerShell)
+
+Download `nedctl-windows-amd64.exe` and run it once from PowerShell:
+
+```powershell
+.\nedctl-windows-amd64.exe setup
+```
+
+`setup` installs `nedctl.exe` to `%LOCALAPPDATA%\Programs\nedctl`, adds that
+folder to your user PATH, and adds the integration to your PowerShell
+profile (Windows PowerShell 5.1 and PowerShell 7 each have their own; both
+are updated). In a new PowerShell window you get the coloured prompt and
+tab, tab completion, and `nedctl aws login` setting `$env:AWS_PROFILE`.
+`nedctl kube` opens PowerShell 7 if installed (else Windows PowerShell) with
+the cluster in the prompt; `shell --tab` opens Windows Terminal tabs
+directly; `shell --via legacy` starts `AWS-EC2-SSMshell.exe` with the keys
+in its environment.
+
+If setup reports that the execution policy is `Restricted`, profiles do not
+load until you run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+(your IT policy may enforce it). You need the Windows builds of the AWS CLI
+v2, the Session Manager plugin and `kubectl`.
+
 ### A day with nedctl
 
 ```bash

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -252,16 +251,20 @@ func logTail(path string, n int) string {
 // start as they are with KUBECONFIG in their environment.
 func kubeShell(cfg config.Config, pc profileContext, cluster string) (string, []string, []string, func()) {
 	none := func() {}
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		if runtime.GOOS == "windows" {
-			return "powershell.exe", []string{"-NoLogo"}, nil, none
-		}
-		shell = "/bin/sh"
-	}
 	label := "⎈ " + strings.TrimSpace(cluster+" "+strings.ToUpper(pc.Environment))
 	r, g, b, colored := picker.RGB(cfg.ColorFor(pc.Environment))
 	colored = colored && os.Getenv("NO_COLOR") == ""
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		if goos == "windows" {
+			exe := "powershell.exe"
+			if _, err := exec.LookPath("pwsh.exe"); err == nil {
+				exe = "pwsh.exe"
+			}
+			return exe, []string{"-NoLogo", "-NoExit", "-Command", powershellKubePrompt(label, colored, r, g, b)}, nil, none
+		}
+		shell = "/bin/sh"
+	}
 	// The cluster name is restricted to [A-Za-z0-9_-] and the environment to
 	// letters, so nothing below can break out of its quotes.
 	restore := `if [ -n "$NEDCTL_KUBECONFIG" ] && [ "$KUBECONFIG" != "$NEDCTL_KUBECONFIG" ]; then
@@ -305,4 +308,18 @@ __nedctl_kube_prefix='`+prefix+`'
 		return shell, []string{"-i"}, []string{"ZDOTDIR=" + dir}, func() { os.RemoveAll(dir) }
 	}
 	return shell, nil, nil, none
+}
+
+// powershellKubePrompt runs after the user's profile: it sets KUBECONFIG
+// back to the cluster's (a profile may change it) and puts the cluster in
+// front of whatever prompt the profile made. The label holds only the
+// cluster name ([A-Za-z0-9_-]) and the environment, so nothing in it is
+// interpreted by PowerShell.
+func powershellKubePrompt(label string, colored bool, r, g, b int) string {
+	prefix := label
+	if colored {
+		prefix = fmt.Sprintf("$([char]27)[1;38;2;%d;%d;%dm%s$([char]27)[0m", r, g, b, label)
+	}
+	return `$env:KUBECONFIG = $env:NEDCTL_KUBECONFIG; $global:__nedctlKubePrompt = $function:prompt; ` +
+		`function global:prompt { "` + prefix + ` " + (& $global:__nedctlKubePrompt) }`
 }

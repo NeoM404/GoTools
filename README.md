@@ -28,6 +28,8 @@ Engineers: download the release binary for your machine, then
 chmod +x nedctl-linux-amd64 && ./nedctl-linux-amd64 setup
 ```
 
+On Windows without WSL: `.\nedctl-windows-amd64.exe setup` in PowerShell.
+
 `setup` installs nedctl to `~/.local/bin`, adds the prompt and tab colours
 to your shell, checks your tools and network, and tells you what to run
 next (`nedctl aws login`). Release builds carry the organisation's sign-in
