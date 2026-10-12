@@ -130,6 +130,7 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		return ExitFailure
 	}
 	defer logFile.Close()
+	stderr = newSyncWriter(stderr) // the tunnel's notices share it from here on
 	banner(cfg, pc, plan.cluster.Name, stderr)
 	hop := firstNonBlank(plan.hop.Name, plan.hop.ID)
 	sp := showRoute(stderr, fmt.Sprintf("Opening the tunnel through %s…", hop), hop, "⎈ "+plan.cluster.Name)

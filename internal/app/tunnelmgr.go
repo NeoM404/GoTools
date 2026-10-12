@@ -49,6 +49,31 @@ type managedTunnel struct {
 	state    func(tunnelState)
 }
 
+// syncWriter serialises writes from the tunnel's background notices and
+// the command's own output; File lets terminal checks see through it.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func newSyncWriter(w io.Writer) io.Writer {
+	if s, ok := w.(*syncWriter); ok {
+		return s
+	}
+	return &syncWriter{w: w}
+}
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}
+
+func (s *syncWriter) File() *os.File {
+	f, _ := asFile(s.w)
+	return f
+}
+
 // tunnelState is what `nedctl tunnels` shows about a held tunnel.
 type tunnelState struct {
 	Session string    `json:"session"` // open | idle-closed | closed

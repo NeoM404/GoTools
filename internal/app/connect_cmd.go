@@ -194,6 +194,7 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 	if code := applyChangeControl(ctx, cfg, inventory.Cluster{Name: cluster.Name, Environment: pc.Environment}, cr, glass, tr, stderr); code != ExitOK {
 		return code
 	}
+	stderr = newSyncWriter(stderr) // the tunnel's notices share it from here on
 	banner(cfg, pc, cluster.Name, stderr)
 	logPath, logFile, err := tunnelLog(cfg, cluster.Name)
 	if err != nil {
