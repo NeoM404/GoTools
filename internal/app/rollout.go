@@ -26,11 +26,11 @@ var (
 )
 
 type rolloutState struct {
-	mu                 sync.Mutex
-	ready, total, old  int
-	updated, scheduled bool
-	buf                bytes.Buffer
-	partial            []byte
+	mu                sync.Mutex
+	ready, total, old int
+	updated           bool
+	buf               bytes.Buffer
+	partial           []byte
 }
 
 func (r *rolloutState) Write(b []byte) (int, error) {
