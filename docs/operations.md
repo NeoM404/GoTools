@@ -20,7 +20,9 @@ the account you are signed in to. **`--aws-env ete,qa`** reads your squad's
 ETE and QA accounts too. It uses the same role you hold now, or else your
 first non-elevated role; it never picks an elevated role silently. The first
 time, it signs in to each account, which is recorded as an `aws-login`.
-Your current profile doesn't change. For example:
+Your current profile doesn't change. When your only role in an account is
+elevated, nedctl asks before using it for the read (`[y/N]`). Without a
+terminal it skips that account and says why. For example:
 
 ```bash
 nedctl diff kiali --aws-env ete,qa --match lms
@@ -86,6 +88,17 @@ With `--watch`, it reads everything again on that interval (30s or more).
 A cluster whose status changed since the last round flips again and is
 marked `▲` (better) or `▼` (worse). Ctrl-C stops it, and the problems of
 the last round are listed underneath.
+
+**Clusters that are slow or don't answer:**
+
+- each check waits at most 20s;
+- a cluster that doesn't answer its first check isn't asked the rest, so
+  it shows as `UNREACHABLE` after about 20s instead of two minutes;
+- no cluster is read for more than 90s;
+- while you wait, the board shows how long each cluster has taken
+  (`····· 12s`), and amber `slow 42s` after 30s.
+
+The rest of the board fills in as other clusters finish, unaffected.
 
 The board only draws in a terminal. Scripts keep using plain `health`, or
 `-o json`. `NEDCTL_REDUCED_MOTION=1` keeps the live updates but drops the

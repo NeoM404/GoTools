@@ -144,7 +144,7 @@ func printDiff(w io.Writer, cfg config.Config, name string, sides []diffSide, al
 		all = true
 	}
 	tw := newTable(w)
-	head := []string{"", ""}
+	head := []string{headerMark, "SETTING"}
 	for _, s := range sides {
 		head = append(head, s.Where)
 	}

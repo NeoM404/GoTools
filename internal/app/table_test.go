@@ -33,3 +33,22 @@ func TestTablePlainIsUnchangedAndStyledIsMarked(t *testing.T) {
 		}
 	}
 }
+
+func TestHeaderMarkMakesAHeaderOfLowerCaseCells(t *testing.T) {
+	var b bytes.Buffer
+	tw := &table{out: &b, style: ui.Style{Color: true}}
+	fmt.Fprintln(tw, headerMark+"\tSETTING\tQA lms-eks-qa/ns\tETE lms-eks-ete/ns")
+	fmt.Fprintln(tw, "≠\treplicas\t2\t3")
+	tw.Flush()
+	out := b.String()
+	if strings.Contains(out, headerMark) || !strings.Contains(out, "─") || !strings.Contains(out, "QA lms-eks-qa/ns") {
+		t.Fatalf("header row not rendered as a header:\n%q", out)
+	}
+	var p bytes.Buffer
+	plainTW := newTable(&p)
+	fmt.Fprintln(plainTW, headerMark+"\tSETTING\tqa")
+	plainTW.Flush()
+	if strings.Contains(p.String(), headerMark) {
+		t.Fatalf("the mark must never be printed: %q", p.String())
+	}
+}

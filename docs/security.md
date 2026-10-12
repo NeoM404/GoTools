@@ -64,7 +64,7 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
   `legacy-ssm-tool`, `aws-export-credentials`, `ec2-start`/`ec2-stop`,
   `aks-session`, `ssh-session`, `debug-pod`, `debug-node`, `debug-attach`,
   `debug-net`, `debug-clean`, `logs-read`, `port-forward`, `runbook`,
-  `node-drain`, `node-cordon`, `node-uncordon`, `cp-download`, `cp-upload`, `cp-node`, `incident-collect`, `update`,
+  `node-drain`, `node-cordon`, `node-uncordon`, `cp-download`, `cp-upload`, `cp-node`, `incident-collect`, `update`, `tunnel-close`,
   `scp-download`, `scp-upload`, and
   the cluster credential commands) writes a start event **before** acting.
   If the event cannot be written, the action does not happen.
@@ -144,6 +144,18 @@ data before display: passwords, tokens, keys, connection-string passwords,
 private keys, card numbers (Luhn-checked) and South African ID numbers
 (date- and Luhn-checked). It's on by default. `--no-redact` is refused on
 production clusters, and a raw read anywhere is flagged in the audit trail.
+
+## Tunnels don't stay open
+
+nedctl manages the EKS tunnels it holds: it listens on 127.0.0.1 itself and
+knows when a tunnel is used. A Session Manager session left unused for
+`tunnelIdleTimeout` (default 15 minutes) is closed, and the next use reopens
+it under your current sign-in. `nedctl tunnels` shows every tunnel on the
+machine, and `nedctl tunnels close` ends one or all, which is recorded.
+Records of tunnels whose holder has gone are removed, so nothing reuses a
+stale port. The API server's TLS is still verified against the cluster's
+CA end to end, so a local process that grabbed a port could not get a
+token.
 
 ## Presenter mode for screen-shares
 

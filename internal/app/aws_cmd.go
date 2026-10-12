@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -548,6 +549,21 @@ func profileForEnv(ctx context.Context, cfg config.Config, cur profileContext, e
 		return "", errors.New("could not list your Identity Center assignments")
 	}
 	c, err := chooseEnvAssignment(cfg, choices, cur, env)
+	var only *onlyElevated
+	if errors.As(err, &only) {
+		// At a terminal, ask: the read is read-only, but the role is not.
+		if !stdinIsTerminal() {
+			return "", err
+		}
+		st := ui.Style{Color: colorOn(stderr)}
+		fmt.Fprintf(stderr, "%s Your only role in %s's %s account is %s, which can change and delete resources.\n  Use it for this read? [y/N] ",
+			st.Fg(elevatedColor, "▲"), cur.Squad, strings.ToUpper(env), st.Bold(only.choice.Role))
+		line, _ := bufio.NewReader(stdin).ReadString('\n')
+		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+			return "", fmt.Errorf("skipped: not using the elevated role %s in %s", only.choice.Role, strings.ToUpper(env))
+		}
+		c, err = only.choice, nil
+	}
 	if err != nil {
 		return "", err
 	}
@@ -586,9 +602,21 @@ func chooseEnvAssignment(cfg config.Config, choices []awsChoice, cur profileCont
 		}
 	}
 	if pick < 0 {
-		return awsChoice{}, fmt.Errorf("your only roles in %s's %s account are elevated (%s) — sign in to it on purpose: nedctl aws login %s %s", cur.Squad, strings.ToUpper(env), cands[0].Role, cur.Squad, env)
+		return awsChoice{}, &onlyElevated{choice: cands[0], squad: cur.Squad, env: env}
 	}
 	return cands[pick], nil
+}
+
+// onlyElevated: the only roles there can change things; nedctl asks before
+// using one for a read (and never without a terminal).
+type onlyElevated struct {
+	choice     awsChoice
+	squad, env string
+}
+
+func (e *onlyElevated) Error() string {
+	return fmt.Sprintf("your only role in %s's %s account is elevated (%s) — run at a terminal to be asked, or sign in on purpose: nedctl aws login %s %s",
+		e.squad, strings.ToUpper(e.env), e.choice.Role, e.squad, e.env)
 }
 
 // matchesAll reports whether every term appears, case-insensitively, in

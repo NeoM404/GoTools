@@ -338,26 +338,41 @@ prefixes the prompt with `⎈ <cluster> <ENV>` in the environment's colour.
 Other shells start unchanged, with `KUBECONFIG` and `NEDCTL_KUBE` set. The
 ready message prints the `export KUBECONFIG=…` line for other terminals.
 
-### One tunnel per cluster
+### Tunnels are managed: one per cluster, closed when idle
 
-nedctl doesn't open a second tunnel to a cluster when one is already open
-on your machine. Every later command uses the open tunnel: another `kube`,
-`connect`, `health`, `explain`, `logs` or `debug`. It says
-`Using the tunnel already open through <instance>`.
+A tunnel that `kube` or `connect` holds is **managed by nedctl**. nedctl
+itself listens on the local port (127.0.0.1 only) and passes each
+connection to the Session Manager port-forward behind it. So it knows
+whether the tunnel is in use, and:
 
-- `kube` and `connect` publish the tunnel they hold, next to the
-  kubeconfigs in `~/.kube/nedctl/<cluster>.tunnel.json`. The record holds
-  the port, the instance and the process ID. A record whose process has
-  gone is removed, and a new tunnel opens.
-- When the `kube` that holds the tunnel exits while others still use it,
-  it waits for them and shows a spinner. Ctrl-C closes it anyway.
-- A `connect` that holds the tunnel ends on Ctrl-C, and warns how many
-  sessions lose the tunnel.
-- To keep one tunnel for the whole day, run `nedctl connect <cluster> --tab`
-  and leave the tab open. Everything else then reuses it.
-- A tunnel is shared only for the same cluster endpoint, so a cluster with
-  the same name in another account gets its own tunnel. `--port` or
-  `--via-instance` values that differ from the open tunnel also get a new one.
+- **Idle sessions close by themselves.** After `tunnelIdleTimeout` (default
+  `15m`) with no connection and no traffic, the Session Manager session is
+  closed, so no session is left open behind a forgotten terminal. The local
+  port stays, and the next `kubectl` reopens the session by itself, in about
+  five seconds. You see one line each time it happens.
+- **One tunnel per cluster.** Every other command uses the open tunnel
+  (another `kube`, `connect`, `health`, `explain`, `logs` or `debug`) and
+  says `Using the tunnel already open through <instance>`. A tunnel is
+  shared only for the same cluster endpoint, so a cluster with the same
+  name in another account gets its own.
+- **`nedctl tunnels`** lists every tunnel on this machine: cluster, port,
+  instance, whether its session is open or closed for idleness, who else
+  uses it, which command holds it, and for how long.
+- **`nedctl tunnels close CLUSTER`** (or `--all`) closes a tunnel for good,
+  and the holder says so in its own terminal. The close is recorded
+  (`tunnel-close`). Only you can ask, because the request is a file in your
+  own `~/.kube/nedctl`.
+- **Stale records are cleared:** a tunnel whose holder process is gone
+  disappears from `tunnels`, the home screen and reuse.
+- When the `kube` holding a tunnel exits while others still use it, it waits
+  for them (Ctrl-C closes it anyway). `connect` holds its tunnel until Ctrl-C
+  or `tunnels close`.
+
+```bash
+nedctl tunnels                         # what is open, idle or in use
+nedctl tunnels close payments-eks-prod
+nedctl tunnels close --all             # end of day
+```
 
 ## Moving clusters to access entries: `nedctl eks`
 

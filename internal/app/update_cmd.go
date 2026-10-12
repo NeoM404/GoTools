@@ -35,6 +35,16 @@ const (
 	maxBinaryBytes = 256 << 20
 )
 
+// noReleaseURL is what update and version --check say when the build does
+// not know where releases are published.
+const noReleaseURL = `This nedctl does not know where releases are published (no releaseUrl in its built-in settings),
+so it cannot check for or install updates by itself. To update now:
+  1. download the release (the binary with SHA256SUMS and SHA256SUMS.sig)
+  2. nedctl verify ./nedctl-linux-amd64      (checks the bank's signature)
+  3. ./nedctl-linux-amd64 setup
+Maintainers: publishing releases for nedctl update — docs/maintainers/azure-devops.md, "Updates".
+`
+
 // releaseAsset is this platform's file in a release.
 func releaseAsset() string {
 	name := "nedctl-" + goos + "-" + runtime.GOARCH
@@ -118,7 +128,7 @@ func cmdUpdate(ctx context.Context, cfgPath string, args []string, stdout, stder
 		return ExitFailure
 	}
 	if cfg.ReleaseURL == "" {
-		fmt.Fprintln(stderr, "no releaseUrl configured: this build cannot update itself — download the release and run its setup")
+		fmt.Fprint(stderr, noReleaseURL)
 		return ExitFailure
 	}
 	st := ui.Style{Color: colorOn(stderr)}

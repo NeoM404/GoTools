@@ -107,7 +107,7 @@ func cmdVersion(ctx context.Context, cfgPath string, args []string, stdout, stde
 		return ExitFailure
 	}
 	if cfg.ReleaseURL == "" {
-		fmt.Fprintln(stderr, "no releaseUrl configured: this build cannot check for updates")
+		fmt.Fprint(stderr, noReleaseURL)
 		return ExitFailure
 	}
 	rel, err := fetchLatest(ctx, cfg.ReleaseURL)

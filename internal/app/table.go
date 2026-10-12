@@ -31,9 +31,16 @@ func newTable(w io.Writer) *table {
 	return t
 }
 
+// headerMark starts a header row whose cells are not all capitals (names
+// of clusters, say); it is never printed.
+const headerMark = "\x01"
+
 func (t *table) Write(p []byte) (int, error) {
 	if t.plain != nil {
-		return t.plain.Write(p)
+		if _, err := t.plain.Write(bytes.ReplaceAll(p, []byte(headerMark), nil)); err != nil {
+			return 0, err
+		}
+		return len(p), nil
 	}
 	return t.buf.Write(p)
 }
@@ -95,6 +102,10 @@ func maxCols(rows [][]string) int {
 }
 
 func isHeader(cells []string) bool {
+	if len(cells) > 0 && strings.HasPrefix(cells[0], headerMark) {
+		cells[0] = strings.TrimPrefix(cells[0], headerMark)
+		return true
+	}
 	letters := false
 	for _, c := range cells {
 		for _, r := range c {

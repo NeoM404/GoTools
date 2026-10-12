@@ -208,10 +208,25 @@ One-time setup, under Pipelines → Library:
 - **`artifactsFeed`** (optional): an Azure Artifacts feed for a Universal
   Package (`az artifacts universal download --feed … --name nedctl`).
 
-**Updates.** Serve `latest.json` at the `releaseUrl` in the built-in
-defaults, for example from the same storage as the binaries. `nedctl version
---check` then tells an engineer when a newer release is out and where to
-download it, and running the new binary's `setup` replaces the installed one.
+**Updates (`nedctl update`).** These need a release location that engineers'
+machines can read over HTTPS without signing in: an Azure Blob container, an
+Artifactory generic repository, or an internal web server. Pipeline artifacts
+and Universal Packages need a login, so nedctl can't download from them.
+
+1. Choose the location, for example `https://<host>/nedctl`.
+2. Add `"releaseUrl": "https://<host>/nedctl/latest.json"` to the
+   `nedctl-org.json` secure file.
+3. Set the pipeline variable `releaseBaseUrl` to `https://<host>/nedctl`.
+   `latest.json` then points at `https://<host>/nedctl/vX.Y.Z/`.
+4. After each release, copy `dist/*` (the binaries, `SHA256SUMS`,
+   `SHA256SUMS.sig` and `sbom.cdx.json`) to `<host>/nedctl/vX.Y.Z/`, and
+   `latest.json` to `<host>/nedctl/latest.json`. The release pipeline can do
+   this once the location is chosen.
+
+`nedctl update` then installs a new release only if its signature verifies
+against the key built into the running nedctl. Without a `releaseUrl`, it
+explains how to update by hand: download the release, run `nedctl verify`,
+then run its `setup`.
 
 **Engineer instructions** for the announcement:
 
