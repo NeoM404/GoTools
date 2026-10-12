@@ -92,8 +92,8 @@ func run() error {
 	doc := map[string]any{
 		"bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
 		"metadata": map[string]any{
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-			"component": component{Type: "application", Name: "nedctl", Version: *version, PURL: "pkg:golang/nedctl@" + *version},
+			"timestamp":  time.Now().UTC().Format(time.RFC3339),
+			"component":  component{Type: "application", Name: "nedctl", Version: *version, PURL: "pkg:golang/nedctl@" + *version},
 			"properties": []property{{"nedctl:thirdPartyGoModules", fmt.Sprint(len(names))}},
 		},
 		"components": comps,
