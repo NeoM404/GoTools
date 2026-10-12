@@ -3,6 +3,8 @@ package app
 import (
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -32,7 +34,11 @@ func TestMain(m *testing.M) {
 	// feed it explicitly.
 	stdinIsTerminal = func() bool { return false }
 	childStdin = func() io.Reader { return strings.NewReader("") }
+	// doctor's Session Manager check reaches a local stand-in, never AWS.
+	ssm := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) }))
+	ssmProbe = func(string) (*http.Client, string) { return ssm.Client(), ssm.URL + "/" }
 	code := m.Run()
+	ssm.Close()
 	os.RemoveAll(dir)
 	os.Exit(code)
 }

@@ -329,7 +329,7 @@ func chooseEnv(cfg config.Config, env string, stderr io.Writer) (string, int) {
 		}
 		rows[i] = picker.Row{Cells: []string{strings.ToUpper(env), bastionName(dest), known}, Color: cfg.ColorFor(env)}
 	}
-	idx, err := picker.Picker{Title: "AKS environments", Header: []string{"ENV", "BASTION", ""},
+	idx, err := picker.Picker{Title: "AKS environments", Header: []string{"ENV", "BASTION", "CLUSTERS"},
 		Rows: rows, In: stdin, Out: stderr, Color: colorOn(stderr)}.Pick()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -524,7 +524,7 @@ func chooseAKS(ctx context.Context, cfg config.Config, t sshTarget, pc profileCo
 		}
 		rows[i] = picker.Row{Cells: []string{n, mark}, Color: cfg.ColorFor(t.Env)}
 	}
-	idx, err := picker.Picker{Title: "AKS clusters in " + label, Header: []string{"CLUSTER", ""},
+	idx, err := picker.Picker{Title: "AKS clusters in " + label, Header: []string{"CLUSTER", "RECENT"},
 		Rows: rows, In: stdin, Out: stderr, Color: colorOn(stderr)}.Pick()
 	if err != nil {
 		fmt.Fprintln(stderr, err)

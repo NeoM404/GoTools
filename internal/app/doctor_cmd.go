@@ -44,6 +44,52 @@ type doctorCheck struct {
 	Detail string `json:"detail"`
 }
 
+// ssmProbe is how doctor reaches the Session Manager messaging endpoint
+// (the SSO region stands in for the clusters' region); a seam for tests.
+var ssmProbe = func(region string) (*http.Client, string) {
+	return httpx.Client(8*time.Second, nil), "https://ssmmessages." + region + ".amazonaws.com/"
+}
+
+// ssmRouteHint is what to check when a Session Manager shell or tunnel
+// does not open although listing instances works: the plugin's websocket
+// to ssmmessages goes through the proxy too.
+func ssmRouteHint() string {
+	msg := "→ listing instances only needs the EC2 API; shells and tunnels also need the Session Manager plugin to reach ssmmessages.<region>.amazonaws.com — `nedctl doctor` checks that route and your proxy variables\n"
+	if len(proxyConsistency()) > 0 {
+		msg += "→ HTTPS_PROXY and https_proxy differ here: the plugin uses HTTPS_PROXY — make them the same\n"
+	}
+	return msg + "→ meanwhile `nedctl shell --via legacy` uses your existing tool and its own route\n"
+}
+
+// redactProxy hides a proxy URL's password.
+func redactProxy(p string) string {
+	if u, err := url.Parse(p); err == nil {
+		return u.Redacted()
+	}
+	return "(unparsable)"
+}
+
+// proxyConsistency warns when the capital and lower-case proxy variables
+// disagree: Go programs (nedctl, kubectl, the Session Manager plugin) read
+// HTTPS_PROXY first, the AWS CLI lets https_proxy win — so one works and
+// the other is refused (407) or times out.
+func proxyConsistency() []doctorCheck {
+	var cs []doctorCheck
+	for _, pair := range [][2]string{{"HTTPS_PROXY", "https_proxy"}, {"HTTP_PROXY", "http_proxy"}, {"NO_PROXY", "no_proxy"}} {
+		up, low := os.Getenv(pair[0]), os.Getenv(pair[1])
+		if up == "" || low == "" || up == low {
+			continue
+		}
+		detail := fmt.Sprintf("%s and %s differ — Go tools (nedctl, kubectl, Session Manager) use %s, the AWS CLI uses %s; make them the same", pair[0], pair[1], pair[0], pair[1])
+		if pair[0] != "NO_PROXY" {
+			detail = fmt.Sprintf("%s=%s but %s=%s — Go tools (nedctl, kubectl, Session Manager) use the first, the AWS CLI the second; make them the same",
+				pair[0], redactProxy(up), pair[1], redactProxy(low))
+		}
+		cs = append(cs, doctorCheck{"proxy variables", "warn", detail})
+	}
+	return cs
+}
+
 // portalProbe is how doctor reaches the Identity Center portal; a seam for
 // tests.
 var portalProbe = func(region string) (*http.Client, string) {
@@ -69,14 +115,11 @@ func environmentChecks(ctx context.Context, cfg config.Config, used string, cfgE
 		add("config", "ok", used)
 	}
 	if p := firstNonBlank(os.Getenv("HTTPS_PROXY"), os.Getenv("https_proxy")); p != "" {
-		redacted := p
-		if u, err := url.Parse(p); err == nil {
-			redacted = u.Redacted()
-		}
-		add("proxy", "ok", redacted)
+		add("proxy", "ok", redactProxy(p))
 	} else {
 		add("proxy", "info", "HTTPS_PROXY not set: connecting directly")
 	}
+	cs = append(cs, proxyConsistency()...)
 	switch bundle := os.Getenv("AWS_CA_BUNDLE"); {
 	case bundle == "":
 		add("aws ca bundle", "info", "AWS_CA_BUNDLE not set: the AWS CLI trusts only its own CA list — behind a TLS-inspecting proxy, export it (in ~/.bashrc) as the corporate root CA bundle")
@@ -105,6 +148,23 @@ func environmentChecks(ctx context.Context, cfg config.Config, used string, cfgE
 			add("identity center portal", "fail", strings.TrimRight(err.Error()+"\n"+networkHint(err), "\n"))
 		} else {
 			add("identity center portal", "ok", "reachable")
+		}
+		// Session Manager shells and tunnels need a websocket to
+		// ssmmessages; listing instances working says nothing about it.
+		if cfg.AWS.Configured() {
+			client, target := ssmProbe(cfg.AWS.SSORegion)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+			if err == nil {
+				var resp *http.Response
+				if resp, err = client.Do(req); err == nil {
+					resp.Body.Close()
+				}
+			}
+			if err != nil {
+				add("session manager endpoint", "fail", strings.TrimRight(target+": "+err.Error()+"\n→ shells and tunnels (nedctl shell, kube, connect) open a websocket here; --via legacy uses your Windows tool and its own route\n"+networkHint(err), "\n"))
+			} else {
+				add("session manager endpoint", "ok", target+" reachable")
+			}
 		}
 	}
 	if left, ok := signInLeft(cfg.AWS.Session()); !ok {

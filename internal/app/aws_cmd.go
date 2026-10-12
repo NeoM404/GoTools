@@ -898,6 +898,9 @@ func networkHint(err error) string {
 	msg := err.Error()
 	proxy := firstNonBlank(os.Getenv("HTTPS_PROXY"), os.Getenv("https_proxy"))
 	switch {
+	case strings.Contains(msg, "Proxy Authentication Required") || strings.Contains(msg, "407"):
+		return "→ the proxy wants a login it did not get. nedctl, kubectl and the Session Manager plugin use HTTPS_PROXY (capitals); the AWS CLI also reads https_proxy — run `nedctl doctor`, which compares them\n" +
+			"→ if the proxy needs your credentials, put them in the proxy URL the same way the AWS CLI has them (http://user:password@proxy:port), or ask for these hosts to be allowed without authentication\n"
 	case strings.Contains(msg, "Client.Timeout") || strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "i/o timeout"):
 		if proxy == "" {
 			return "→ the call timed out and HTTPS_PROXY is not set: if the AWS CLI works here through a proxy, export the same HTTPS_PROXY (and NO_PROXY) for nedctl\n" +

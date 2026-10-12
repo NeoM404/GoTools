@@ -178,7 +178,7 @@ func openEKSSession(ctx context.Context, cfg config.Config, f sessionFlags, stde
 		if err != nil {
 			tunnel.Stop(3 * time.Second)
 			logFile.Close()
-			fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n", err, logTail(logPath, 8), logPath)
+			fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n%s", err, logTail(logPath, 8), logPath, ssmRouteHint())
 			return nil, ExitFailure
 		}
 		s.where = "through " + firstNonBlank(plan.hop.Name, plan.hop.ID)

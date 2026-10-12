@@ -59,7 +59,7 @@ func resolveClusterArg(ctx context.Context, cfg config.Config, pc profileContext
 		}
 		rows[i] = picker.Row{Cells: []string{h.Name, h.Region, mark}, Color: cfg.ColorFor(pc.Environment), ColorCol: 0}
 	}
-	idx, err := picker.Picker{Title: "Clusters in " + pc.label(), Header: []string{"CLUSTER", "REGION", ""},
+	idx, err := picker.Picker{Title: "Clusters in " + pc.label(), Header: []string{"CLUSTER", "REGION", "RECENT"},
 		Rows: rows, In: stdin, Out: stderr, Color: colorOn(stderr)}.Pick()
 	if err != nil {
 		fmt.Fprintln(stderr, err)

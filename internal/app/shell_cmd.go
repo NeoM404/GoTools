@@ -252,7 +252,7 @@ func chooseInstance(cfg config.Config, pc profileContext, list []ec2Instance, in
 		}
 		rows[i] = picker.Row{Cells: []string{in.Name, in.ID, in.PrivateIP, in.State, in.Type, in.Zone, in.AccessLevel, mark}, Color: color}
 	}
-	idx, err := picker.Picker{Title: "Instances in " + pc.label(), Header: []string{"NAME", "INSTANCE", "PRIVATE IP", "STATE", "TYPE", "ZONE", "LEVEL", ""},
+	idx, err := picker.Picker{Title: "Instances in " + pc.label(), Header: []string{"NAME", "INSTANCE", "PRIVATE IP", "STATE", "TYPE", "ZONE", "LEVEL", "RECENT"},
 		Rows: rows, In: stdin, Out: stderr, Color: colorOn(stderr)}.Pick()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -359,7 +359,7 @@ func cmdShell(ctx context.Context, cfgPath string, args []string, stdout, stderr
 		Timeout: cfg.AWS.Timeout()})
 	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
-		fmt.Fprintf(stderr, "session failed: %v\n", err)
+		fmt.Fprintf(stderr, "session failed: %v\n%s", err, ssmRouteHint())
 		return ExitFailure
 	}
 	tr.end(ctx, audit.OutcomeSuccess, pc.Role, base.Detail, stderr)

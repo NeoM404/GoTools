@@ -147,7 +147,7 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if err != nil {
 		tunnel.Stop(3 * time.Second)
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
-		fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n", err, logTail(logPath, 8), logPath)
+		fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n%s", err, logTail(logPath, 8), logPath, ssmRouteHint())
 		return ExitFailure
 	}
 
