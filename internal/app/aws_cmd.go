@@ -474,6 +474,13 @@ func chooseAssignment(cfg config.Config, all []awsChoice, account, role string, 
 // in that account, and records the sign-in. base carries extra audit fields
 // (break-glass). It returns the profile name.
 func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsChoice, base audit.Event, stderr io.Writer) (string, int) {
+	return signInToAs(ctx, cfg, m, c, base, false, stderr)
+}
+
+// signInToAs is signInTo; quiet leaves the terminal's tab colour and the
+// "Signed in" line alone (a profile used for a read in another account,
+// not the one you switch to).
+func signInToAs(ctx context.Context, cfg config.Config, m awssso.Managed, c awsChoice, base audit.Event, quiet bool, stderr io.Writer) (string, int) {
 	a := cfg.AWS
 	name := awssso.ProfileName(a.Prefix(), c.Assignment)
 	m.Profiles[name] = awssso.Profile{Name: name, AccountID: c.AccountID, Role: c.Role, Region: a.ProfileRegion(),
@@ -512,6 +519,9 @@ func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsCho
 		return "", ExitFailure
 	}
 	tr.end(ctx, audit.OutcomeSuccess, id.Arn, base.Detail, stderr)
+	if quiet {
+		return name, ExitOK
+	}
 
 	label := fmt.Sprintf("%s · %s · %s", firstNonBlank(c.Squad, config.StripAccountTag(c.AccountName)), strings.ToUpper(firstNonBlank(c.Environment, "unknown env")), c.Role)
 	if colorOn(stderr) {
@@ -521,6 +531,64 @@ func signInTo(ctx context.Context, cfg config.Config, m awssso.Managed, c awsCho
 	fmt.Fprintf(stderr, "%s %s %s\n", st.Fg(ui.Green, "✔ Signed in:"), st.Bold(label), st.Dim("(profile "+name+")"))
 	colorTab(stderr, cfg.ColorFor(c.Environment))
 	return name, ExitOK
+}
+
+// profileForEnv is your squad's profile in another environment, for
+// reads that span environments (--aws-env): the same squad as the profile
+// you are signed in with, that environment, and the same role when you
+// hold it there (else your first non-elevated role). The profile is
+// written and verified (an audited aws-login) the first time; your current
+// profile does not change.
+func profileForEnv(ctx context.Context, cfg config.Config, cur profileContext, env string, stderr io.Writer) (string, error) {
+	if cur.Squad == "" {
+		return "", fmt.Errorf("cannot tell your squad from profile %s — sign in to one of your squad's accounts first (nedctl aws login)", cur.Name)
+	}
+	choices, managed, code := listChoices(ctx, cfg, noLocalBrowser(), false, false, stderr)
+	if code != ExitOK {
+		return "", errors.New("could not list your Identity Center assignments")
+	}
+	c, err := chooseEnvAssignment(cfg, choices, cur, env)
+	if err != nil {
+		return "", err
+	}
+	name := awssso.ProfileName(cfg.AWS.Prefix(), c.Assignment)
+	if _, ok := managed.Profiles[name]; ok {
+		return name, nil
+	}
+	if name, code := signInToAs(ctx, cfg, managed, c, audit.Event{}, true, stderr); code == ExitOK {
+		return name, nil
+	}
+	return "", fmt.Errorf("could not sign in to %s %s as %s", cur.Squad, strings.ToUpper(env), c.Role)
+}
+
+// chooseEnvAssignment picks the assignment profileForEnv uses.
+func chooseEnvAssignment(cfg config.Config, choices []awsChoice, cur profileContext, env string) (awsChoice, error) {
+	var cands []awsChoice
+	for _, c := range choices {
+		if strings.EqualFold(c.Environment, env) && strings.EqualFold(c.Squad, cur.Squad) {
+			cands = append(cands, c)
+		}
+	}
+	if len(cands) == 0 {
+		return awsChoice{}, fmt.Errorf("you have no role in a %s account of squad %s", strings.ToUpper(env), cur.Squad)
+	}
+	sortChoices(cfg, cands)
+	pick := -1
+	for i, c := range cands {
+		if c.Role == cur.Role {
+			pick = i
+			break
+		}
+	}
+	for i, c := range cands {
+		if pick < 0 && !cfg.AWS.Elevated(c.Role) {
+			pick = i
+		}
+	}
+	if pick < 0 {
+		return awsChoice{}, fmt.Errorf("your only roles in %s's %s account are elevated (%s) — sign in to it on purpose: nedctl aws login %s %s", cur.Squad, strings.ToUpper(env), cands[0].Role, cur.Squad, env)
+	}
+	return cands[pick], nil
 }
 
 // matchesAll reports whether every term appears, case-insensitively, in

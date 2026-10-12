@@ -44,6 +44,7 @@ type clusterOut struct {
 // cluster in the signed-in account (--aws).
 type clusterSel struct {
 	cluster, env, match, awsProfile string
+	awsEnv                          string // EKS in these environments' accounts of your squad
 	aws                             bool
 	sink                            *probeSink // optional: told as clusters are found and as each one's results arrive
 }
@@ -75,12 +76,15 @@ func addClusterSel(fs *flag.FlagSet, sel *clusterSel, multi bool) {
 		fs.StringVar(&sel.env, "env", "", "AKS: every cluster on these environments' bastions, e.g. qa or dev,qa")
 		fs.StringVar(&sel.match, "match", "", "with --env or --aws: only clusters whose name contains this")
 		fs.BoolVar(&sel.aws, "aws", false, "every EKS cluster in the account you are signed in to")
+		fs.StringVar(&sel.awsEnv, "aws-env", "", "EKS: every cluster in your squad's accounts for these environments, e.g. ete,qa (same role where you hold it)")
 	} else {
 		fs.StringVar(&sel.env, "env", "", "AKS: the environment whose bastion to use")
 	}
 }
 
-func (sel clusterSel) multi() bool { return sel.cluster == "" && (sel.aws || sel.env != "") }
+func (sel clusterSel) multi() bool {
+	return sel.cluster == "" && (sel.aws || sel.env != "" || sel.awsEnv != "")
+}
 
 // runProbes runs the probes on the selected clusters.
 func runProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []probe, stderr io.Writer) ([]clusterOut, int) {
@@ -114,6 +118,27 @@ func runProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 	}
 	if sel.aws {
 		all = append(all, eksProbes(ctx, cfg, sel, probes, stderr)...)
+	}
+	if sel.awsEnv != "" {
+		cur, ok := loadProfileContext(ctx, cfg, sel.awsProfile, stderr)
+		if !ok {
+			return nil, ExitFailure
+		}
+		for _, env := range strings.Split(strings.ToLower(sel.awsEnv), ",") {
+			if env = strings.TrimSpace(env); env == "" {
+				continue
+			}
+			name, err := profileForEnv(ctx, cfg, cur, env, stderr)
+			if err != nil {
+				co := clusterOut{Cloud: "aws", Env: env, Where: "EKS " + strings.ToUpper(env), Err: err}
+				sel.sink.got(co)
+				all = append(all, co)
+				continue
+			}
+			sub := sel
+			sub.awsProfile = name
+			all = append(all, eksProbes(ctx, cfg, sub, probes, stderr)...)
+		}
 	}
 	return all, ExitOK
 }

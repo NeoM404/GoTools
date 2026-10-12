@@ -62,7 +62,13 @@ func cmdHealth(ctx context.Context, cfgPath string, args []string, stdout, stder
 	board := fs.Bool("board", false, "a live board: every cluster at once, filled in as results arrive")
 	watch := fs.Duration("watch", 0, "with the board: read again every so often, e.g. 1m (at least 30s); Ctrl-C stops")
 	output := addOutputFlag(fs)
-	if pos, err := parseInterspersed(fs, args); err != nil || len(pos) > 0 || *certDays < 1 {
+	pos, err := parseInterspersed(fs, args)
+	if err == nil && len(pos) > 0 {
+		fmt.Fprintf(stderr, "health checks whole clusters, not one app — for %s use:  nedctl app %s  ·  nedctl explain deploy/%s -n NS  ·  nedctl diff %s\n", pos[0], pos[0], pos[0], pos[0])
+		fmt.Fprintln(stderr, "(--match narrows which clusters: nedctl health --aws-env ete,qa --match lms)")
+		return ExitUsage
+	}
+	if err != nil || *certDays < 1 {
 		fmt.Fprintln(stderr, "usage: nedctl health [--cluster C | --env qa | --aws] [--match WORD] [--cert-days 30] [--board [--watch 1m]] [-o json]")
 		return ExitUsage
 	}
@@ -337,6 +343,9 @@ func healthBoard(ctx context.Context, cfg config.Config, sel clusterSel, certDay
 	title := strings.ToUpper(firstNonBlank(sel.env, sel.cluster))
 	if sel.aws {
 		title = strings.TrimSpace(title + " EKS")
+	}
+	if sel.awsEnv != "" {
+		title = strings.TrimSpace(title + " EKS " + strings.ToUpper(sel.awsEnv))
 	}
 	b := newFleetBoard(stdout, cfg, title)
 	var held lockedBuffer

@@ -9,10 +9,23 @@ on many at once:
 | Every AKS cluster on an environment's bastion (one SSH connection each) | `--env qa`, `--env dev,qa` |
 | Only the clusters whose name contains a word | `--match payments` |
 | Every EKS cluster in your signed-in account | `--aws` |
+| Every EKS cluster in your squad's accounts for these environments | `--aws-env ete,qa` |
 
 `--env` always means the AKS bastions in `azure.bastions` (`--env dev` is
 `aks-dev`), because AWS environments are accounts you sign in to, not hosts.
 For EKS use `--aws` (with `--aws-profile`), or both: `--env qa --aws`.
+
+On AWS each environment is a separate account, so `--aws` alone sees only
+the account you are signed in to. **`--aws-env ete,qa`** reads your squad's
+ETE and QA accounts too. It uses the same role you hold now, or else your
+first non-elevated role; it never picks an elevated role silently. The first
+time, it signs in to each account, which is recorded as an `aws-login`.
+Your current profile doesn't change. For example:
+
+```bash
+nedctl diff kiali --aws-env ete,qa --match lms
+nedctl health --aws-env dev,ete,qa --board
+```
 
 On a bastion, eight clusters are read at a time, each request with a 20s limit.
 Progress shows as clusters finish (`12/23 clusters read`). A cluster that is
