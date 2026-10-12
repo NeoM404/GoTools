@@ -60,7 +60,7 @@ func newFleetBoard(w io.Writer, cfg config.Config, title string) *fleetBoard {
 	b := &fleetBoard{w: w, cfg: cfg, st: ui.Style{Color: true}, motion: !reducedMotion(), title: title,
 		index: map[string]*boardRow{}, done: make(chan struct{}), finished: make(chan struct{})}
 	b.cols = func() int {
-		if f, ok := w.(*os.File); ok {
+		if f, ok := asFile(w); ok {
 			if c, _ := termSize(f); c > 0 {
 				return c
 			}

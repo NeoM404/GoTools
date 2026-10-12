@@ -41,7 +41,7 @@ func isTerminal(f *os.File) bool {
 // colorOn reports whether w should get ANSI colour: a terminal, and NO_COLOR
 // (https://no-color.org) unset.
 func colorOn(w io.Writer) bool {
-	f, ok := w.(*os.File)
+	f, ok := asFile(w)
 	return ok && isTerminal(f) && os.Getenv("NO_COLOR") == "" && consoleColor(f)
 }
 
@@ -853,7 +853,7 @@ func awsEnv(ctx context.Context, cfgPath string, args []string, stdout, stderr i
 		fmt.Fprintf(stderr, "--format %q: want sh or powershell\n", *format)
 		return ExitUsage
 	}
-	if f, ok := stdout.(*os.File); ok && isTerminal(f) && !*show {
+	if f, ok := asFile(stdout); ok && isTerminal(f) && !*show {
 		fmt.Fprintln(stderr, "refusing to print credentials on the screen — use it as  eval \"$(nedctl aws env)\"  (or pass --show)")
 		return ExitUsage
 	}

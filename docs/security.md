@@ -145,6 +145,20 @@ private keys, card numbers (Luhn-checked) and South African ID numbers
 (date- and Luhn-checked). It's on by default. `--no-redact` is refused on
 production clusters, and a raw read anywhere is flagged in the audit trail.
 
+## Presenter mode for screen-shares
+
+`NEDCTL_PRESENT=1 nedctl …` (or `export NEDCTL_PRESENT=1` for a whole
+Teams call) masks what nedctl prints:
+
+- AWS account IDs show as `••••••••1234`;
+- IP addresses show as `‹ip›`;
+- email addresses show as `‹email›`;
+- your user names (this machine's, and the Azure SSH user) show as `‹user›`.
+
+Colours, spinners and the board keep working. Programs nedctl hands your
+terminal to (a shell, kubectl in it) print for themselves and are not
+masked.
+
 ## Supply chain
 
 | Control | Status |

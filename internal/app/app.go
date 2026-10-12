@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -22,6 +21,11 @@ func Exec(args []string, stdout, stderr io.Writer) int {
 // ExecContext is the process entry point. Cancelling ctx (main wires it to
 // SIGINT/SIGTERM) stops any running cloud CLI and yields ExitInterrupted.
 func ExecContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if presenting() {
+		cfgPath, _ := extractConfig(args)
+		users := presentUsers(cfgPath)
+		stdout, stderr = &presentWriter{w: stdout, users: users}, &presentWriter{w: stderr, users: users}
+	}
 	code := dispatch(ctx, args, stdout, stderr)
 	if code != ExitOK && ctx.Err() != nil {
 		fmt.Fprintln(stderr, "nedctl: interrupted")
@@ -36,7 +40,7 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if len(rest) == 0 {
 		// A person at a terminal gets their status and the daily commands;
 		// anything else (a script, a pipe) gets the command list.
-		if f, ok := stdout.(*os.File); ok && isTerminal(f) {
+		if f, ok := asFile(stdout); ok && isTerminal(f) {
 			return cmdStatus(cfgPath, stdout)
 		}
 		printUsage(stdout)
