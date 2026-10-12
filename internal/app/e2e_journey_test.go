@@ -49,6 +49,7 @@ case "$*" in
   echo "{\"Account\":\"$acct\",\"Arn\":\"arn:aws:sts::$acct:assumed-role/AWSReservedSSO_r_1/neo@bank.example\"}";;
 "ec2 describe-instances"*"--region af-south-1"*) printf '%s' `+sq(instancesJSON)+`;;
 "ec2 describe-instances"*) echo '{"Reservations":[]}';;
+"ssm start-session"*"PortForwarding"*) `+fakeSSMForward+`;;
 "ssm start-session"*) echo "Starting session with SessionId: neo@bank.example-0123abcd";;
 "eks describe-cluster"*"--region af-south-1"*) printf '%s' `+sq(desc)+`;;
 "eks list-clusters"*"--region af-south-1"*) echo '{"clusters":["payments-eks-prod"]}';;
@@ -87,10 +88,13 @@ esac`)
 		t.Fatalf("shell: %s", errb)
 	}
 	// 4. Straight to the private cluster from the laptop, then real kubectl.
-	step("connect", ExitOK, "connect", "payments-eks-prod", "--port", strconv.Itoa(port))
+	release := holdConnect(t, w.cfg, "payments-eks-prod", "--port", strconv.Itoa(port))
 	kc := filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json")
 	if raw, err := exec.Command("kubectl", "--kubeconfig", kc, "get", "--raw", "/version").CombinedOutput(); err != nil || !strings.Contains(string(raw), "eks") {
 		t.Fatalf("kubectl: %v %s", err, raw)
+	}
+	if code, errb := release(); code != ExitOK {
+		t.Fatalf("connect ended with %d: %s", code, errb)
 	}
 	// 5. The guard and the prompt both know this is production.
 	t.Setenv("KUBECONFIG", kc)

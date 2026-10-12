@@ -21,7 +21,8 @@ func installKubeFake(t *testing.T, w *ec2World, caData, ssm string) string {
 	desc := `{"cluster":{"name":"payments-eks-prod","arn":"arn:aws:eks:af-south-1:111111111111:cluster/payments-eks-prod","endpoint":"https://` + eksHost +
 		`","version":"1.30","certificateAuthority":{"data":"` + caData + `"}}}`
 	if ssm == "" {
-		ssm = `echo $$ > ` + sq(pidFile) + `; echo "Port opened. Waiting for connections..."; exec sleep 300`
+		// Like the real plugin: forwards localPortNumber to the cluster's API.
+		ssm = `echo $$ > ` + sq(pidFile) + `; ` + fakeSSMForward
 	}
 	fakeCLI(t, "aws", `echo "$*" >> `+sq(w.calls)+`
 case "$*" in
@@ -34,6 +35,10 @@ case "$*" in
 esac`)
 	return pidFile
 }
+
+// fakeSSMForward is the fake Session Manager port-forward: it forwards
+// localPortNumber to the fake EKS API (NEDCTL_TEST_UPSTREAM) until stopped.
+const fakeSSMForward = `lp=$(printf '%s' "$*" | sed -n 's/.*localPortNumber=\([0-9]*\).*/\1/p'); echo "Waiting for connections..."; NEDCTL_TEST_FORWARD="$lp:$NEDCTL_TEST_UPSTREAM" exec "$NEDCTL_TEST_BIN"`
 
 func alive(pidFile string) bool {
 	pid, err := os.ReadFile(pidFile)
@@ -163,6 +168,7 @@ func TestKubeBashPromptShowsClusterInEnvironmentColour(t *testing.T) {
 func pointDirectAt(t *testing.T, port int) {
 	t.Helper()
 	old := directServer
+	port = upstreamPort(t) // the fake API itself, not the tunnel's port
 	directServer = func(eksTarget) (string, string) { return "https://127.0.0.1:" + strconv.Itoa(port), eksHost }
 	t.Cleanup(func() { directServer = old })
 }
@@ -288,7 +294,7 @@ case "$*" in
 "eks list-clusters"*) echo '{"clusters":["payments-eks-prod","payments-eks-tools"]}';;
 "eks describe-cluster"*) printf '%s' `+sq(desc)+`;;
 "ec2 describe-instances"*) printf '%s' `+sq(instancesJSON)+`;;
-"ssm start-session"*) echo $$ > `+sq(pidFile)+`; exec sleep 300;;
+"ssm start-session"*) echo $$ > `+sq(pidFile)+`; `+fakeSSMForward+`;;
 "eks get-token"*) echo '{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1beta1","status":{"token":"k8s-aws-v1.fake","expirationTimestamp":"2099-01-01T00:00:00Z"}}';;
 esac`)
 }

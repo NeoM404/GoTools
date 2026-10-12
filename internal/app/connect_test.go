@@ -30,7 +30,32 @@ const eksHost = "abc123def456.gr7.af-south-1.eks.amazonaws.com"
 // valid ONLY for the EKS hostname, and requires the bearer token the fake
 // `aws eks get-token` hands out — standing in for the cluster at the far
 // end of the Session Manager tunnel.
+// fakeEKSAPI is the cluster's API behind a tunnel: it listens on a port of
+// its own (NEDCTL_TEST_UPSTREAM), and the fake Session Manager forwards the
+// tunnel's port to it — so nedctl can manage the tunnel's local port as it
+// does for real. port is the tunnel's local port (unused here).
 func fakeEKSAPI(t *testing.T, port int) (caData string) {
+	t.Helper()
+	up, err := freePort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NEDCTL_TEST_UPSTREAM", strconv.Itoa(up))
+	return fakeEKSAPIAt(t, up)
+}
+
+// upstreamPort is where fakeEKSAPI listens.
+func upstreamPort(t *testing.T) int {
+	t.Helper()
+	p, err := strconv.Atoi(os.Getenv("NEDCTL_TEST_UPSTREAM"))
+	if err != nil {
+		t.Fatal("no fake EKS API")
+	}
+	return p
+}
+
+// fakeEKSAPIAt is the fake API listening on exactly port.
+func fakeEKSAPIAt(t *testing.T, port int) (caData string) {
 	t.Helper()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: eksHost}, DNSNames: []string{eksHost},
@@ -67,7 +92,7 @@ case "$*" in
 "ec2 describe-regions"*) echo '["af-south-1","eu-west-1"]';;
 "ec2 describe-instances"*"--region af-south-1"*) printf '%s' `+sq(instancesJSON)+`;;
 "ec2 describe-instances"*) echo '{"Reservations":[]}';;
-"ssm start-session"*) echo "Waiting for connections...";;
+"ssm start-session"*) `+fakeSSMForward+`;;
 "eks get-token"*) echo '{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1beta1","status":{"token":"k8s-aws-v1.fake","expirationTimestamp":"2099-01-01T00:00:00Z"}}';;
 *) echo "fake aws: unexpected: $*" >&2; exit 254;;
 esac`)
@@ -85,12 +110,10 @@ func TestConnectTunnelsThroughDevopsBoxAndKubectlWorks(t *testing.T) {
 	ca := fakeEKSAPI(t, port)
 	installConnectFake(t, w, ca)
 
-	code, _, errb := run("--config", w.cfg, "connect", "payments-eks-prod", "--port", strconv.Itoa(port))
-	if code != ExitOK {
-		t.Fatalf("code=%d err=%q", code, errb)
-	}
+	release := holdConnect(t, w.cfg, "payments-eks-prod", "--port", strconv.Itoa(port))
+	defer release()
 	calls := w.awsCalls(t)
-	want := "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters host=" + eksHost + ",portNumber=443,localPortNumber=" + strconv.Itoa(port) + " --region af-south-1"
+	want := "ssm start-session --target i-0aaaaaaaaaaaaaaa1 --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters host=" + eksHost + ",portNumber=443,localPortNumber="
 	if !strings.Contains(calls, want) {
 		t.Fatalf("tunnel must go through the devops instance to the private endpoint:\n%s", calls)
 	}
@@ -109,8 +132,16 @@ func TestConnectTunnelsThroughDevopsBoxAndKubectlWorks(t *testing.T) {
 		t.Fatalf("token must come from the engineer's own profile:\n%s", w.awsCalls(t))
 	}
 
+	if code, errb := release(); code != ExitOK || !strings.Contains(errb, "tunnel closed") {
+		t.Fatalf("connect after tunnels close: code=%d err=%q", code, errb)
+	}
 	ev := readAudit(t, w.logPath)
-	if len(ev) != 2 || ev[1].Action != "eks-connect" || ev[1].Cluster != "payments-eks-prod" || !ev[1].Production || ev[1].Outcome != audit.OutcomeSuccess {
+	var connectEnd, closeEnd bool
+	for _, e := range ev {
+		connectEnd = connectEnd || (e.Action == "eks-connect" && e.Phase == "end" && e.Cluster == "payments-eks-prod" && e.Production && e.Outcome == audit.OutcomeSuccess)
+		closeEnd = closeEnd || (e.Action == "tunnel-close" && e.Phase == "end" && e.Outcome == audit.OutcomeSuccess)
+	}
+	if !connectEnd || !closeEnd {
 		t.Fatalf("audit: %+v", ev)
 	}
 
@@ -131,9 +162,8 @@ func TestConnectKubeconfigRejectsWrongHostname(t *testing.T) {
 	port, _ := freePort()
 	ca := fakeEKSAPI(t, port)
 	installConnectFake(t, w, ca)
-	if code, _, errb := run("--config", w.cfg, "connect", "payments-eks-prod", "--port", strconv.Itoa(port)); code != ExitOK {
-		t.Fatalf("err=%q", errb)
-	}
+	release := holdConnect(t, w.cfg, "payments-eks-prod", "--port", strconv.Itoa(port))
+	defer release()
 	kc := filepath.Join(w.home, ".kube", "nedctl", "payments-eks-prod.json")
 	data, _ := os.ReadFile(kc)
 	var doc map[string]any
@@ -184,12 +214,11 @@ case "$*" in
 "eks list-clusters"*) echo '{"clusters":["payments-eks-prod"]}';;
 "eks describe-cluster"*) printf '%s' `+sq(desc)+`;;
 "ec2 describe-instances"*) printf '%s' `+sq(instancesJSON)+`;;
-"ssm start-session"*) echo "Waiting for connections...";;
+"ssm start-session"*) `+fakeSSMForward+`;;
 "eks get-token"*) echo '{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1beta1","status":{"token":"k8s-aws-v1.fake","expirationTimestamp":"2099-01-01T00:00:00Z"}}';;
 esac`)
-	if code, _, errb := run("--config", w.cfg, "connect", "payments-eks-prod", "--port", strconv.Itoa(port)); code != ExitOK {
-		t.Fatalf("err=%q", errb)
-	}
+	release := holdConnect(t, w.cfg, "payments-eks-prod", "--port", strconv.Itoa(port))
+	defer release()
 	if !strings.Contains(w.awsCalls(t), "host="+eksHost+",") {
 		t.Fatalf("the tunnel host must be lower-cased:\n%s", w.awsCalls(t))
 	}

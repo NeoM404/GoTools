@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"nedctl/internal/config"
@@ -26,14 +27,16 @@ import (
 
 // tunnelRecord is a published tunnel.
 type tunnelRecord struct {
-	Cluster string    `json:"cluster"`
-	Host    string    `json:"host"` // the API endpoint: the same name in another account is another cluster
-	Profile string    `json:"profile"`
-	Port    int       `json:"port"`
-	PID     int       `json:"pid"`
-	Hop     string    `json:"hop"`
-	HopName string    `json:"hopName,omitempty"`
-	Started time.Time `json:"started"`
+	Cluster string       `json:"cluster"`
+	Host    string       `json:"host"` // the API endpoint: the same name in another account is another cluster
+	Profile string       `json:"profile"`
+	Port    int          `json:"port"`
+	PID     int          `json:"pid"`
+	Hop     string       `json:"hop"`
+	HopName string       `json:"hopName,omitempty"`
+	Started time.Time    `json:"started"`
+	Holder  string       `json:"holder,omitempty"` // kube | connect
+	State   *tunnelState `json:"state,omitempty"`
 }
 
 // tunnelDir is where kubeconfigs and tunnel records live.
@@ -103,17 +106,37 @@ func openTunnel(cfg config.Config, c eksTarget) (tunnelRecord, bool) {
 }
 
 // publishTunnel records the tunnel this process holds; the returned
-// function removes the record (only if it is still ours).
-func publishTunnel(cfg config.Config, plan tunnelPlan, profile string) func() {
+// function removes the record (only if it is still ours). A managed tunnel
+// keeps its state in the record up to date.
+func publishTunnel(cfg config.Config, plan tunnelPlan, profile string, holder string, mt ...*managedTunnel) func() {
 	p, err := tunnelRecordPath(cfg, plan.cluster.Name)
 	if err != nil {
 		return func() {}
 	}
 	r := tunnelRecord{Cluster: plan.cluster.Name, Host: plan.cluster.Host, Profile: profile, Port: plan.port, PID: os.Getpid(),
-		Hop: plan.hop.ID, HopName: plan.hop.Name, Started: now().UTC()}
-	data, _ := json.Marshal(r)
-	if os.MkdirAll(filepath.Dir(p), 0o700) != nil || writeFileAtomic(p, data, 0o600) != nil {
+		Hop: plan.hop.ID, HopName: plan.hop.Name, Started: now().UTC(), Holder: holder}
+	var mu sync.Mutex
+	write := func() error {
+		data, _ := json.Marshal(r)
+		return writeFileAtomic(p, data, 0o600)
+	}
+	if os.MkdirAll(filepath.Dir(p), 0o700) != nil || write() != nil {
 		return func() {}
+	}
+	_ = os.Remove(p + ".close") // a stale request must not close this new tunnel
+	if len(mt) == 1 && mt[0] != nil {
+		mt[0].onState(func(s tunnelState) {
+			mu.Lock()
+			defer mu.Unlock()
+			r.State = &s
+			if cur, err := os.ReadFile(p); err == nil {
+				var c tunnelRecord
+				if json.Unmarshal(cur, &c) == nil && c.PID == r.PID {
+					_ = write()
+				}
+			}
+		})
+		mt[0].publish()
 	}
 	return func() {
 		if cur, err := os.ReadFile(p); err == nil {

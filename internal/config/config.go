@@ -161,6 +161,27 @@ type Config struct {
 	// cannot undo it. Session Manager shells follow the account's SSM
 	// idle timeout instead.
 	ProductionIdleTimeout string `json:"productionIdleTimeout"`
+
+	// TunnelIdleTimeout closes the Session Manager session behind an EKS
+	// tunnel nedctl holds (kube, connect) once nothing has used it this
+	// long, e.g. "15m" (the default); the local port stays and the next
+	// kubectl reopens it. "0" keeps sessions open while their holder runs.
+	TunnelIdleTimeout string `json:"tunnelIdleTimeout"`
+}
+
+// TunnelIdle is TunnelIdleTimeout with its default (0 = never).
+func (c Config) TunnelIdle() time.Duration {
+	switch c.TunnelIdleTimeout {
+	case "":
+		return 15 * time.Minute
+	case "0":
+		return 0
+	}
+	d, err := time.ParseDuration(c.TunnelIdleTimeout)
+	if err != nil {
+		return 15 * time.Minute
+	}
+	return d
 }
 
 // IdleTimeout is ProductionIdleTimeout with its default (0 = off).
@@ -1184,6 +1205,11 @@ func (c Config) validate() error {
 func (c Config) validatePause() error {
 	if p := c.PauseSeconds(); p < 0 || p > 10 {
 		return fmt.Errorf("productionPause %d: want 0 to 10 seconds", p)
+	}
+	if v := c.TunnelIdleTimeout; v != "" && v != "0" {
+		if d, err := time.ParseDuration(v); err != nil || d < time.Minute || d > 12*time.Hour {
+			return fmt.Errorf("tunnelIdleTimeout %q: want a duration from 1m to 12h, or \"0\" for never", v)
+		}
 	}
 	if v := c.ProductionIdleTimeout; v != "" && v != "0" {
 		if d, err := time.ParseDuration(v); err != nil || d < time.Minute || d > 12*time.Hour {

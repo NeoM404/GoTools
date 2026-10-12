@@ -133,25 +133,24 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	banner(cfg, pc, plan.cluster.Name, stderr)
 	hop := firstNonBlank(plan.hop.Name, plan.hop.ID)
 	sp := showRoute(stderr, fmt.Sprintf("Opening the tunnel through %s…", hop), hop, "⎈ "+plan.cluster.Name)
-	tunnel, err := execx.Start(ctx, execx.Spec{Name: "aws", Args: portForwardArgs(plan, pc.Name),
-		Stdout: logFile, Stderr: logFile, Timeout: cfg.AWS.Timeout()})
+	tunnel, err := openManagedTunnel(ctx, cfg, plan, pc.Name, logFile, stderr)
+	sp.done(err == nil, fmt.Sprintf("tunnel open on 127.0.0.1:%d%s", plan.port, idleNote(cfg)))
 	if err != nil {
-		sp.done(false, "")
-		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
-		fmt.Fprintf(stderr, "starting the tunnel: %v\n", err)
-		return ExitFailure
-	}
-	defer tunnel.Stop(3 * time.Second)
-	err = waitForTunnel(tunnel, plan.port, tunnelReadyTimeout)
-	sp.done(err == nil, fmt.Sprintf("tunnel open on 127.0.0.1:%d", plan.port))
-	if err != nil {
-		tunnel.Stop(3 * time.Second)
 		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n%s", err, logTail(logPath, 8), logPath, ssmRouteHint())
 		return ExitFailure
 	}
+	defer tunnel.Stop()
 
-	return runKubeChild(ctx, cfg, pc, plan, command, tr, base, tunnel, logPath, publishTunnel(cfg, plan, pc.Name), stderr)
+	return runKubeChild(ctx, cfg, pc, plan, command, tr, base, tunnel, logPath, publishTunnel(cfg, plan, pc.Name, "kube", tunnel), stderr)
+}
+
+// idleNote says when an idle tunnel's session closes.
+func idleNote(cfg config.Config) string {
+	if d := cfg.TunnelIdle(); d > 0 {
+		return " · idle " + shortDuration(d) + " closes the session"
+	}
+	return ""
 }
 
 // runKubeChild runs the shell or the command with KUBECONFIG set, then
@@ -159,7 +158,7 @@ func cmdKube(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 // else's), waits for other sessions still using a tunnel it holds, and
 // closes the tunnel (when there is one) and the audit record.
 func runKubeChild(ctx context.Context, cfg config.Config, pc profileContext, plan tunnelPlan, command []string,
-	tr *trail, base audit.Event, tunnel *execx.Process, logPath string, done func(), stderr io.Writer) int {
+	tr *trail, base audit.Event, tunnel *managedTunnel, logPath string, done func(), stderr io.Writer) int {
 	env := []string{"KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBECONFIG=" + plan.kubeconfig, "NEDCTL_KUBE=" + plan.cluster.Name}
 	var childErr error
 	if command != nil {
@@ -177,12 +176,12 @@ func runKubeChild(ctx context.Context, cfg config.Config, pc profileContext, pla
 
 	done()
 	if tunnel != nil {
-		if ended, terr := tunnel.Exited(); ended {
-			fmt.Fprintf(stderr, "warning: the tunnel ended while you were working (%v)\n%s", terr, logTail(logPath, 5))
+		if tunnel.Ended() {
+			fmt.Fprintln(stderr, "note: the tunnel had been closed while you were working")
 		} else {
 			waitForTunnelUsers(ctx, cfg, plan.cluster.Name, stderr)
 		}
-		tunnel.Stop(3 * time.Second)
+		tunnel.Stop()
 	}
 	tr.end(ctx, audit.OutcomeSuccess, pc.Role, base.Detail, stderr)
 	if tunnel != nil {

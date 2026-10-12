@@ -195,18 +195,34 @@ func cmdConnect(ctx context.Context, cfgPath string, args []string, stdout, stde
 		return code
 	}
 	banner(cfg, pc, cluster.Name, stderr)
-	fmt.Fprintf(stderr, "kubeconfig: %s\nIn another terminal:  export KUBECONFIG=%s   (PowerShell: $env:KUBECONFIG = '%s')\nTunnel open until you press Ctrl-C.\n", kc, kc, kc)
-	unpublish := publishTunnel(cfg, plan, pc.Name)
-	err = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "aws", Args: portForwardArgs(plan, pc.Name), Stdout: stderr, Timeout: cfg.AWS.Timeout()})
+	logPath, logFile, err := tunnelLog(cfg, cluster.Name)
+	if err != nil {
+		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
+		fmt.Fprintf(stderr, "opening the tunnel log: %v\n", err)
+		return ExitFailure
+	}
+	defer logFile.Close()
+	hopName := firstNonBlank(hop.Name, hop.ID)
+	sp := showRoute(stderr, fmt.Sprintf("Opening the tunnel through %s…", hopName), hopName, "⎈ "+cluster.Name)
+	tunnel, err := openManagedTunnel(ctx, cfg, plan, pc.Name, logFile, stderr)
+	sp.done(err == nil, fmt.Sprintf("tunnel open on 127.0.0.1:%d%s", plan.port, idleNote(cfg)))
+	if err != nil {
+		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
+		fmt.Fprintf(stderr, "the tunnel did not open: %v\n%s(full log: %s)\n%s", err, logTail(logPath, 8), logPath, ssmRouteHint())
+		return ExitFailure
+	}
+	unpublish := publishTunnel(cfg, plan, pc.Name, "connect", tunnel)
+	fmt.Fprintf(stderr, "kubeconfig: %s\nIn another terminal:  export KUBECONFIG=%s   (PowerShell: $env:KUBECONFIG = '%s')\nTunnel held until Ctrl-C (or nedctl tunnels close %s).\n", kc, kc, kc, cluster.Name)
+	select {
+	case <-ctx.Done():
+	case <-tunnel.Done():
+	}
+	tunnel.Stop()
 	unpublish()
 	if n := tunnelUsers(cfg, cluster.Name); n > 0 {
 		fmt.Fprintf(stderr, "warning: %d other session(s) were using this tunnel and lose it now\n", n)
 	}
-	if err != nil {
-		tr.end(ctx, audit.OutcomeFailure, pc.Role, err.Error(), stderr)
-		fmt.Fprintf(stderr, "tunnel failed: %v\n", err)
-		return ExitFailure
-	}
+	fmt.Fprintln(stderr, "tunnel closed")
 	tr.end(ctx, audit.OutcomeSuccess, pc.Role, base.Detail, stderr)
 	return ExitOK
 }

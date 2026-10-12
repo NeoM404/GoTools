@@ -41,8 +41,9 @@ func TestKubeUsesTheTunnelAlreadyOpen(t *testing.T) {
 	}
 	w := newEC2World(t, "prod", "")
 	port, _ := freePort()
-	ca := fakeEKSAPI(t, port) // stands in for the tunnel another nedctl holds
+	ca := fakeEKSAPI(t, port)
 	installKubeFake(t, w, ca, "")
+	port = upstreamPort(t) // the API stands in for the tunnel another nedctl holds
 	rec := writeTunnelRecord(t, w.cfg, tunnelRecord{Cluster: "payments-eks-prod", Host: eksHost, Profile: "payments-prod", Port: port,
 		PID: os.Getpid(), Hop: "i-0aaaaaaaaaaaaaaa1", HopName: "payments-devops"})
 	out := filepath.Join(w.home, "version.txt")

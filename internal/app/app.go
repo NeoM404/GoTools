@@ -108,6 +108,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdConnect(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "kube":
 		return cmdKube(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "tunnels":
+		return cmdTunnels(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "azure":
 		return cmdAzure(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "debug":
