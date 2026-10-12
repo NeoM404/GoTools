@@ -172,7 +172,8 @@ masked.
 | Unit, race and end-to-end tests | Every build (`make ci`) |
 | Release pipeline | `.azure-pipelines/release.yml`: only `vX.Y.Z` tags on main; full gate, then the built binary's version and built-in settings are checked before publishing |
 | Organisation defaults kept out of the repository | Built into release binaries from an Azure DevOps secure file. They are settings (start URL, region, environments), not secrets: anyone holding the binary can read them |
-| SBOM | Recommended next step, not yet in place |
+| SBOM | Every release carries `sbom.cdx.json` (CycloneDX 1.5): each binary's SHA-256 and build settings, the Go toolchain, and the third-party modules, of which there are none. It is listed in the signed `SHA256SUMS`, made with the standard library from the build information Go embeds (`make sbom`) |
+| Reproducible release | The release pipeline runs `make repro` (two builds, byte-identical) before building the release |
 
 ## What we ask Information Security to configure
 

@@ -61,6 +61,9 @@ steps:
   - script: make tools && make ci
     displayName: Full gate (format, vet, deps, lint, tests, e2e, govulncheck)
 
+  - script: make repro
+    displayName: Reproducible build (two builds, byte-identical)
+
   - task: DownloadSecureFile@1
     name: orgDefaults
     displayName: Organisation defaults
@@ -83,7 +86,7 @@ steps:
       case "$base" in '$('*) base="" ;; esac # variable not defined
       make release VERSION="$(releaseVersion)" ORG_DEFAULTS="$ORG_DEFAULTS" RELEASE_BASE_URL="$base" \
         SIGNING_KEYS="$SIGNING_KEYS" SIGNING_KEY_FILE="$(signingKey.secureFilePath)"
-    displayName: Build release binaries + signed SHA256SUMS + latest.json
+    displayName: Build release binaries + SBOM + signed SHA256SUMS + latest.json
 
   # Prove the built binary carries the defaults and the right version before
   # anyone downloads it.

@@ -33,7 +33,7 @@ GOBIN ?= $(shell go env GOPATH)/bin
 tool = $$(command -v $(1) || echo "$(GOBIN)/$(1)")
 SHA256 := $(shell command -v sha256sum 2>/dev/null || echo "shasum -a 256")
 
-.PHONY: all build install test e2e vet fmt fmt-check lint vuln deps-check ci cross checksums release repro tools clean
+.PHONY: all build install test e2e vet fmt fmt-check lint vuln deps-check ci cross sbom checksums release repro tools clean
 
 all: ci build
 
@@ -94,8 +94,12 @@ cross:
 	$(STATIC) GOOS=linux  GOARCH=arm64 go build $(BUILDFLAGS) -o dist/$(BINARY)-linux-arm64  $(PKG)
 	$(STATIC) GOOS=windows GOARCH=amd64 go build $(BUILDFLAGS) -o dist/$(BINARY)-windows-amd64.exe $(PKG)
 
-checksums: cross
-	cd dist && $(SHA256) $(BINARY)-* > SHA256SUMS
+# A CycloneDX SBOM of the binaries, from the build information Go embeds.
+sbom: cross
+	go run ./scripts/sbom -version "$(VERSION)" -out dist/sbom.cdx.json dist/$(BINARY)-*
+
+checksums: sbom
+	cd dist && $(SHA256) $(BINARY)-* sbom.cdx.json > SHA256SUMS
 
 # A release: the binaries with the organisation defaults built in, their
 # checksums, and latest.json for `nedctl version --check`. The release
