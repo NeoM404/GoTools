@@ -168,7 +168,6 @@ func TestKubeBashPromptShowsClusterInEnvironmentColour(t *testing.T) {
 func pointDirectAt(t *testing.T, port int) {
 	t.Helper()
 	old := directServer
-	port = upstreamPort(t) // the fake API itself, not the tunnel's port
 	directServer = func(eksTarget) (string, string) { return "https://127.0.0.1:" + strconv.Itoa(port), eksHost }
 	t.Cleanup(func() { directServer = old })
 }
@@ -181,7 +180,7 @@ func TestKubeConnectsDirectlyWhenTheEndpointAnswers(t *testing.T) {
 	port, _ := freePort()
 	ca := fakeEKSAPI(t, port)
 	installKubeFake(t, w, ca, "")
-	pointDirectAt(t, port)
+	pointDirectAt(t, upstreamPort(t))
 	out := filepath.Join(w.home, "v.txt")
 	code, _, errb := run("--config", w.cfg, "kube", "payments-eks-prod", "--", "sh", "-c", "kubectl get --raw /version > "+out)
 	if code != ExitOK || !strings.Contains(errb, "Direct: the endpoint answers from here") {
@@ -203,7 +202,7 @@ func TestConnectDirectWritesKubeconfigAndRecords(t *testing.T) {
 	port, _ := freePort()
 	ca := fakeEKSAPI(t, port)
 	installKubeFake(t, w, ca, "")
-	pointDirectAt(t, port)
+	pointDirectAt(t, upstreamPort(t))
 	code, _, errb := run("--config", w.cfg, "connect", "payments-eks-prod", "--via", "direct")
 	if code != ExitOK || !strings.Contains(errb, "export KUBECONFIG=") {
 		t.Fatalf("code=%d err=%q", code, errb)
