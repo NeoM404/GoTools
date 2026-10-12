@@ -131,6 +131,9 @@ When you run one, nedctl:
 4. **stops at the first failure**, and **records** the run with its
    parameters and how far it got (`runbook` in the audit trail).
 
+A `rollout status` step shows the rollout live instead of a silent wait:
+`rollout ██████████░░░░ 2/3 new replicas ready · 1 old terminating`.
+
 ### Built in
 
 | Runbook | Does |

@@ -362,7 +362,15 @@ func runRunbook(ctx context.Context, cfg config.Config, s *kubeSession, rb runbo
 				}
 			}
 		}
-		out, err := s.output(ctx, "", args...)
+		var out []byte
+		var err error
+		if len(args) > 1 && args[0] == "rollout" && args[1] == "status" && colorOn(stderr) {
+			out, err = rolloutWithProgress(ctx, s, args, stderr)
+		} else {
+			sp := spinning(stderr, "  running…")
+			out, err = s.output(ctx, "", args...)
+			sp.Stop()
+		}
 		fmt.Fprint(stdout, indentLines(string(out)))
 		if err != nil {
 			fmt.Fprintf(stderr, "%s %v\n", st.Fail(fmt.Sprintf("step %d failed:", i+1)), err)
