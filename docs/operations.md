@@ -195,7 +195,14 @@ Before draining, nedctl shows the checks people skip under pressure:
 
 Then it asks. `--dry-run` stops before asking, and `--yes` skips the
 question. The drain runs with `--ignore-daemonsets --delete-emptydir-data`.
-If it doesn't finish, the node stays cordoned and nedctl says how to give
+
+While it runs, you see it live:
+
+- a bar of the pods moved off the node (`7/12 pods moved`);
+- each pod being evicted, with how long it has taken;
+- in amber, the pods a disruption budget is holding back.
+
+In logs and pipes you get kubectl's own lines instead. If it doesn't finish, the node stays cordoned and nedctl says how to give
 it back. `cordon` and `uncordon` follow the same steps. Every one is
 recorded (`node-drain`, `node-cordon`, `node-uncordon`), and change control
 applies.

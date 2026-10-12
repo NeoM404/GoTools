@@ -13,6 +13,7 @@ import (
 	"nedctl/internal/audit"
 	"nedctl/internal/config"
 	"nedctl/internal/inventory"
+	"nedctl/internal/safetext"
 	"nedctl/internal/ui"
 )
 
@@ -68,8 +69,9 @@ func cmdNode(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 		kargs = append(kargs, "--ignore-daemonsets", "--delete-emptydir-data", "--timeout="+*timeout)
 	}
 	fmt.Fprintf(stderr, "\n%s %s %s on %s (%s)\n  kubectl %s\n", st.Bold("To"), action, node, st.BoldFg(cfg.ColorFor(s.env), s.label()), s.where, strings.Join(kargs, " "))
+	moving := 0
 	if action == "drain" {
-		drainPreview(ctx, s, node, stderr)
+		moving = drainPreview(ctx, s, node, stderr)
 	}
 	sp = spinning(stderr, "Asking the cluster for a dry run…")
 	out, err := s.output(ctx, "", append(append([]string{}, kargs...), "--dry-run=server")...)
@@ -109,7 +111,19 @@ func cmdNode(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 	if code := applyChangeControl(ctx, cfg, inventory.Cluster{Name: s.cluster, Environment: s.env}, base.ChangeRecord, *glass, tr, stderr); code != ExitOK {
 		return code
 	}
-	if err := s.kubectl(ctx, kargs, strings.NewReader(""), stdout, stderr, false); err != nil {
+	var kout, kerr io.Writer = safetext.Writer(stdout), safetext.Writer(stderr)
+	var view *drainView
+	if action == "drain" && colorOn(stderr) && !reducedMotion() {
+		view = newDrainView(stderr, node, moving)
+		kout, kerr = view, view
+	}
+	err = s.kubectl(ctx, kargs, strings.NewReader(""), kout, kerr, false)
+	if view != nil {
+		view.stop()
+	} else {
+		flushSafe(kout, kerr)
+	}
+	if err != nil {
 		tr.end(ctx, audit.OutcomeFailure, s.pc.Role, err.Error(), stderr)
 		fmt.Fprintf(stderr, "%s did not complete: %v\n", action, err)
 		if action == "drain" {
@@ -123,7 +137,7 @@ func cmdNode(ctx context.Context, cfgPath string, args []string, stdout, stderr 
 }
 
 // drainPreview lists what a drain moves and what could block it.
-func drainPreview(ctx context.Context, s *kubeSession, node string, stderr io.Writer) {
+func drainPreview(ctx context.Context, s *kubeSession, node string, stderr io.Writer) int {
 	st := ui.Style{Color: colorOn(stderr)}
 	sp := spinning(stderr, "Listing the pods on "+node+"…")
 	out, err := s.output(ctx, "", "get", "pods", "-A", "--field-selector", "spec.nodeName="+node, "-o",
@@ -131,7 +145,7 @@ func drainPreview(ctx context.Context, s *kubeSession, node string, stderr io.Wr
 	sp.Stop()
 	if err != nil {
 		fmt.Fprintf(stderr, "  (could not list the node's pods: %v)\n", err)
-		return
+		return 0
 	}
 	moves, bare, daemons := []string{}, []string{}, 0
 	namespaces := map[string]bool{}
@@ -176,4 +190,5 @@ func drainPreview(ctx context.Context, s *kubeSession, node string, stderr io.Wr
 			fmt.Fprintf(stderr, "  %s\n", st.Warn("disruption budget "+b+" allows no disruption now: the drain waits for it (up to --timeout)"))
 		}
 	}
+	return len(moves)
 }
