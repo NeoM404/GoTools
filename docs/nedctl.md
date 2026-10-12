@@ -135,6 +135,7 @@ work). Example — copy [`configs/nedctl.example.json`](../configs/nedctl.exampl
 | `debug` | `nedctl debug`: default `namespace`, `image`, short-name `images` (e.g. an internal registry) and `ttl` — see [debug.md](debug.md). |
 | `confirmProduction` | `true` makes `shell`, `kube`, `connect`, `console`, `azure kube` and `azure shell` ask you to type the environment's name before a production session; `--yes` confirms without asking (needed without a terminal). Off by default. |
 | `productionPause` | Seconds a production session counts down in red (`▌PRODUCTION▐ payments-eks-prod in 3 ███`) before it opens, so "this is prod" registers. Ctrl-C cancels, and nothing is opened. Default `3`, `0` turns it off, at most `10`. `--yes` and scripts skip it. It never reads the keyboard, so nothing you type is lost. |
+| `productionIdleTimeout` | A production shell (`kube`, `azure kube`, `azure shell`) left idle this long closes by itself. Default `"30m"`, from `"1m"` to `"12h"`, or `"0"` for off. It is the shell's `TMOUT`, set read-only after your own startup files, so they can't undo it. Session Manager shells (`nedctl shell`) follow the account's SSM idle timeout. |
 | `releaseUrl` | HTTPS address of the `latest.json` the release pipeline publishes; `nedctl version --check` compares against it. Usually built in. |
 | `windowsTerminal` | Path to `wt.exe` for `--tab` when it is not on PATH (WSL); a `C:\` path works. |
 | `environmentColors` | `#rrggbb` per environment for pickers, terminal tabs and the prompt. Default: dev green, ete orange, qa blue, prod red. |

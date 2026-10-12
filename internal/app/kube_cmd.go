@@ -291,6 +291,11 @@ func kubeShell(cfg config.Config, pc profileContext, cluster string) (string, []
 fi
 export KUBECONFIG="$NEDCTL_KUBECONFIG"
 `
+	// Production shells close when left idle (after the user's own startup
+	// files, read-only so they cannot undo it).
+	if d := cfg.IdleTimeout(); pc.Production && d > 0 {
+		restore += fmt.Sprintf("TMOUT=%d\nreadonly TMOUT\n", int(d.Seconds()))
+	}
 	switch filepath.Base(shell) {
 	case "bash":
 		prefix := label

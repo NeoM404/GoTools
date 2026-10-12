@@ -154,6 +154,28 @@ type Config struct {
 	// it opens, so "this is prod" registers; Ctrl-C cancels. Default 3, 0
 	// turns it off, at most 10. --yes and scripts skip it.
 	ProductionPause *int `json:"productionPause"`
+
+	// ProductionIdleTimeout closes a production shell (kube, azure kube,
+	// azure shell) left idle this long, e.g. "30m" (the default); "0"
+	// turns it off. The shell's own TMOUT, set read-only so a startup file
+	// cannot undo it. Session Manager shells follow the account's SSM
+	// idle timeout instead.
+	ProductionIdleTimeout string `json:"productionIdleTimeout"`
+}
+
+// IdleTimeout is ProductionIdleTimeout with its default (0 = off).
+func (c Config) IdleTimeout() time.Duration {
+	switch c.ProductionIdleTimeout {
+	case "":
+		return 30 * time.Minute
+	case "0":
+		return 0
+	}
+	d, err := time.ParseDuration(c.ProductionIdleTimeout)
+	if err != nil {
+		return 30 * time.Minute
+	}
+	return d
 }
 
 // PauseSeconds is ProductionPause with its default.
@@ -1162,6 +1184,11 @@ func (c Config) validate() error {
 func (c Config) validatePause() error {
 	if p := c.PauseSeconds(); p < 0 || p > 10 {
 		return fmt.Errorf("productionPause %d: want 0 to 10 seconds", p)
+	}
+	if v := c.ProductionIdleTimeout; v != "" && v != "0" {
+		if d, err := time.ParseDuration(v); err != nil || d < time.Minute || d > 12*time.Hour {
+			return fmt.Errorf("productionIdleTimeout %q: want a duration from 1m to 12h, or \"0\" for off", v)
+		}
 	}
 	return nil
 }

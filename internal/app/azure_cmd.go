@@ -220,10 +220,23 @@ __nedctl_title() {
 }
 PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__nedctl_title"
 PS1="$NEDCTL_PS1 $PS1"
+if [ -n "$NEDCTL_TMOUT" ]; then
+  TMOUT=$NEDCTL_TMOUT
+  readonly TMOUT
+fi
 EOF
-export NEDCTL_RC NEDCTL_PS1="$label" NEDCTL_TITLE="$title" NEDCTL_TAB="$tab"
+export NEDCTL_RC NEDCTL_PS1="$label" NEDCTL_TITLE="$title" NEDCTL_TAB="$tab" NEDCTL_TMOUT
 exec bash --rcfile "$NEDCTL_RC" -i
 `
+
+// idleScript is sessionScript with the production idle timeout set, when
+// there is one: a number of seconds, nothing else.
+func idleScript(cfg config.Config, prod bool) string {
+	if d := cfg.IdleTimeout(); prod && d > 0 {
+		return fmt.Sprintf("NEDCTL_TMOUT=%d\n", int(d.Seconds())) + sessionScript
+	}
+	return sessionScript
+}
 
 // promptLabel is the remote prompt's prefix, e.g. [QA acm-k8s-qa-cluster]
 // in the environment's colour. It holds only an environment word and a
@@ -453,7 +466,7 @@ func azureKube(ctx context.Context, cfgPath string, args []string, stderr io.Wri
 		azureBanner(cfg, env, name, "on "+t.Name, pc.Production, stderr)
 		fmt.Fprintf(stderr, "⎈ kubectl, helm and kubectx in this shell use %s only. Type exit when done.\n", name)
 	}
-	remote := remoteBash(sessionScript, append([]string{promptLabel(cfg, env, name, color), strings.ToUpper(env) + " · " + name, tabIndex(cfg, env), name}, command...)...)
+	remote := remoteBash(idleScript(cfg, pc.Production), append([]string{promptLabel(cfg, env, name, color), strings.ToUpper(env) + " · " + name, tabIndex(cfg, env), name}, command...)...)
 	err = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "ssh", Args: sshArgs(cfg, t, command == nil || stdinIsTerminal(), remote),
 		Timeout: cfg.AWS.Timeout()})
 	return endSSH(ctx, tr, t, base, command != nil, err, stderr)
@@ -576,7 +589,7 @@ func azureShell(ctx context.Context, cfgPath string, args []string, stderr io.Wr
 	azureBanner(cfg, t.Env, t.Name, kind, pc.Production, stderr)
 	remote := ""
 	if !*plain {
-		remote = remoteBash(sessionScript, promptLabel(cfg, t.Env, t.Name, colorOn(stderr)), strings.TrimLeft(strings.ToUpper(t.Env)+" · "+t.Name, " ·"), tabIndex(cfg, t.Env), "")
+		remote = remoteBash(idleScript(cfg, pc.Production), promptLabel(cfg, t.Env, t.Name, colorOn(stderr)), strings.TrimLeft(strings.ToUpper(t.Env)+" · "+t.Name, " ·"), tabIndex(cfg, t.Env), "")
 	}
 	err = execx.Interactive(ctx, execx.Spec{Stdin: childStdin(), Name: "ssh", Args: sshArgs(cfg, t, true, remote), Timeout: cfg.AWS.Timeout()})
 	return endSSH(ctx, tr, t, base, false, err, stderr)
