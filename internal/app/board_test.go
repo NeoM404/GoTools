@@ -126,3 +126,45 @@ func TestHealthBoardNeedsATerminal(t *testing.T) {
 		t.Fatalf("code=%d err=%q", code, errb)
 	}
 }
+
+func TestADeadClusterIsNotAskedEveryQuestion(t *testing.T) {
+	f := newClusterFixture(t, "", "gone-k8s-qa-cluster", "good-k8s-qa-cluster")
+	key := func(i int) string { return strings.Join(healthProbes[i], " ") }
+	f.fail(t, "gone-k8s-qa-cluster", key(0), "Unable to connect to the server: dial tcp 10.0.0.9:443: i/o timeout")
+	f.answer(t, "good-k8s-qa-cluster", key(0), `{"gitVersion":"v1.30.4"}`)
+	code, out, errb := run("--config", f.cfg, "health", "--env", "qa")
+	if code != ExitFailure || !strings.Contains(out, "gone-k8s-qa-cluster") || !strings.Contains(out, "unreachable") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
+	}
+	if f.called(t, "gone-k8s-qa-cluster", key(1)) || f.called(t, "gone-k8s-qa-cluster", key(2)) {
+		t.Fatal("after the first question went unanswered, the rest must be skipped")
+	}
+	if !f.called(t, "good-k8s-qa-cluster", key(1)) {
+		t.Fatal("a cluster that answers is asked everything")
+	}
+}
+
+func TestBoardShowsHowLongAClusterIsTaking(t *testing.T) {
+	clock := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	old := now
+	now = func() time.Time { return clock }
+	t.Cleanup(func() { now = old })
+	var buf bytes.Buffer
+	b := newFleetBoard(&buf, config.Config{}, "QA")
+	b.cols = func() int { return 200 }
+	b.add("qa", []string{"slow-k8s-qa-cluster"})
+	b.since = clock
+	frame := func() string {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return plain(strings.Join(b.render(now()), "\n"))
+	}
+	clock = clock.Add(12 * time.Second)
+	if f := frame(); !strings.Contains(f, "12s") {
+		t.Fatalf("12s in:\n%s", f)
+	}
+	clock = clock.Add(30 * time.Second)
+	if f := frame(); !strings.Contains(f, "slow 42s") || !strings.Contains(f, "none takes more than 90s") {
+		t.Fatalf("slow:\n%s", f)
+	}
+}

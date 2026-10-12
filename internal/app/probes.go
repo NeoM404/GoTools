@@ -207,13 +207,24 @@ const (
 // probes failed) goes to stderr so progress shows. $1 is the request timeout; the probes are the
 // functions p0, p1… defined in front of it.
 const bastionProbeScript = `t=$1; shift
+CAP=90
 d=$(mktemp -d "${TMPDIR:-/tmp}/nedctl-probe.XXXXXX") || exit 1
 trap 'rm -rf "$d"' EXIT
 run() {
-  c=$1 i=0 f=0
+  c=$1 i=0 f=0 start=$SECONDS skip=""
   while [ $i -lt $N ]; do
-    "p$i" "$c" "$t" > "$d/$c.$i.out" 2> "$d/$c.$i.err"
-    rc=$?
+    if [ -z "$skip" ] && [ $((SECONDS-start)) -ge "$CAP" ]; then
+      skip="not read: the cluster took more than ${CAP}s"
+    fi
+    if [ -n "$skip" ]; then
+      : > "$d/$c.$i.out"; echo "$skip" > "$d/$c.$i.err"; rc=124
+    else
+      "p$i" "$c" "$t" > "$d/$c.$i.out" 2> "$d/$c.$i.err"
+      rc=$?
+      # A cluster that does not answer its first question is not asked the
+      # rest: each would wait out the same timeout.
+      [ $i -eq 0 ] && [ $rc -ne 0 ] && skip="not read: the cluster did not answer"
+    fi
     echo $rc > "$d/$c.$i.rc"
     [ $rc -eq 0 ] || f=$((f+1))
     i=$((i+1))

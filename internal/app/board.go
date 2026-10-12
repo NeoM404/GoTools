@@ -48,6 +48,7 @@ type fleetBoard struct {
 	updated  time.Time
 	nextAt   time.Time // --watch: the next round
 	round    int
+	since    time.Time // when the current round started
 	cols     func() int
 	stopOnce sync.Once
 	done     chan struct{}
@@ -122,9 +123,13 @@ func (b *fleetBoard) newRound(next time.Time) {
 	defer b.mu.Unlock()
 	b.round++
 	b.nextAt = next
+	b.since = next // the next round starts then
 }
 
 func (b *fleetBoard) start() {
+	b.mu.Lock()
+	b.since = now()
+	b.mu.Unlock()
 	fmt.Fprint(b.w, "\x1b[?25l") // hide the cursor while drawing
 	go func() {
 		defer close(b.finished)
@@ -172,7 +177,14 @@ func (b *fleetBoard) statusCell(r *boardRow, t time.Time) string {
 		if b.motion {
 			dots[b.frame/2%len(dots)] = '•'
 		}
-		return b.st.Dim(fmt.Sprintf("%-*s", statusWidth, string(dots)))
+		waited := t.Sub(b.since)
+		switch {
+		case b.since.IsZero() || waited < 5*time.Second:
+			return b.st.Dim(fmt.Sprintf("%-*s", statusWidth, string(dots)))
+		case waited < 30*time.Second:
+			return b.st.Dim(fmt.Sprintf("%-*s", statusWidth, fmt.Sprintf("%s %ds", string(dots), int(waited.Seconds()))))
+		}
+		return b.st.Fg(ui.Amber, fmt.Sprintf("%-*s", statusWidth, fmt.Sprintf("slow %ds", int(waited.Seconds()))))
 	}
 	word := strings.ToUpper(r.h.Status)
 	col := b.statusColor(r.h.Status)
@@ -258,6 +270,8 @@ func (b *fleetBoard) render(t time.Time) []string {
 		lines = append(lines, st.Dim(fmt.Sprintf("round %d · next in %ds · ▲ better ▼ worse since the last round · Ctrl-C to stop", b.round, left)))
 	case !b.nextAt.IsZero():
 		lines = append(lines, st.Dim(fmt.Sprintf("round %d · reading… · Ctrl-C to stop", b.round)))
+	case waiting > 0:
+		lines = append(lines, st.Dim("a cluster that does not answer is marked unreachable after 20s; none takes more than 90s"))
 	}
 	return lines
 }
