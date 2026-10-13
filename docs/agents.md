@@ -53,6 +53,7 @@ content stays the same.
 | `expiry` | `expiry` | Certificates, CA bundles and version support running out |
 | `changes` | `changes` | What changed recently (Secrets never read) |
 | `health` | `health` | Cluster health |
+| `capacity` | `capacity` | Headroom per pool, pending pods, autoscalers at max, quotas |
 | `mesh` | `mesh` | Istio mTLS, sidecar coverage, policies and routing |
 | `posture` | `posture` | Risky settings in what runs |
 | `explain` | `explain --no-logs` | Why a workload is failing, without its logs |

@@ -84,6 +84,8 @@ var mcpTools = []mcpTool{
 		Command: []string{"health"}, Fixed: []string{"-o", "json"}, Args: fleetArgs},
 	{Name: "mesh", Desc: "Istio security and routing: mTLS modes, workloads outside the mesh, proxy versions, allow-all authorization policies, plain-text destination rules, routes to missing services, conflicting virtual services, plain-HTTP gateways, open egress, EnvoyFilters.",
 		Command: []string{"mesh"}, Fixed: []string{"-o", "json", "--fail-on", "none"}, Args: fleetArgs},
+	{Name: "capacity", Desc: "Headroom per node pool (requested and used CPU, memory, pod slots), nodes under pressure, pending pods and why, autoscalers at their maximum, quotas nearly full.",
+		Command: []string{"capacity"}, Fixed: []string{"-o", "json", "--fail-on", "none"}, Args: fleetArgs},
 	{Name: "posture", Desc: "Risky settings in what runs: privileged containers, host access, root, dangerous capabilities, secrets in environment variables (names only), public load balancers, unapproved registries.",
 		Command: []string{"posture"}, Fixed: []string{"-o", "json"}, Args: fleetArgs},
 	{Name: "explain", Desc: "Why a workload or pod is not working, in plain findings with what to do (logs are not read through an agent).",

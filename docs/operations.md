@@ -214,6 +214,39 @@ Nothing is changed.
   read from AWS, in the `nedctl.findings/v1` layout. Pipelines and AI agents
   work from it: see [agents](agents.md).
 
+## Headroom: `nedctl capacity`
+
+```bash
+nedctl capacity --env prod
+nedctl capacity --aws-env ete,qa --match lms
+nedctl capacity --cluster acm-k8s-qa-cluster --namespaces
+```
+
+```
+CLUSTER                 POOL   NODES  CPU REQ          MEM REQ          CPU USED         MEM USED         POD SLOTS
+QA pay-k8s-qa-cluster   app    2       90% █████████░   43% ████░░░░░░   62% ██████░░░░   92% █████████░   6% █░░░░░░░░░
+```
+
+- **REQ** is what pods asked for: what the scheduler sees, so new pods stop
+  fitting as it nears 100%.
+- **USED** comes from metrics-server: what is really consumed. Memory near
+  100% means evictions and OOM kills.
+- Cordoned nodes are left out.
+
+| Check | Severity |
+|---|---|
+| `node-pressure`: a node under Memory, Disk or PID pressure (the kubelet evicts pods) | high |
+| `pending-pods`: pods that can't be placed, grouped by reason (insufficient CPU or memory, no pod slots, taints, affinity, volumes) | high |
+| `pool-full` (95%+ requested) / `pool-headroom` (85%+, `--warn`) | high / medium |
+| `memory-used`: a pool using 90%+ of its memory | high |
+| `hpa-at-max`: an autoscaler at its maximum that wants more | medium |
+| `quota-full` / `quota-nearly-full` (90%+) | high / medium |
+| `over-requested` (`--namespaces`): a namespace requesting 4× or more the CPU it uses; the five biggest | info |
+
+Without metrics-server, the USED columns show `-` and the report says so.
+`--namespaces` reads every pod's metrics, which is a bigger read, so it's
+opt-in.
+
 ## How nedctl reads a cluster gently
 
 `changes`, `expiry`, `upgrade-check`, `mesh`, `why` and `capacity` read
