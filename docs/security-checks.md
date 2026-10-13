@@ -154,6 +154,39 @@ containers, flags`, one image per row, ready for a scanner. Scanning by
 digest checks exactly what runs. `--registry` and `--flagged` narrow the
 list.
 
+### Vulnerabilities in what runs: `nedctl images scan`
+
+The bank scans images with **ECR scanning**, **Trivy** and **Prisma Cloud
+(Twistlock)**. `images scan` puts their results next to what is actually
+running, by digest, on the clusters you select:
+
+```bash
+nedctl images scan --env prod
+nedctl images scan --aws-env ete,qa --match lms
+NEDCTL_PRISMA_TOKEN=… nedctl images scan --cluster acm-k8s-qa-cluster
+nedctl images scan --aws -o csv > vulnerabilities.csv
+```
+
+| Source | How it's read | Set up |
+|---|---|---|
+| `ecr` | `aws ecr describe-image-scan-findings` for each running digest in ECR, with your AWS profile in the registry's region. Basic and Inspector-enhanced results; "with a fix" comes from Inspector | Nothing: on by default when AWS is set up |
+| `trivy-operator` | The cluster's `VulnerabilityReports` (Trivy Operator): read-only, no images pulled | Nothing: used where the operator runs |
+| `prisma` | Prisma Cloud Compute's images API (`security.prismaApi`, e.g. `https://console…/api/v1`), with a token from `NEDCTL_PRISMA_TOKEN` | Get a token from the console. It's read from the environment for that run and never stored or printed |
+| `trivy` | The `trivy` CLI on each digest; client mode against `security.trivyServer` when set. Pulls the image, so it's opt-in: `--source trivy` | Trivy installed, with access to the registries |
+
+| Finding | Severity |
+|---|---|
+| Critical vulnerabilities with a fix available | critical |
+| Critical vulnerabilities, no fix yet | high |
+| High vulnerabilities | medium |
+| **No scanner has a result** for a running image: a blind spot | medium |
+
+The table shows the most any scanner reports. `-o json` keeps each scanner's
+own result (counts, the critical CVE IDs, when it was scanned, or why it
+couldn't be read). `-o csv` gives one row per image and scanner. Exits 1 at
+`--fail-on` (default `critical`). At most 300 images are scanned per run
+(`--limit`); narrow with `--match`.
+
 ## Who can do what: `nedctl access review`
 
 ```bash

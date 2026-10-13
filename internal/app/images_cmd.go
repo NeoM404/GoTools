@@ -35,6 +35,9 @@ type imageRow struct {
 }
 
 func cmdImages(ctx context.Context, cfgPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "scan" {
+		return cmdImagesScan(ctx, cfgPath, args[1:], stdout, stderr)
+	}
 	fs := flag.NewFlagSet("images", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var sel clusterSel

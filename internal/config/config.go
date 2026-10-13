@@ -303,6 +303,13 @@ type Security struct {
 	// ApprovedAccess is the file of approved cluster access for `access
 	// review` (default ./access/approved.json).
 	ApprovedAccess string `json:"approvedAccess"`
+	// PrismaAPI is the Prisma Cloud Compute (Twistlock) console's API base,
+	// e.g. "https://console.example/api/v1", for `images scan`. The token
+	// comes from NEDCTL_PRISMA_TOKEN at run time and is never stored.
+	PrismaAPI string `json:"prismaApi"`
+	// TrivyServer is a Trivy server for `images scan --source trivy`
+	// (client mode), e.g. "https://trivy.example:4954".
+	TrivyServer string `json:"trivyServer"`
 }
 
 // DefaultIgnoreNamespaces are the platform namespaces posture skips.
@@ -780,6 +787,12 @@ func (c Config) validateAWS() error {
 	}
 	if c.ReleaseURL != "" && !strings.HasPrefix(c.ReleaseURL, "https://") {
 		errs = append(errs, fmt.Errorf("releaseUrl must be https://"))
+	}
+	if c.Security.PrismaAPI != "" && !strings.HasPrefix(c.Security.PrismaAPI, "https://") {
+		errs = append(errs, fmt.Errorf("security.prismaApi must be https://"))
+	}
+	if c.Security.TrivyServer != "" && !strings.HasPrefix(c.Security.TrivyServer, "https://") {
+		errs = append(errs, fmt.Errorf("security.trivyServer must be https://"))
 	}
 	if strings.ContainsAny(c.WindowsTerminal, "\r\n") || strings.HasPrefix(c.WindowsTerminal, "-") {
 		errs = append(errs, fmt.Errorf("windowsTerminal: invalid value"))

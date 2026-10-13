@@ -55,6 +55,7 @@ content stays the same.
 | `health` | `health` | Cluster health |
 | `capacity` | `capacity` | Headroom per pool, pending pods, autoscalers at max, quotas |
 | `mesh` | `mesh` | Istio mTLS, sidecar coverage, policies and routing |
+| `images_scan` | `images scan` | Vulnerabilities in what runs (ECR, Trivy Operator, Prisma Cloud) |
 | `posture` | `posture` | Risky settings in what runs |
 | `explain` | `explain --no-logs` | Why a workload is failing, without its logs |
 | `why` | `why` | Why A can't reach B: Service, endpoints, network policy, Istio |
