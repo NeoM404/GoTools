@@ -171,6 +171,32 @@ type Config struct {
 	// Agents controls `nedctl mcp`, the read-only tools AI agents (Kiro,
 	// GitHub Copilot, Claude Code) can call.
 	Agents Agents `json:"agents"`
+
+	// Recording records interactive sessions inside workloads and nodes
+	// (exec, debug pod, debug node, debug attach): in production by
+	// default.
+	Recording Recording `json:"recording"`
+}
+
+// Recording says which sessions are recorded and where.
+type Recording struct {
+	// Production records production sessions (default true; only the
+	// bank's built-in defaults should turn it off).
+	Production *bool `json:"production"`
+	// All records every environment's sessions.
+	All bool `json:"all"`
+	// Dir is where recordings go (default: nedctl's state directory,
+	// sessions/). A shared, append-only location suits a central archive.
+	Dir string `json:"dir"`
+}
+
+// Records reports whether a session in this kind of environment is
+// recorded.
+func (r Recording) Records(production bool) bool {
+	if r.All {
+		return true
+	}
+	return production && (r.Production == nil || *r.Production)
 }
 
 // Agents controls what AI agents may ask nedctl through `nedctl mcp`.

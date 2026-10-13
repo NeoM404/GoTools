@@ -33,13 +33,13 @@ var subcommands = map[string][]string{
 	"clusters":  {"list"},
 	"fleet":     {"versions", "eol", "calendar", "run"},
 	"inventory": {"validate", "diff", "sync"},
-	"audit":     {"verify"},
+	"audit":     {"verify", "replay"},
 	"prompt":    {"init"},
 	"agents":    {"setup", "tools"},
 }
 
 var commandNames = []string{
-	"setup", "status", "aws", "shell", "kube", "connect", "console", "azure", "debug", "tunnels", "explain", "incident", "changes", "expiry", "upgrade-check", "mesh", "why", "capacity", "agents", "mcp", "app", "diff", "logs", "forward", "health", "run", "node", "cp", "posture", "images", "access", "eks", "ec2", "clusters", "kubeconfig", "login",
+	"setup", "status", "aws", "shell", "kube", "connect", "console", "azure", "debug", "tunnels", "explain", "incident", "changes", "expiry", "upgrade-check", "mesh", "why", "capacity", "exec", "agents", "mcp", "app", "diff", "logs", "forward", "health", "run", "node", "cp", "posture", "images", "access", "eks", "ec2", "clusters", "kubeconfig", "login",
 	"fleet", "inventory", "sweep", "audit", "evidence", "guard", "current", "prompt", "doctor", "init", "version", "update", "verify", "help",
 }
 

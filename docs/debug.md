@@ -134,6 +134,26 @@ anything is deployed.
 
 ## The commands
 
+### `nedctl exec POD [-- COMMAND…]`
+A shell (or one command) inside a running container, like `kubectl exec
+-it`.
+
+- It's recorded in the audit trail (`kube-exec`).
+- In production it asks for confirmation and pauses, and asks for a change
+  record or break-glass reason when change control is on.
+- **In production the session itself is recorded** (redacted), with its
+  SHA-256 in the trail. Replay it with `nedctl audit replay`. See
+  [Security](security.md#production-sessions-are-recorded).
+
+```bash
+nedctl exec payments-api-7f9c -n payments
+nedctl exec payments-api-7f9c -n payments -c api -- cat /etc/os-release
+nedctl exec ledger-0 -n core --cluster payments-eks-prod --change-record CHG0012345
+```
+
+`debug pod`, `debug node` and `debug attach` sessions are recorded the same
+way in production.
+
 ### `nedctl debug pod`
 A pod with a shell (bash if the image has it, else sh). `--on-node NODE`
 places it on a node without the node's privileges.

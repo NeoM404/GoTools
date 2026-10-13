@@ -161,6 +161,35 @@ stale port. The API server's TLS is still verified against the cluster's
 CA end to end, so a local process that grabbed a port could not get a
 token.
 
+## Production sessions are recorded
+
+A shell inside a workload or node in production is recorded: `nedctl exec`,
+`debug pod`, `debug node` and `debug attach`.
+
+- **What's recorded:** everything the session shows. That's what was typed,
+  as the remote terminal echoes it, and what came back. Passwords typed at a
+  prompt aren't echoed, so they're never recorded. Secrets and personal data
+  are redacted line by line with the same rules as `nedctl logs`.
+- **The engineer is told:** `● This session is recorded`.
+- **The file:** an asciicast v2 file, owner-only and never overwritten, in
+  nedctl's state directory under `sessions/` (or `recording.dir`, for
+  example an append-only share). Its **SHA-256 is written into the audit
+  trail's end event**.
+- **`nedctl audit replay FILE.cast`** checks the file against that event
+  first. A recording changed after the session is reported. It then plays
+  the recording back, cleaned of terminal control sequences, so a recording
+  can't act on the reviewer's terminal.
+- **No recording, no session.** If the recording can't be started, the
+  session is refused, and the refusal is recorded.
+- **Settings:** `recording.production` (default true) and `recording.all`
+  (every environment). Turning recording off belongs in the bank's built-in
+  defaults, not in a personal config.
+- **Limitation:** kubectl keeps the real terminal for input; its output goes
+  to the screen and the recording. The remote shell starts at the window's
+  size, but resizing during a recorded session doesn't reach it. Recordings
+  are made by the client the engineer runs, like the audit log itself (see
+  its limitation above).
+
 ## AI agents get evidence, not access
 
 `nedctl mcp` lets AI agents (Kiro, GitHub Copilot, Claude Code) ask nedctl

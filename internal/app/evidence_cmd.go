@@ -41,8 +41,11 @@ func auditLogs(cfgPath string, explicit stringList, stderr io.Writer) ([]string,
 }
 
 func cmdAudit(cfgPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "replay" {
+		return cmdAuditReplay(cfgPath, args[1:], stdout, stderr)
+	}
 	if len(args) == 0 || args[0] != "verify" {
-		fmt.Fprintln(stderr, "usage: nedctl audit verify [--log PATH]... [-o table|json]")
+		fmt.Fprintln(stderr, "usage: nedctl audit verify [--log PATH]... [-o table|json]\n       nedctl audit replay FILE.cast [--speed 2 | --fast] [--verify]")
 		return ExitUsage
 	}
 	fs := flag.NewFlagSet("audit verify", flag.ContinueOnError)

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -328,7 +329,15 @@ func debugWithPod(ctx context.Context, cfg config.Config, kind string, args []st
 		if kind == "node" {
 			fmt.Fprintln(stderr, st.Hint("the node's files are at /host — `chroot /host` runs the node's own tools (journalctl, crictl)"))
 		}
-		useErr = s.interactive(ctx, "exec", "-it", p.Name, "-n", p.Namespace, "--", "sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh")
+		var note string
+		note, useErr = recordSession(ctx, cfg, s, s.pc.Production || cfg.IsProdEnvironment(s.env), map[string]any{"action": base.Action, "pod": p.Namespace + "/" + p.Name},
+			stderr, "exec", "-it", p.Name, "-n", p.Namespace, "--", "sh", "-c", sizedShell())
+		if errors.Is(useErr, errNotRecorded) {
+			tr.end(ctx, audit.OutcomeRefused, s.pc.Role, useErr.Error(), stderr)
+			fmt.Fprintln(stderr, useErr)
+			return ExitFailure
+		}
+		base.Detail += note
 	}
 	tr.end(ctx, audit.OutcomeSuccess, s.pc.Role, base.Detail, stderr)
 	if useErr != nil && kind == "net" {
@@ -612,12 +621,13 @@ kubectl %s`, pod, container, profile, debugProfiles[profile], strings.Join(kargs
 	if code := applyChangeControl(ctx, cfg, inventory.Cluster{Name: s.cluster, Environment: s.env}, base.ChangeRecord, d.glass, tr, stderr); code != ExitOK {
 		return code
 	}
-	if err := s.interactive(ctx, kargs...); err != nil {
-		tr.end(ctx, audit.OutcomeFailure, s.pc.Role, err.Error(), stderr)
+	note, err := recordSession(ctx, cfg, s, s.pc.Production || cfg.IsProdEnvironment(s.env), map[string]any{"action": base.Action, "pod": d.namespace + "/" + pod}, stderr, kargs...)
+	if err != nil {
+		tr.end(ctx, audit.OutcomeFailure, s.pc.Role, err.Error()+note, stderr)
 		fmt.Fprintf(stderr, "kubectl debug: %v (it needs kubectl 1.27 or newer %s)\n", err, s.where)
 		return ExitFailure
 	}
-	tr.end(ctx, audit.OutcomeSuccess, s.pc.Role, base.Detail, stderr)
+	tr.end(ctx, audit.OutcomeSuccess, s.pc.Role, base.Detail+note, stderr)
 	return ExitOK
 }
 
