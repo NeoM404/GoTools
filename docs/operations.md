@@ -146,6 +146,74 @@ Things to know:
 - `nedctl incident` puts the same timeline for the workload's namespace into
   the evidence file (`changes.json` and the summary).
 
+## Is it ready for the next version? `nedctl upgrade-check`
+
+For EKS (AKS comes next). It assesses the next Kubernetes minor version, or
+`--target`, and gives a readiness score, the blockers, every finding with its
+fix, the add-ons to verify against their own project, and the upgrade plan
+with its commands filled in. nedctl never runs those commands.
+
+```bash
+nedctl upgrade-check payments-eks-qa
+nedctl upgrade-check --aws-env dev,ete,qa --match lms
+nedctl upgrade-check payments-eks-qa --target 1.33 --report upgrade-qa.md
+nedctl upgrade-check --aws -o json > readiness.json
+nedctl upgrade-check payments-eks-prod --fail-below 80     # a pipeline gate
+```
+
+| Area | What it checks |
+|---|---|
+| Version and support | The target exists on EKS; the path (one minor at a time); current support (standard, extended with its monthly cost from `costRates`, out of support); the cluster is ACTIVE and healthy; `aws-auth`-only access |
+| Breaking changes | For this hop only: AppArmor (annotation from 1.30, any use from 1.34), anonymous access beyond the health endpoints (crossing 1.32), the Endpoints API written by tooling and AL2 nodes (1.33), IPVS kube-proxy (1.35), gitRepo volumes, non-canonical IPs and CIDRs and `externalIPs` (1.36), retired ingress-nginx (any version) |
+| Removed APIs | Every writer recorded in `managedFields` of workloads, ingresses, policies, PDBs, HPAs, CRDs, webhooks, FlowSchemas and PriorityLevelConfigurations. The API server's own writers are left out. A manifest that still uses an API already removed is flagged too: its next apply will fail |
+| Add-ons | Each EKS add-on against the target's compatible builds (`describe-addon-versions`), with a build supporting both versions to install first when there is one; health; kube-proxy skew; self-managed CoreDNS, kube-proxy and VPC CNI; cluster-autoscaler's minor |
+| Karpenter | Its version against the compatibility matrix. It must go first |
+| Nodes | Kubelet skew against the target (all nodes, Karpenter and self-managed included); AL2; containerd 1.x; self-managed nodes; custom AMIs; node groups mid-update or unhealthy; free IPs in the cluster subnets; Auto Mode and Fargate notes |
+| Workloads | What a node rotation takes down: single replicas, Recreate, no readiness probe, no requests, no PDB, no preStop behind a load balancer, PDBs that allow no disruption or overlap on live pods |
+| EKS Upgrade Insights | AWS's own pre-upgrade checks, read live, including **which clients still call a deprecated API** (from the cluster's audit log). An insight confirming a removed-API finding is not counted twice; one for a later version is information |
+| Also | Fail-closed admission webhooks on pods or nodes (they can stop the cluster recovering during node rotation), and CRDs storing objects in a version no longer served |
+
+**The score.** It starts at 100 and loses points per finding, capped per
+area: breaking changes 25, removed APIs 20, nodes 20, support 15, add-ons 15,
+Karpenter 10, workloads 10, Insights 10, AL2 10. READY is 90+, GOOD 80+,
+FAIR 70+ and RISKY 60+. **A blocker caps it at 59 (NOT READY):**
+- an incompatible critical add-on (VPC CNI, CoreDNS, kube-proxy, EBS CSI);
+- an incompatible Karpenter;
+- kubelets more than three minors behind;
+- fewer than 5 free IPs across the cluster subnets;
+- the cluster not ACTIVE.
+
+**Never a silent pass.** A check that couldn't run (access denied, a
+missing permission, the cluster unreachable) is listed as *not assessed*, and
+the score is marked **provisional**. The same applies to an add-on nedctl can
+identify but can't judge offline (cert-manager, Istio, Argo CD, Prisma Cloud
+Defender, Calico…): it's listed with its project's supported-versions page
+to check. For a target beyond what nedctl's tables cover (1.36 today), the
+breaking changes are marked not assessed: read the release notes.
+
+**What it reads.** From AWS, with your current profile, using these actions:
+- `eks:DescribeCluster`, `eks:DescribeClusterVersions`
+- `eks:ListInsights`, `eks:DescribeInsight`
+- `eks:ListNodegroups`, `eks:DescribeNodegroup`
+- `eks:ListAddons`, `eks:DescribeAddon`, `eks:DescribeAddonVersions`
+- `eks:ListFargateProfiles`, `ec2:DescribeSubnets`
+
+From the cluster, through the usual tunnel, about a dozen paged lists. It
+needs read access to:
+- nodes, workloads, PDBs, pods and services;
+- network policies and cluster role bindings;
+- CRDs, webhook configurations, FlowSchemas and PriorityLevelConfigurations;
+- the `kube-proxy-config` ConfigMap.
+
+Nothing is changed.
+
+**Outputs.**
+- `--report FILE.md` writes the assessment as Markdown for the change request
+  (a new owner-only file, never overwritten).
+- `-o json` has every finding, the score breakdown, the plan and the facts
+  read from AWS, in the `nedctl.findings/v1` layout. Pipelines and AI agents
+  work from it: see [agents](agents.md).
+
 ## How nedctl reads a cluster gently
 
 `changes`, `expiry`, `upgrade-check`, `mesh`, `why` and `capacity` read

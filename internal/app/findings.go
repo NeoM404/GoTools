@@ -44,6 +44,7 @@ type checkFinding struct {
 	Fix      string `json:"fix,omitempty"`
 	Source   string `json:"source,omitempty"` // where the evidence came from (kubernetes, eks-api, ecr, trivy…)
 	Blocker  bool   `json:"blocker,omitempty"`
+	Points   int    `json:"points,omitempty"` // what it costs a readiness score
 }
 
 // clusterFindings is one cluster's report.
@@ -177,9 +178,22 @@ func printReport(w io.Writer, cfg config.Config, report []clusterFindings, minSe
 		hidden := 0
 		tw := newTable(w)
 		header := false
+		perCheck := map[string]int{}
+		total := map[string]int{}
+		for _, f := range c.Findings {
+			total[f.Check+f.Severity]++
+		}
 		for _, f := range c.Findings {
 			if severityRank(f.Severity) < severityRank(minSev) {
 				hidden++
+				continue
+			}
+			// A check that matches many objects shows five; -o json has all.
+			k := f.Check + f.Severity
+			if perCheck[k]++; perCheck[k] > 5 {
+				if perCheck[k] == 6 {
+					fmt.Fprintf(tw, "%s\t%s\t… %d more\t(-o json lists every one)\n", strings.ToUpper(f.Severity), f.Check, total[k]-5)
+				}
 				continue
 			}
 			if !header {

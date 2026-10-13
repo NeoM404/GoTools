@@ -53,6 +53,7 @@ func (s *kubeSession) label() string {
 // sessionFlags pick the cluster a session is for.
 type sessionFlags struct {
 	cluster, env, awsProfile string
+	region                   string // EKS: the cluster's region when already known
 }
 
 // openKubeSession settles the cloud and the cluster, then opens the way
@@ -145,7 +146,7 @@ func openEKSSession(ctx context.Context, cfg config.Config, f sessionFlags, stde
 		}
 		pos = []string{f.cluster}
 	}
-	name, rs, code := resolveClusterArg(ctx, cfg, pc, regionSearch{}, pos, stderr)
+	name, rs, code := resolveClusterArg(ctx, cfg, pc, regionSearch{Flag: f.region}, pos, stderr)
 	if code != ExitOK {
 		return nil, code
 	}
