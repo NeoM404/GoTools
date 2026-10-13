@@ -58,10 +58,12 @@ To renew by hand: `nedctl aws login --force`.
 
 **After `nedctl aws login`, the prompt and `nedctl aws whoami` still show the
 old account**
-The terminal still has `AWS_PROFILE` set to the old profile; nedctl warns
-about this. Type `nedctl …`, not `./bin/nedctl …` (the shell block's
-`nedctl` function is what switches the terminal), or run the `export` line
-nedctl prints. If you skipped the shell step in `setup`, run `setup` again.
+The terminal was opened without nedctl's shell code, so nothing can switch
+its `AWS_PROFILE`; nedctl warns about this. Run `nedctl setup` (or redo its
+shell step) and open a new terminal: from then on every sign-in in a
+terminal switches that terminal by itself. `echo $NEDCTL_SHELL_ID` prints a
+number when the shell code is loaded. Meanwhile, run the `export` line
+nedctl prints.
 
 **"not signed in" in a script or pipeline**
 Without a terminal nedctl will not open a picker. Sign in first

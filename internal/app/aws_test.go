@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -581,5 +582,53 @@ func TestCommandsSignInWhenNeeded(t *testing.T) {
 	}
 	if _, err := os.Stat(w.loginMarker); err != nil {
 		t.Fatal("expired: aws sso login must have run")
+	}
+}
+
+func TestSignInSwitchesItsOwnTerminalOnly(t *testing.T) {
+	w := newAWSWorld(t, "")
+	cfg, _, err := config.Load(w.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := shellProfileDir(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := processAlive
+	processAlive = func(pid int) bool { return pid == os.Getpid() }
+	t.Cleanup(func() { processAlive = old })
+	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "999999"), []byte("gone\n"), 0o600) // a closed terminal's
+
+	me := strconv.Itoa(os.Getpid())
+	t.Setenv("NEDCTL_SHELL_ID", me)
+	t.Setenv("AWS_PROFILE", "nedctl.payments-prod.Platform-ReadOnly")
+	code, out, errb := run("--config", w.cfg, "aws", "login", "--account", "222222222222", "--role", "Platform-Admin")
+	if code != ExitOK || strings.Contains(errb, "still has AWS_PROFILE") {
+		t.Fatalf("this terminal switches itself — no warning: code=%d %q", code, errb)
+	}
+	if out != "export AWS_PROFILE='nedctl.payments-dev.Platform-Admin'\n" {
+		t.Fatalf("not a terminal: stdout keeps the export line for eval: %q", out)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, me))
+	if err != nil || string(got) != "nedctl.payments-dev.Platform-Admin\n" {
+		t.Fatalf("handed to this terminal: %q %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "999999")); err == nil {
+		t.Fatal("a closed terminal's hand-off should be cleared")
+	}
+	if fi, _ := os.Stat(dir); fi.Mode().Perm() != 0o700 && runtime.GOOS != "windows" {
+		t.Fatalf("dir mode %v", fi.Mode().Perm())
+	}
+
+	// Not a process ID: nothing is written (the value names a file).
+	os.Remove(filepath.Join(dir, me))
+	t.Setenv("NEDCTL_SHELL_ID", "../../x")
+	if code, _, _ := run("--config", w.cfg, "aws", "login", "--account", "222222222222", "--role", "Platform-Admin"); code != ExitOK {
+		t.Fatalf("code=%d", code)
+	}
+	if names, _ := os.ReadDir(dir); len(names) != 0 {
+		t.Fatalf("nothing should be handed off: %v", names)
 	}
 }

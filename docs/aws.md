@@ -181,7 +181,9 @@ never the token.
 
 No AWS keys pass through nedctl. The AWS CLI fetches short-term credentials
 for that one account and role when the profile is used. The picker and
-messages go to stderr, so stdout carries only `export AWS_PROFILE=…`.
+messages go to stderr, so stdout carries only `export AWS_PROFILE=…` — for
+`eval` in scripts. In a terminal with nedctl's shell code (from `setup`),
+login prints no `export` line: the terminal switches by itself.
 
 ### Elevated roles are marked
 
@@ -409,11 +411,17 @@ environments and roles, `--profile <TAB>` your profiles. Completion reads
 only nedctl's local caches (filled whenever a command lists those things),
 so it is instant and never calls AWS.
 
-It also makes `nedctl aws login` switch the shell you run it in: a program
-cannot change its shell's `AWS_PROFILE`, so the line defines a small `nedctl`
-shell function that applies the `export AWS_PROFILE='…'` line login prints
-(only that exact form, never by `eval`). Without it, a shell that already has
-`AWS_PROFILE` keeps acting — nedctl, the prompt and the aws CLI alike — with
+It also makes **every sign-in switch the terminal it ran in**, with nothing
+to export. A program cannot change its shell's `AWS_PROFILE`, so the shell
+code hands it over: it sets `NEDCTL_SHELL_ID` to the shell's process ID, a
+sign-in leaves its profile name in nedctl's `shells/<id>` file (mode 0600),
+and before the next prompt the shell takes it into `AWS_PROFILE` and deletes
+the file. That covers `nedctl aws login`, a `kube`, `shell` or `connect`
+that had to sign you in first, and a nedctl run by its path
+(`./bin/nedctl`). Only that terminal switches: signing in to production in
+one tab never moves another. The name is read as data and taken only if it
+is `[A-Za-z0-9._-]`, never run. Without the shell code (a terminal opened
+before `setup`), a shell that already has `AWS_PROFILE` keeps acting with
 the old profile; `aws login` and `aws whoami` then warn and show the
 `export` to run.
 

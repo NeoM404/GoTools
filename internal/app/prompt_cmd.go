@@ -128,8 +128,13 @@ func promptInit(cfgPath string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "locating nedctl: %v\n", err)
 		return ExitFailure
 	}
+	cfg, _, cfgErr := config.Load(cfgPath)
+	shells := ""
+	if cfgErr == nil {
+		shells, _ = shellProfileDir(cfg)
+	}
 	if args[0] == "powershell" {
-		fmt.Fprint(stdout, powershellInit(self))
+		fmt.Fprint(stdout, powershellInit(self, shells))
 		return ExitOK
 	}
 	bin := shellQuote(self)
@@ -153,7 +158,23 @@ func promptInit(cfgPath string, args []string, stdout, stderr io.Writer) int {
   esac
 }
 `, bin)
-	if cfg, _, err := config.Load(cfgPath); err == nil && cfg.Azure.Configured() {
+	// Every sign-in in this terminal switches it: nedctl leaves the profile
+	// in <shells>/<this shell's PID> and the prompt hook below takes it —
+	// read as data, checked against [A-Za-z0-9._-], never run.
+	sync := ""
+	if shells != "" {
+		fmt.Fprintf(stdout, `export NEDCTL_SHELL_ID=$$
+__nedctl_take_profile() {
+  local f=%s/"$NEDCTL_SHELL_ID" p=""
+  [ -f "$f" ] || return 0
+  IFS= read -r p < "$f"; rm -f "$f"
+  case "$p" in ""|*[!A-Za-z0-9._-]*) return 0 ;; esac
+  export AWS_PROFILE="$p"
+}
+`, shellQuote(shells))
+		sync = "\n  __nedctl_take_profile"
+	}
+	if cfgErr == nil && cfg.Azure.Configured() {
 		fmt.Fprint(stdout, sharedSSHAgent)
 	}
 	switch args[0] {
@@ -171,7 +192,7 @@ complete -F _nedctl_complete nedctl
 `, bin)
 		fmt.Fprintf(stdout, `__nedctl_base_ps1="${__nedctl_base_ps1-$PS1}"
 __nedctl_prompt() {
-  local s
+  local s%s
   s="$(%s prompt --shell bash --tab 2>/dev/null)"
   PS1="${__nedctl_kube_prefix:+$__nedctl_kube_prefix }${s:+$s }${__nedctl_base_ps1}"
 }
@@ -179,7 +200,7 @@ case ";${PROMPT_COMMAND-};" in
   *";__nedctl_prompt;"*) ;;
   *) PROMPT_COMMAND="__nedctl_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
-`, bin)
+`, sync, bin)
 	case "zsh":
 		fmt.Fprintf(stdout, `_nedctl() {
   local -a c
@@ -191,13 +212,13 @@ esac
 `, bin)
 		fmt.Fprintf(stdout, `__nedctl_base_prompt="${__nedctl_base_prompt-$PROMPT}"
 __nedctl_prompt() {
-  local s
+  local s%s
   s="$(%s prompt --shell zsh --tab 2>/dev/null)"
   PROMPT="${__nedctl_kube_prefix:+$__nedctl_kube_prefix }${s:+$s }${__nedctl_base_prompt}"
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd __nedctl_prompt
-`, bin)
+`, sync, bin)
 	}
 	return ExitOK
 }
@@ -250,8 +271,21 @@ func segment(cfg config.Config, shell, label, env string, prod bool) string {
 // setting $env:AWS_PROFILE, and tab completion. Like the bash version it
 // never runs nedctl's output: login's one line is matched against an exact
 // pattern and only a [A-Za-z0-9._-] profile name is taken.
-func powershellInit(bin string) string {
-	return strings.ReplaceAll(`# nedctl shell integration: prompt, tab colour, completion, and
+func powershellInit(bin, shells string) string {
+	take := ""
+	if shells != "" {
+		// Every sign-in in this session switches it (see handToShell).
+		take = strings.ReplaceAll(`$env:NEDCTL_SHELL_ID = "$PID"
+function global:__nedctlTakeProfile {
+  $f = Join-Path '@SHELLS@' $env:NEDCTL_SHELL_ID
+  if (-not (Test-Path -LiteralPath $f)) { return }
+  $p = Get-Content -LiteralPath $f -TotalCount 1
+  Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue
+  if ($p -match '^[A-Za-z0-9._-]+$') { $env:AWS_PROFILE = $p }
+}
+`, "@SHELLS@", strings.ReplaceAll(shells, "'", "''"))
+	}
+	return take + strings.ReplaceAll(`# nedctl shell integration: prompt, tab colour, completion, and
 # "nedctl aws login" switching this session's AWS_PROFILE.
 $global:__nedctlBin = '@BIN@'
 function global:__nedctlRun {
@@ -274,6 +308,7 @@ function global:nedctl {
 if (-not (Test-Path variable:global:__nedctlBasePrompt)) { $global:__nedctlBasePrompt = $function:prompt }
 function global:prompt {
   $rc = $global:LASTEXITCODE
+  if (Get-Command __nedctlTakeProfile -ErrorAction SilentlyContinue) { __nedctlTakeProfile }
   $seg = (__nedctlRun prompt --shell powershell --tab 2>$null | Out-String).TrimEnd()
   $base = & $global:__nedctlBasePrompt
   $global:LASTEXITCODE = $rc

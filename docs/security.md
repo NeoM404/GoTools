@@ -105,7 +105,11 @@ ever reaches the audit log (`TestE2EEngineerJourney`).
 - The shell integration (`nedctl prompt init`, added by `setup`) never uses
   `eval` on nedctl's output: after `aws login`, it exports `AWS_PROFILE` only
   when the output is exactly `export AWS_PROFILE='<name>'` with a name in
-  `[A-Za-z0-9._-]`. Anything else is printed, not run.
+  `[A-Za-z0-9._-]`. Anything else is printed, not run. A sign-in hands its
+  profile to its own terminal through `shells/<shell PID>` in nedctl's
+  0700 state directory (file 0600); the prompt reads one line, takes it only
+  if it is `[A-Za-z0-9._-]`, and deletes it. Files of closed terminals are
+  cleared, and no terminal is switched by another's sign-in.
 - Tab completion reads only local files (config, `~/.aws/config`, nedctl's
   caches) and never calls AWS. The cached cluster and instance names are
   written with mode 0600 under nedctl's state directory.

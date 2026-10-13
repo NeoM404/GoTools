@@ -28,7 +28,7 @@ func TestPowerShellInit(t *testing.T) {
 	if strings.Contains(out, "Invoke-Expression") {
 		t.Fatal("prompt init powershell must not Invoke-Expression nedctl's output")
 	}
-	if got := powershellInit(`C:\Users\o'neil\nedctl.exe`); !strings.Contains(got, `'C:\Users\o''neil\nedctl.exe'`) {
+	if got := powershellInit(`C:\Users\o'neil\nedctl.exe`, `C:\Users\o'neil\shells`); !strings.Contains(got, `'C:\Users\o''neil\nedctl.exe'`) {
 		t.Fatalf("path quoting:\n%s", got)
 	}
 }

@@ -2,12 +2,14 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"nedctl/internal/awssso"
+	"nedctl/internal/config"
 )
 
 func TestPromptShowsKubeAndAWSInEnvironmentColour(t *testing.T) {
@@ -148,5 +150,40 @@ func TestPromptInsideKubeShellIsShort(t *testing.T) {
 	t.Setenv("NEDCTL_KUBECONFIG", "/elsewhere")
 	if _, out, _ := run("--config", w.cfg, "prompt"); !strings.Contains(out, "k8s:") || !strings.Contains(out, "aws:") {
 		t.Fatalf("outside: %q", out)
+	}
+}
+
+// The generated shell code takes a sign-in's profile into AWS_PROFILE before
+// the prompt — checked in the real shells, with a hostile value refused.
+func TestPromptInitTakesTheTerminalsProfile(t *testing.T) {
+	w := newAWSWorld(t, "")
+	for _, sh := range []string{"bash", "zsh"} {
+		if _, err := exec.LookPath(sh); err != nil {
+			continue
+		}
+		code, initCode, errb := run("--config", w.cfg, "prompt", "init", sh)
+		if code != ExitOK || !strings.Contains(initCode, "export NEDCTL_SHELL_ID=$$") || !strings.Contains(initCode, "__nedctl_take_profile") {
+			t.Fatalf("%s: code=%d %s\n%s", sh, code, errb, initCode)
+		}
+		script := initCode + `
+mkdir -p "$1"
+printf 'nedctl.payments-dev.Platform-Admin\n' > "$1/$NEDCTL_SHELL_ID"
+__nedctl_take_profile
+printf '%s|' "$AWS_PROFILE"
+[ -e "$1/$NEDCTL_SHELL_ID" ] && printf left
+printf '$(touch %s/pwned)\n' "$1" > "$1/$NEDCTL_SHELL_ID"
+__nedctl_take_profile
+printf '%s|' "$AWS_PROFILE"
+[ -e "$1/pwned" ] && printf pwned
+true
+`
+		cfg, _, _ := config.Load(w.cfg)
+		dir, _ := shellProfileDir(cfg)
+		cmd := exec.Command(sh, "-c", script, sh, dir)
+		cmd.Env = append(os.Environ(), "AWS_PROFILE=nedctl.payments-prod.Platform-ReadOnly")
+		out, err := cmd.CombinedOutput()
+		if err != nil || string(out) != "nedctl.payments-dev.Platform-Admin|nedctl.payments-dev.Platform-Admin|" {
+			t.Fatalf("%s: %v %q", sh, err, out)
+		}
 	}
 }

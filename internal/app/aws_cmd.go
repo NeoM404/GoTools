@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,9 +145,16 @@ func awsLogin(ctx context.Context, cfgPath string, args []string, stdout, stderr
 	if code != ExitOK {
 		return code
 	}
-	warnShellProfile(profile, stderr)
+	if shellID() == "" {
+		warnShellProfile(profile, stderr)
+	}
 	if colorOn(stderr) {
 		fmt.Fprintln(stderr, ui.Style{Color: true}.Hint("next: nedctl kube · nedctl shell · nedctl console"))
+	}
+	// The terminal switches by itself (see handToShell): an export line
+	// printed to it would only suggest a step that is not needed.
+	if f, ok := asFile(stdout); shellID() != "" && ok && isTerminal(f) {
+		return ExitOK
 	}
 	printProfileEnv(stdout, *format, profile)
 	return ExitOK
@@ -760,7 +768,58 @@ func saveCurrentProfile(cfg config.Config, profile string) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	return writeFileAtomic(p, []byte(profile+"\n"), 0o600)
+	if err := writeFileAtomic(p, []byte(profile+"\n"), 0o600); err != nil {
+		return err
+	}
+	return handToShell(cfg, profile)
+}
+
+// shellProfileDir is where a sign-in leaves its profile for the terminal it
+// ran in. The shell code from `nedctl prompt init` sets NEDCTL_SHELL_ID to
+// the shell's process ID and, before each prompt, moves the profile from
+// shellProfileDir/<id> into AWS_PROFILE — so every sign-in in a terminal
+// (nedctl aws login, a command that had to sign in first, a nedctl run by
+// its path) switches that terminal, and only that one: a sign-in to
+// production in one tab never moves another.
+func shellProfileDir(cfg config.Config) (string, error) {
+	p, err := currentProfilePath(cfg)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(p), "shells"), nil
+}
+
+// shellID is this terminal's NEDCTL_SHELL_ID, "" when the shell code is not
+// loaded (or the value is not a process ID).
+func shellID() string {
+	id := os.Getenv("NEDCTL_SHELL_ID")
+	if n, err := strconv.Atoi(id); err != nil || n <= 0 || strconv.Itoa(n) != id {
+		return ""
+	}
+	return id
+}
+
+func handToShell(cfg config.Config, profile string) error {
+	id := shellID()
+	if id == "" {
+		return nil
+	}
+	dir, err := shellProfileDir(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	// Terminals that have closed without taking theirs leave nothing behind.
+	if names, err := os.ReadDir(dir); err == nil {
+		for _, e := range names {
+			if n, err := strconv.Atoi(e.Name()); err == nil && e.Name() != id && !processAlive(n) {
+				_ = os.Remove(filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	return writeFileAtomic(filepath.Join(dir, id), []byte(profile+"\n"), 0o600)
 }
 
 // lastSignIn is the profile of the last `nedctl aws login` ("" if none).
@@ -786,7 +845,7 @@ func warnShellProfile(signedIn string, stderr io.Writer) {
 	}
 	note := fmt.Sprintf("⚠️  this shell still has AWS_PROFILE=%s, so commands here (and the aws CLI) act with it, not %s\n"+
 		"   switch:    export AWS_PROFILE='%s'\n"+
-		"   automatic: add  eval \"$(nedctl prompt init bash)\"  to ~/.bashrc", cur, signedIn, signedIn)
+		"   automatic: run  nedctl setup  once and open a new terminal — sign-ins then switch it by themselves", cur, signedIn, signedIn)
 	if colorOn(stderr) {
 		note = picker.Paint(elevatedColor, note)
 	}
