@@ -56,6 +56,7 @@ content stays the same.
 | `mesh` | `mesh` | Istio mTLS, sidecar coverage, policies and routing |
 | `posture` | `posture` | Risky settings in what runs |
 | `explain` | `explain --no-logs` | Why a workload is failing, without its logs |
+| `why` | `why` | Why A can't reach B: Service, endpoints, network policy, Istio |
 | `app` / `diff` | `app` / `diff` | One application across environments, side by side |
 
 **What agents never get:**

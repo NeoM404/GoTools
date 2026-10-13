@@ -78,6 +78,52 @@ one SSH connection.
 Clusters that can't be reached are listed as warnings, so a missing row is
 never silent. Use `-o json` for release tooling.
 
+## Why can't my app reach that service? `nedctl why`
+
+```bash
+nedctl why deploy/payments-api svc/ledger.core:8080 -n payments
+nedctl why pod/api-7f9c svc/redis:6379 -n payments --cluster acm-k8s-qa-cluster
+nedctl why deploy/web 10.20.30.40:443 -n web
+```
+
+nedctl reads the objects on the path and evaluates them the way Kubernetes
+and Istio do. It sends no traffic:
+
+```
+payments/api-7f9c  →  svc/ledger.core   QA · acm-k8s-qa-cluster
+
+ ✔ source               pod api-7f9c (10.0.1.5), service account payments-api, Istio sidecar
+ ✔ service              ClusterIP 172.20.1.9, port 8080 → targetPort https
+ ✔ endpoints            2 ready endpoint(s), 1 not ready
+ ✔ egress               allowed to port 8443 by payments/to-core
+ ✖ ingress              core/ledger-in restrict(s) the target's ingress and no rule allows payments/api-7f9c on port 8443/TCP
+                        core/ledger-in
+
+BLOCKED ingress network policy core/ledger-in
+Live check: nedctl debug net ledger.core:8080 -n payments --cluster acm-k8s-qa-cluster
+```
+
+It checks, in order:
+
+1. **The Service exists** and has that port. A named `targetPort` must name
+   a container port on the pods.
+2. **Ready endpoints exist.** "Not ready" means the pods fail their readiness
+   probe; none at all means the selector matches nothing.
+3. **Egress from the source**, including DNS to kube-dns on port 53: every
+   NetworkPolicy selecting the source, with pod and namespace selectors,
+   ipBlocks, and named and ranged ports.
+4. **Ingress at the target**, the same way, on the container port the
+   Service forwards to.
+5. **Istio mTLS:** a STRICT target refuses a caller without a sidecar.
+6. **Istio authorization:** a DENY policy matching this caller blocks it;
+   when ALLOW policies apply, one must allow its identity
+   (`cluster.local/ns/<ns>/sa/<service account>`) on that port.
+
+The verdict is **REACHABLE**, **BLOCKED** (naming the object to change) or
+**NOT SURE**. NOT SURE covers an authorization rule that also depends on
+paths, methods or conditions, or an outside name whose address nedctl can't
+see. Then run the live check it prints. Exits 1 when blocked.
+
 ## Evidence for the incident ticket: `nedctl incident`
 
 ```bash
