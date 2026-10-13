@@ -105,6 +105,66 @@ The board only draws in a terminal. Scripts keep using plain `health`, or
 flipping. Columns that don't fit a narrow window are left out rather than
 wrapped.
 
+## What changed? `nedctl changes`
+
+The first question in an incident. One timeline, newest first, for a
+cluster or across environments:
+
+```bash
+nedctl changes --cluster acm-k8s-qa-cluster          # the last 2 hours
+nedctl changes --env prod --since 6h
+nedctl changes --aws-env ete,qa --match lms --kind rollout,config
+nedctl changes -n payments --since 24h -o json
+```
+
+| Kind | What it shows |
+|---|---|
+| `rollout` | A Deployment's new revision with the image before → after; a template-only change (environment, config, resources); a rollback |
+| `revision` | DaemonSet and StatefulSet revisions, with their images |
+| `config` | ConfigMaps and PodDisruptionBudgets created or edited, and by which tool |
+| `rbac` | Roles, RoleBindings and ClusterRoleBindings created or edited |
+| `network` | NetworkPolicies and Ingresses created or edited |
+| `mesh` | Istio VirtualServices, DestinationRules, Gateways, AuthorizationPolicies and PeerAuthentications (when Istio is installed) |
+| `node` | Nodes joining, turning NotReady or Ready, cordoned |
+| `scale` | Autoscaler scaling |
+| `restart` | A container's last restart, its reason (OOMKilled, Error) and exit code |
+| `warning` | Warning events: BackOff, FailedScheduling, Unhealthy… |
+
+"by" is the writer Kubernetes records for each edit (`managedFields`):
+`kubectl-client-side-apply`, `argocd-application-controller`, `helm`, a
+controller. A person's own `kubectl edit` shows as `kubectl-edit`.
+
+Things to know:
+
+- **Secrets are not read.** Listing Secrets returns their values, so nedctl
+  never does. A Secret edit shows only as the rollout it causes.
+- **Warning events are kept about an hour** by the API server. The other
+  kinds go back as far as `--since` (up to 30 days), as long as the objects
+  still exist.
+- **Platform namespaces are left out** (`security.ignoreNamespaces`):
+  controllers there write constantly. `--include-system` adds them.
+- `nedctl incident` puts the same timeline for the workload's namespace into
+  the evidence file (`changes.json` and the summary).
+
+## How nedctl reads a cluster gently
+
+`changes`, `expiry`, `upgrade-check`, `mesh`, `why` and `capacity` read
+whole clusters, including production, so they follow the same rules:
+
+- Each resource type is listed **once per run**, however many checks use
+  it, and only in the namespace asked for when `-n` is given.
+- Lists are **paged** (`--chunk-size=250`), so no single API response, or
+  etcd read, is large.
+- Only the fields a check uses are printed (`jsonpath`), so little crosses
+  SSH or Session Manager.
+- **Every request has a 20s limit.** A cluster that doesn't answer its first
+  request isn't asked the rest, and no cluster is read for more than 90s.
+- **Reads only:** no watches, no exec into workloads, no proxying to pods.
+  Secrets are never listed, except TLS certificates for `expiry` and
+  `health`, whose private key is never printed.
+- Bastions read eight clusters at a time; EKS clusters are read one after
+  another.
+
 ## One command on many clusters: `nedctl fleet run`
 
 ```bash

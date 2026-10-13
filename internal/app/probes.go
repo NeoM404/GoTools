@@ -145,8 +145,14 @@ func runProbes(ctx context.Context, cfg config.Config, sel clusterSel, probes []
 
 func sessionProbes(ctx context.Context, s *kubeSession, probes []probe) clusterOut {
 	co := clusterOut{Cloud: s.cloud, Env: s.env, Cluster: s.cluster, Where: s.where}
-	for _, p := range probes {
-		out, err := s.output(ctx, "", p...)
+	for i, p := range probes {
+		if i > 0 && co.Outs[0].Err != nil {
+			// As on a bastion: a cluster that does not answer its first
+			// request is not asked the rest.
+			co.Outs = append(co.Outs, probeOut{nil, errors.New("not read: the cluster did not answer")})
+			continue
+		}
+		out, err := s.output(ctx, "", append([]string{"--request-timeout=20s"}, p...)...)
 		co.Outs = append(co.Outs, probeOut{out, err})
 	}
 	return co

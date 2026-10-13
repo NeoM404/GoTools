@@ -118,6 +118,10 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdApp(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "diff":
 		return cmdDiff(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "changes":
+		return cmdChanges(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "expiry":
+		return cmdExpiry(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "logs":
 		return cmdLogs(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "forward":

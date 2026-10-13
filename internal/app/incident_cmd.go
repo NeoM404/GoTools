@@ -98,7 +98,13 @@ func cmdIncident(ctx context.Context, cfgPath string, args []string, stdout, std
 		"cloud": s.cloud, "environment": s.env, "cluster": s.cluster, "account": s.pc.AccountID, "namespace": *ns, "target": subject,
 		"logsSince": *since, "redaction": "environment variable values, last-applied annotations and managed fields removed; log lines redacted (secrets, tokens, keys, card and ID numbers)",
 	}
-	files["summary.md"] = []byte(incidentSummary(meta, findings))
+	// What changed in the namespace (and the cluster's nodes and bindings)
+	// over the same window: the first question of any incident.
+	changes := incidentChanges(ctx, s, *ns, *since)
+	if cj, err := json.MarshalIndent(changes, "", "  "); err == nil {
+		files["changes.json"] = cj
+	}
+	files["summary.md"] = []byte(incidentSummary(meta, findings, changes))
 	data, sum, err := buildIncidentZip(files, meta)
 	if err == nil {
 		err = writeNewFile(dest, data)
@@ -301,7 +307,23 @@ func buildIncidentZip(files map[string][]byte, meta map[string]any) ([]byte, str
 	return buf.Bytes(), hex.EncodeToString(h[:]), nil
 }
 
-func incidentSummary(meta map[string]any, findings []finding) string {
+// incidentChanges is `nedctl changes -n NS --since SINCE` on the session
+// (at least the last two hours).
+func incidentChanges(ctx context.Context, s *kubeSession, ns, since string) []clusterChange {
+	d, err := time.ParseDuration(since)
+	if err != nil || d < 2*time.Hour {
+		d = 2 * time.Hour
+	}
+	co := sessionProbes(ctx, s, changesProbes(ns))
+	changes, _ := clusterChanges(config.Config{}, co, now().Add(-d), true)
+	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Time.After(changes[j].Time) })
+	if changes == nil {
+		changes = []clusterChange{}
+	}
+	return changes
+}
+
+func incidentSummary(meta map[string]any, findings []finding, changes []clusterChange) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Incident evidence: %v\n\n", meta["target"])
 	for _, k := range []string{"environment", "cluster", "account", "namespace", "collectedBy", "collectedAt", "nedctl", "logsSince"} {
@@ -315,6 +337,17 @@ func incidentSummary(meta map[string]any, findings []finding) string {
 	}
 	for _, f := range findings {
 		fmt.Fprintf(&b, "- **%s** %s%s\n", strings.ToUpper(f.Severity), f.What, ifNonBlank(" — ", f.Fix))
+	}
+	fmt.Fprintf(&b, "\n## What changed (namespace %v and the cluster's nodes and bindings)\n\n", meta["namespace"])
+	if len(changes) == 0 {
+		b.WriteString("Nothing changed in the window read.\n")
+	}
+	for i, c := range changes {
+		if i == 25 {
+			fmt.Fprintf(&b, "- … %d more in changes.json\n", len(changes)-25)
+			break
+		}
+		fmt.Fprintf(&b, "- %s **%s** %s: %s%s\n", c.Time.Format("2006-01-02 15:04Z"), c.Kind, c.Object, c.What, ifNonBlank(" by ", c.By))
 	}
 	fmt.Fprintf(&b, "\n## What was removed\n\n%v.\n\nFile checksums are in manifest.json; the zip's own SHA-256 is in the collector's nedctl audit trail.\n", meta["redaction"])
 	return b.String()

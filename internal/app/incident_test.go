@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIncidentCollectsCleanEvidence(t *testing.T) {
@@ -23,6 +24,9 @@ func TestIncidentCollectsCleanEvidence(t *testing.T) {
 	f.answer(t, c, "get events -n payments -o json", `{"items":[{"type":"Warning","reason":"Failed","message":"pull failed","involvedObject":{"kind":"Pod","name":"api-2"}},{"type":"Normal","reason":"Other","message":"unrelated","involvedObject":{"kind":"Pod","name":"billing-1"}}]}`)
 	f.answer(t, c, "get pod api-2 -n payments -o jsonpath={.spec.containers[*].name}", "api")
 	f.answer(t, c, "logs api-2 -n payments -c api --since=1h --tail=500 --timestamps", "2026-10-12T08:00:00Z login password=hunter22\n2026-10-12T08:00:01Z charged 4111 1111 1111 1111\n")
+	f.answer(t, c, "get --raw /version", `{"gitVersion":"v1.31.2"}`)
+	recent := time.Now().Add(-20 * time.Minute).UTC().Format(time.RFC3339)
+	f.answer(t, c, strings.Join(changesProbes("payments")[chRS], " "), "payments\tpayments-api\t1\t\t"+recent+"\treg/payments-api:2.0\t\n")
 	dir := t.TempDir()
 	out := filepath.Join(dir, "evidence.zip")
 
@@ -61,6 +65,9 @@ func TestIncidentCollectsCleanEvidence(t *testing.T) {
 	}(), "\n")
 	if strings.Contains(all, "hunter22") || strings.Contains(all, "4111 1111") || strings.Contains(all, "\"managedFields\"") || strings.Contains(all, "kubectl.kubernetes.io/last-applied-configuration") {
 		t.Fatalf("evidence leaks something it must not:\n%s", all)
+	}
+	if !strings.Contains(contents["changes.json"], "created (reg/payments-api:2.0)") || !strings.Contains(contents["summary.md"], "## What changed") {
+		t.Fatalf("the namespace's changes belong in the evidence:\n%s\n%s", contents["changes.json"], contents["summary.md"])
 	}
 	for _, name := range []string{"summary.md", "findings.json", "workload.json", "pods.json", "events.json", "logs/api-2_api.log", "manifest.json"} {
 		if _, ok := contents[name]; !ok {

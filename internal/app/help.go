@@ -87,6 +87,9 @@ var helpGroups = []helpGroup{
 			[]string{"nedctl diff payments-api --env qa,prod", "nedctl diff kiali --aws-env ete,qa --match lms", "nedctl diff payments-api --env dev,qa -n payments --all", "nedctl diff payments-api -o json"}},
 	}},
 	{"For DevOps: run the fleet", []cmdHelp{
+		{"changes", "", "What changed? One timeline: rollouts, config, RBAC, nodes, scaling, restarts, warnings",
+			"The first question of an incident, answered per cluster or across environments: rollouts with the image before and after (and rollbacks), DaemonSet and StatefulSet revisions, ConfigMap edits, network policy, ingress, PDB, RBAC and Istio edits with the tool that wrote them (from managedFields), nodes joining or turning NotReady, autoscaler scaling, container restarts with their reason, and warning events. Secrets are not read — listing them returns their values. Each resource type is listed once, in pages, reading only what is shown. Read-only.",
+			[]string{"nedctl changes --cluster acm-k8s-qa-cluster", "nedctl changes --env prod --since 6h", "nedctl changes --aws-env ete,qa --match lms --kind rollout,config", "nedctl changes -n payments --since 24h -o json"}},
 		{"health", "", "One line per cluster, then what needs attention",
 			"Nodes not ready or under pressure, pods crash-looping or stuck pending, workloads below their replicas, volume claims not bound, TLS certificates expiring (default within 30 days), and the version's support status. --env qa checks every QA cluster in one SSH connection per bastion. --board shows them all on a live board that fills in as results arrive; --watch 1m keeps reading (a wall screen). Read-only; exits 1 when a cluster fails or cannot be reached.",
 			[]string{"nedctl health --env qa", "nedctl health --aws-env ete,qa --match lms", "nedctl health --env prod --board", "nedctl health --env dev,qa,prod --watch 1m", "nedctl health --env dev,qa --match payments", "nedctl health --cluster acm-k8s-qa-cluster", "nedctl health --aws -o json"}},
@@ -103,6 +106,9 @@ var helpGroups = []helpGroup{
 			[]string{"nedctl fleet run --env qa -- kubectl get nodes", "nedctl fleet run --env dev,qa,prod --prefix -- kubectl get deploy -A | grep payments-api", "nedctl fleet run --aws -- kubectl get --raw /version"}},
 	}},
 	{"For DevSecOps: checks and evidence", []cmdHelp{
+		{"expiry", "", "What stops working on a date: certificates, CA bundles, the Kubernetes version",
+			"Every TLS Secret's certificate (and whether cert-manager is renewing it), cert-manager Certificates that cannot renew, Ingresses and Istio Gateways naming a certificate that is not there, admission webhook and aggregated API CA bundles, the cluster's CA, and the Kubernetes version's support window. Expired is critical, within a week high, within --days (30) medium, within 90 days low. Private keys are never printed. Exits 1 at --fail-on (high).",
+			[]string{"nedctl expiry --env prod", "nedctl expiry --aws-env ete,qa --days 45", "nedctl expiry --cluster acm-k8s-qa-cluster --all", "nedctl expiry --env dev,qa,prod --fail-on medium -o json > expiry.json"}},
 		{"posture", "", "Risky settings in what runs: privileged, host access, root, secrets in env, public LBs…",
 			"Checks every pod and service for privileged containers, host namespaces and paths, root, dangerous capabilities, missing memory limits, latest tags, unapproved registries (security.approvedRegistries), secrets written into environment variables (names only — values are never read) and public load balancers. Platform namespaces are skipped (security.ignoreNamespaces). Exits 1 on a failing cluster; -o json is the evidence.",
 			[]string{"nedctl posture --env prod", "nedctl posture --cluster acm-k8s-qa-cluster", "nedctl posture --env qa,prod -o json > posture-2026-10.json"}},

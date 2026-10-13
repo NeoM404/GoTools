@@ -55,6 +55,43 @@ and its name looks like a secret. Platform namespaces are skipped (`kube-system`
 `-o json` adds a timestamp and the check catalogue with fixes, as an
 evidence pack.
 
+## What stops working on a date: `nedctl expiry`
+
+```bash
+nedctl expiry --env prod
+nedctl expiry --aws-env ete,qa --days 45
+nedctl expiry --cluster acm-k8s-qa-cluster --all
+nedctl expiry --env dev,qa,prod --fail-on medium -o json > expiry.json
+```
+
+It reads everything on a cluster that has an end date:
+
+| Check | What it reads |
+|---|---|
+| `tls-secret` | The certificate in every `kubernetes.io/tls` Secret, and whether cert-manager renews it |
+| `cert-manager-renewal` | cert-manager Certificates that are not Ready: issuance or renewal failing |
+| `missing-certificate` | Ingresses and Istio Gateways that name a TLS Secret that isn't there |
+| `webhook-ca` | The CA bundle the API server calls each admission webhook with |
+| `apiservice-ca` | The CA bundle of each aggregated API (metrics-server and the like) |
+| `cluster-ca` | The cluster's own CA (`kube-root-ca.crt`) |
+| `kubernetes-support` | The Kubernetes version's support window, from `supportCalendar` |
+
+Severity follows days left: **expired is critical**, within a week high,
+within `--days` (30) medium, within 90 days low. A certificate that
+cert-manager renews, with its Certificate Ready, is one level lower; one
+whose Certificate is failing isn't. `--all` also lists what expires later.
+
+When a webhook's CA bundle expires, the API server can't call the webhook,
+so creating pods (or whatever the webhook guards) fails cluster-wide. When an
+aggregated API's expires, that API group disappears (`kubectl top` stops
+working with metrics-server).
+
+Only certificates are read. Private keys are never printed: kubectl returns
+the Secret, and nedctl prints only `tls.crt`. Exits 1 at `--fail-on`
+(default `high`), so `--fail-on medium` in a scheduled pipeline warns a month
+ahead. `-o json` uses the same findings layout as `upgrade-check`, `mesh` and
+`capacity` (`"schema": "nedctl.findings/v1"`).
+
 ## Every image running: `nedctl images`
 
 ```bash
