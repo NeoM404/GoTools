@@ -82,6 +82,8 @@ var mcpTools = []mcpTool{
 		Args: append(append([]mcpArg{}, fleetArgs...), argNS, mcpArg{Name: "since", Desc: "how far back, e.g. 2h (default) or 24h", Flag: "--since"}, mcpArg{Name: "kind", Desc: "only these kinds, e.g. rollout,config,rbac", Flag: "--kind"})},
 	{Name: "health", Desc: "Each cluster's health: nodes, crash-looping or pending pods, workloads below their replicas, unbound volumes, expiring certificates, version support.",
 		Command: []string{"health"}, Fixed: []string{"-o", "json"}, Args: fleetArgs},
+	{Name: "mesh", Desc: "Istio security and routing: mTLS modes, workloads outside the mesh, proxy versions, allow-all authorization policies, plain-text destination rules, routes to missing services, conflicting virtual services, plain-HTTP gateways, open egress, EnvoyFilters.",
+		Command: []string{"mesh"}, Fixed: []string{"-o", "json", "--fail-on", "none"}, Args: fleetArgs},
 	{Name: "posture", Desc: "Risky settings in what runs: privileged containers, host access, root, dangerous capabilities, secrets in environment variables (names only), public load balancers, unapproved registries.",
 		Command: []string{"posture"}, Fixed: []string{"-o", "json"}, Args: fleetArgs},
 	{Name: "explain", Desc: "Why a workload or pod is not working, in plain findings with what to do (logs are not read through an agent).",

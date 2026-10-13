@@ -92,6 +92,35 @@ the Secret, and nedctl prints only `tls.crt`. Exits 1 at `--fail-on`
 ahead. `-o json` uses the same findings layout as `upgrade-check`, `mesh` and
 `capacity` (`"schema": "nedctl.findings/v1"`).
 
+## The service mesh: `nedctl mesh`
+
+```bash
+nedctl mesh --env qa,prod                 # side by side, then the findings
+nedctl mesh --aws-env ete,qa --match lms
+nedctl mesh --cluster acm-k8s-qa-cluster -o json
+```
+
+| Check | Severity | Why it matters |
+|---|---|---|
+| `mesh-mtls` | high | No mesh-wide `PeerAuthentication`, or one not `STRICT`. Istio's default (PERMISSIVE) accepts plain text |
+| `mtls-disabled`, `mtls-permissive`, `mtls-port-override` | high / medium | A namespace, workload or port that accepts plain text |
+| `no-sidecar` | high | A running pod in a meshed namespace without `istio-proxy`: its traffic bypasses mTLS and authorization. Jobs and host-network pods are left out |
+| `sidecar-opt-out` | medium | `sidecar.istio.io/inject: false` in a meshed namespace: confirm the exception |
+| `proxy-version` | medium | Sidecars on a version istiod doesn't run (not restarted after an Istio upgrade) |
+| `allow-all-policy` | high | An `AuthorizationPolicy` that allows every request (`rules: [{}]`) |
+| `no-authorization-policy` | low | A meshed namespace with no policy, and no mesh-wide one: any workload may call it |
+| `tls-disabled-destination` | high | A `DestinationRule` with `tls.mode: DISABLE` |
+| `route-to-nowhere` | medium | A `VirtualService` routing to a service that doesn't exist |
+| `virtualservice-conflict` | medium | Several virtual services claim the same host on the same gateway; which one Istio uses is not defined |
+| `plain-http-gateway` | medium | A gateway serving HTTP without `httpsRedirect` |
+| `open-egress` | medium | `outboundTrafficPolicy: ALLOW_ANY`: workloads may call any outside host |
+| `envoyfilter` | low | `EnvoyFilter`s patch Envoy directly and often break on Istio upgrades |
+
+Across environments, the table first shows each cluster's Istio version,
+mesh-wide mTLS, sidecar coverage and egress mode side by side, so a drift
+between QA and production stands out. Clusters without Istio say so and pass.
+Exits 1 at `--fail-on` (default `high`).
+
 ## Every image running: `nedctl images`
 
 ```bash

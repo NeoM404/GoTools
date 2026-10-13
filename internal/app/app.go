@@ -124,6 +124,8 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdExpiry(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "upgrade-check":
 		return cmdUpgradeCheck(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "mesh":
+		return cmdMesh(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "mcp":
 		return cmdMCP(ctx, cfgPath, cmdArgs, stdin, stdout, stderr)
 	case "agents":

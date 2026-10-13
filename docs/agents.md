@@ -53,6 +53,7 @@ content stays the same.
 | `expiry` | `expiry` | Certificates, CA bundles and version support running out |
 | `changes` | `changes` | What changed recently (Secrets never read) |
 | `health` | `health` | Cluster health |
+| `mesh` | `mesh` | Istio mTLS, sidecar coverage, policies and routing |
 | `posture` | `posture` | Risky settings in what runs |
 | `explain` | `explain --no-logs` | Why a workload is failing, without its logs |
 | `app` / `diff` | `app` / `diff` | One application across environments, side by side |
