@@ -161,6 +161,33 @@ stale port. The API server's TLS is still verified against the cluster's
 CA end to end, so a local process that grabbed a port could not get a
 token.
 
+## AI agents get evidence, not access
+
+`nedctl mcp` lets AI agents (Kiro, GitHub Copilot, Claude Code) ask nedctl
+for read-only checks. Details are in [agents](agents.md).
+
+- **Allow-listed tools only:** `upgrade_check`, `expiry`, `changes`,
+  `health`, `posture`, `explain` without logs, `app`, `diff`, `whoami` and
+  `list_eks_clusters`.
+- **Never offered:**
+  - logs (personal data);
+  - exec, copy, debug pods or port-forwards;
+  - Secrets;
+  - anything that changes a cluster or an account.
+- **Arguments must be names.** Each must match `[A-Za-z0-9][A-Za-z0-9._:/,=@-]*`
+  and is placed after its own flag, so an agent can't inject a flag
+  (`--kubeconfig`) or shell syntax. Unknown arguments are refused.
+- **Each call runs as its own nedctl process with no stdin.** No picker or
+  prompt can wait, a read that would need an elevated-only role is refused,
+  and nothing the command or its `kubectl`/`aws` children print can reach the
+  protocol stream.
+- **Every call is recorded** (`agent-tool`) with the agent's name and the
+  exact command, before it runs. If the record can't be written, the call is
+  refused.
+- **Output is bounded:** cleaned of terminal escapes, at most 512 KB.
+- **The bank controls it:** `agents.disabled` turns it off,
+  and `agents.tools` narrows the list.
+
 ## Presenter mode for screen-shares
 
 `NEDCTL_PRESENT=1 nedctl …` (or `export NEDCTL_PRESENT=1` for a whole

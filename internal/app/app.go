@@ -124,6 +124,10 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdExpiry(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "upgrade-check":
 		return cmdUpgradeCheck(ctx, cfgPath, cmdArgs, stdout, stderr)
+	case "mcp":
+		return cmdMCP(ctx, cfgPath, cmdArgs, stdin, stdout, stderr)
+	case "agents":
+		return cmdAgents(cfgPath, cmdArgs, stdout, stderr)
 	case "logs":
 		return cmdLogs(ctx, cfgPath, cmdArgs, stdout, stderr)
 	case "forward":

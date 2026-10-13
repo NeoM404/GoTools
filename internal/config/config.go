@@ -167,6 +167,20 @@ type Config struct {
 	// long, e.g. "15m" (the default); the local port stays and the next
 	// kubectl reopens it. "0" keeps sessions open while their holder runs.
 	TunnelIdleTimeout string `json:"tunnelIdleTimeout"`
+
+	// Agents controls `nedctl mcp`, the read-only tools AI agents (Kiro,
+	// GitHub Copilot, Claude Code) can call.
+	Agents Agents `json:"agents"`
+}
+
+// Agents controls what AI agents may ask nedctl through `nedctl mcp`.
+type Agents struct {
+	// Disabled turns `nedctl mcp` off (the bank's built-in defaults can
+	// set it for everyone).
+	Disabled bool `json:"disabled"`
+	// Tools, when set, are the only tools offered (e.g. ["upgrade_check",
+	// "expiry"]); default: every read-only tool.
+	Tools []string `json:"tools"`
 }
 
 // TunnelIdle is TunnelIdleTimeout with its default (0 = never).

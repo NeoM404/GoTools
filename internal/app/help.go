@@ -152,6 +152,15 @@ var helpGroups = []helpGroup{
 		{"guard", "", "Is the current kube-context production? (--block exits 3)", "", []string{"nedctl guard --block && kubectl apply -f deploy.yaml"}},
 		{"current", "", "The current context, its cluster and environment", "", nil},
 	}},
+	{"AI agents (Kiro, GitHub Copilot, Claude Code, AWS DevOps Agent)", []cmdHelp{
+		{"agents setup", "<kiro|copilot|claude|devops-agent>", "Wire an AI agent to nedctl's read-only tools and the EKS upgrade skill",
+			"Writes the MCP server entry, the eks-upgrade-readiness skill and the agent's definition where it has one — kiro in ~/.kiro, copilot and claude in the repository (--dir), devops-agent as an upload bundle. Only new files: one that exists is left as it is, with what to add shown.",
+			[]string{"nedctl agents setup kiro", "nedctl agents setup copilot --dir ~/src/platform", "nedctl agents setup devops-agent --dry-run"}},
+		{"agents tools", "", "The tools agents get through nedctl mcp", "", nil},
+		{"mcp", "", "The MCP server agents start (stdio): read-only tools, every call recorded",
+			"Offers upgrade_check, expiry, changes, health, posture, explain (no logs), app, diff, whoami and list_eks_clusters — each one nedctl command with -o json, run as its own process with no stdin. Arguments are names only, never flags. No logs, exec, Secrets or changes. Every call is recorded (agent-tool) with the agent's name. agents.disabled turns it off; agents.tools narrows it.",
+			[]string{"nedctl mcp tools"}},
+	}},
 	{"Setup", []cmdHelp{
 		{"setup", "", "First run: settings, install, prompt and tab colours, health check",
 			"Every step asks first, is safe to repeat and never overwrites anything. Running a newer download's setup is also how you update.",

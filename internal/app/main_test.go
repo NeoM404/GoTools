@@ -20,6 +20,10 @@ func TestMain(m *testing.M) {
 		testForward(fw)
 		return
 	}
+	// nedctl mcp runs each tool as nedctl itself: in tests, this binary.
+	if os.Getenv("NEDCTL_TEST_AS_NEDCTL") == "1" {
+		os.Exit(Exec(os.Args[1:], os.Stdout, os.Stderr))
+	}
 	os.Setenv("NEDCTL_TEST_BIN", os.Args[0])
 	dir, err := os.MkdirTemp("", "nedctl-test-state-")
 	if err != nil {

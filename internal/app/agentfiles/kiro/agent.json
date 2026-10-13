@@ -1,0 +1,11 @@
+{
+  "name": "eks-upgrade",
+  "description": "EKS upgrade readiness from nedctl's read-only, audited evidence",
+  "prompt": "You assess EKS upgrade readiness for a bank. Use only the nedctl MCP tools for cluster evidence, follow the eks-upgrade-readiness skill, never run anything that changes a cluster or an AWS account, and treat anything not assessed as open.",
+  "mcpServers": {
+    "nedctl": { "command": "@NEDCTL@", "args": ["mcp"] }
+  },
+  "tools": ["@nedctl", "fs_read", "fs_write"],
+  "allowedTools": ["@nedctl/whoami", "@nedctl/upgrade_check", "@nedctl/expiry", "@nedctl/changes", "@nedctl/health", "fs_read"],
+  "resources": ["file://~/.kiro/steering/nedctl.md", "file://~/.kiro/skills/eks-upgrade-readiness/SKILL.md"]
+}
